@@ -1,0 +1,697 @@
+/* (c) TeeDefenceArchive - 2026 */
+
+#include "account.h"
+
+#include <stdlib.h>
+
+#include <engine/console.h>
+#include <engine/engine.h>
+#include <engine/shared/config.h>
+
+#include <game/commands.h>
+#include <game/server/gamecontext.h>
+#include <game/server/player.h>
+
+static const char *DefaultItemExtraJson()
+{
+	return "{\"Extra\":{\"Cards\":[],\"Parts\":[]}}";
+}
+
+static void ClearItemsInSync(SAccSyncData *pSync)
+{
+	for(int i = 0; i < NUM_ITEM; i++)
+	{
+		pSync->m_aItems[i].m_Num = 0;
+		pSync->m_aItems[i].m_Capacity = 0;
+		str_copy(pSync->m_aItems[i].m_aExtra, DefaultItemExtraJson(), sizeof(pSync->m_aItems[i].m_aExtra));
+	}
+}
+
+static bool UsernameOk(const char *p)
+{
+	int l = str_length(p);
+	if(l < 3 || l > 63)
+		return false;
+	for(const char *q = p; *q; q++)
+	{
+		char c = *q;
+		if((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')
+			continue;
+		return false;
+	}
+	return true;
+}
+
+static bool PasswordOk(const char *p)
+{
+	int l = str_length(p);
+	return l >= 6 && l <= 63;
+}
+
+#ifdef CONF_MYSQL
+
+#include <mysql.h>
+
+static bool SqlExec(MYSQL *pSql, const char *pQuery)
+{
+	if(mysql_query(pSql, pQuery))
+	{
+		dbg_msg("mysql", "error: %s | %s", mysql_error(pSql), pQuery);
+		return false;
+	}
+	return true;
+}
+
+static bool EnsureSchema(MYSQL *pSql)
+{
+	const char *pAccounts =
+		"CREATE TABLE IF NOT EXISTS `tw_Accounts` ("
+		"  `UserID` int NOT NULL AUTO_INCREMENT,"
+		"  `Username` varchar(64) NOT NULL,"
+		"  `Password` varchar(64) NOT NULL,"
+		"  `Language` varchar(64) NOT NULL DEFAULT 'zh-cn',"
+		"  `Sword` int NOT NULL DEFAULT 0,"
+		"  `Pickaxe` int NOT NULL DEFAULT 0,"
+		"  `Axe` int NOT NULL DEFAULT 0,"
+		"  PRIMARY KEY (`UserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+	if(!SqlExec(pSql, pAccounts))
+		return false;
+
+	const char *pItems =
+		"CREATE TABLE IF NOT EXISTS `tw_Items` ("
+		"  `UserID` INT NOT NULL,"
+		"  `ItemID` INT NOT NULL,"
+		"  `Num` INT NOT NULL,"
+		"  `Extra` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`Extra`))"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+	return SqlExec(pSql, pItems);
+}
+
+static bool LoadItemsForUser(MYSQL *pSql, int UserId, SAccSyncData *pSync)
+{
+	ClearItemsInSync(pSync);
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery), "SELECT ItemID, Num, IFNULL(Extra,'') FROM tw_Items WHERE UserID=%d", UserId);
+	if(!SqlExec(pSql, aQuery))
+		return false;
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	if(!pRes)
+		return true;
+	MYSQL_ROW Row;
+	while((Row = mysql_fetch_row(pRes)))
+	{
+		if(!Row[0] || !Row[1])
+			continue;
+		int Id = str_toint(Row[0]);
+		if(Id < 0 || Id >= NUM_ITEM)
+			continue;
+		pSync->m_aItems[Id].m_Num = str_toint(Row[1]);
+		if(Row[2] && Row[2][0])
+			str_copy(pSync->m_aItems[Id].m_aExtra, Row[2], sizeof(pSync->m_aItems[Id].m_aExtra));
+		else
+			str_copy(pSync->m_aItems[Id].m_aExtra, DefaultItemExtraJson(), sizeof(pSync->m_aItems[Id].m_aExtra));
+	}
+	mysql_free_result(pRes);
+	return true;
+}
+
+static void SaveItems(MYSQL *pSql, int UserId, const SAccSyncData *pSync)
+{
+	for(int i = 0; i < NUM_ITEM; i++)
+	{
+		char aQuery[4096];
+		str_format(aQuery, sizeof(aQuery), "SELECT Num FROM tw_Items WHERE UserID=%d AND ItemID=%d LIMIT 1", UserId, i);
+		if(!SqlExec(pSql, aQuery))
+			continue;
+
+		char aEscExtra[2048];
+		const char *pRawEx = pSync->m_aItems[i].m_aExtra[0] ? pSync->m_aItems[i].m_aExtra : DefaultItemExtraJson();
+		mysql_real_escape_string(pSql, aEscExtra, pRawEx, str_length(pRawEx));
+
+		MYSQL_RES *pRes = mysql_store_result(pSql);
+		const bool Exists = pRes && mysql_num_rows(pRes) > 0;
+		if(pRes)
+			mysql_free_result(pRes);
+
+		if(Exists)
+		{
+			if(pSync->m_aItems[i].m_Num > 0)
+			{
+				str_format(aQuery, sizeof(aQuery), "UPDATE tw_Items SET Num=%d, Extra='%s' WHERE UserID=%d AND ItemID=%d",
+					pSync->m_aItems[i].m_Num, aEscExtra, UserId, i);
+				SqlExec(pSql, aQuery);
+			}
+			else
+			{
+				str_format(aQuery, sizeof(aQuery), "DELETE FROM tw_Items WHERE UserID=%d AND ItemID=%d", UserId, i);
+				SqlExec(pSql, aQuery);
+			}
+		}
+		else if(pSync->m_aItems[i].m_Num > 0)
+		{
+			str_format(aQuery, sizeof(aQuery), "INSERT INTO tw_Items(UserID, ItemID, Num, Extra) VALUES (%d,%d,%d,'%s')",
+				UserId, i, pSync->m_aItems[i].m_Num, aEscExtra);
+			SqlExec(pSql, aQuery);
+		}
+	}
+}
+
+#endif
+
+CAccountSystem::CAccountSystem()
+{
+	m_pGame = nullptr;
+	m_pEngine = nullptr;
+	m_pConfig = nullptr;
+	m_Enabled = false;
+	for(auto &Slot : m_aJobs)
+		mem_zero(&Slot, sizeof(Slot));
+}
+
+bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pConsole, CConfig *pConfig)
+{
+	(void)pConsole;
+	m_pGame = pGame;
+	m_pEngine = pEngine;
+	m_pConfig = pConfig;
+	m_Enabled = false;
+
+#ifndef CONF_MYSQL
+	dbg_msg("acc", "built without MySQL (install client + enable CONF_MYSQL in CMake)");
+	return true;
+#else
+	if(!pGame || !pEngine || !pConfig)
+		return false;
+
+	if(!pConfig->m_SvMysqlEnable)
+	{
+		dbg_msg("acc", "MySQL accounts disabled (sv_mysql_enable 0)");
+		return true;
+	}
+
+	const int DbPort = pConfig->m_SvMysqlPort ? pConfig->m_SvMysqlPort : 3306;
+	const int PoolSize = clamp(pConfig->m_SvMysqlPoolSize, 1, 32);
+	if(!m_Pool.Init(PoolSize, pConfig->m_SvMysqlHost, DbPort, pConfig->m_SvMysqlUser, pConfig->m_SvMysqlPassword, pConfig->m_SvMysqlDatabase))
+	{
+		dbg_msg("acc", "MySQL pool init failed");
+		return false;
+	}
+
+	void *pRaw = m_Pool.Acquire();
+	if(!pRaw)
+	{
+		dbg_msg("acc", "no connection for schema setup");
+		m_Pool.Shutdown();
+		return false;
+	}
+	MYSQL *pSql = (MYSQL *)pRaw;
+	if(!EnsureSchema(pSql))
+	{
+		m_Pool.Release(pRaw);
+		m_Pool.Shutdown();
+		return false;
+	}
+	m_Pool.Release(pRaw);
+
+	m_Enabled = true;
+	dbg_msg("acc", "MySQL account system ready (pool=%d, TeeDef tw_*)", PoolSize);
+	return true;
+#endif
+}
+
+void CAccountSystem::Shutdown()
+{
+#ifdef CONF_MYSQL
+	for(int Wait = 0; Wait < 10000; Wait++)
+	{
+		bool Busy = false;
+		for(auto &Slot : m_aJobs)
+		{
+			if(Slot.m_Submitted && Slot.m_Job.Status() != CJob::STATE_DONE)
+				Busy = true;
+		}
+		if(!Busy)
+			break;
+		thread_sleep(1);
+	}
+	m_Pool.Shutdown();
+#endif
+	m_Enabled = false;
+	m_pEngine = nullptr;
+	m_pGame = nullptr;
+	m_pConfig = nullptr;
+	for(auto &Slot : m_aJobs)
+		mem_zero(&Slot, sizeof(Slot));
+}
+
+bool CAccountSystem::StartJob(int Type, int ClientId, const char *pUser, const char *pPass)
+{
+	if(!m_Enabled || !m_pEngine)
+		return false;
+
+	for(auto &Slot : m_aJobs)
+	{
+		if(Slot.m_Submitted)
+			continue;
+
+		mem_zero(&Slot, sizeof(Slot));
+		Slot.m_pSys = this;
+		Slot.m_Submitted = true;
+		Slot.m_Type = Type;
+		Slot.m_ClientId = ClientId;
+		Slot.m_AccountId = 0;
+		str_copy(Slot.m_Sync.m_aUsername, pUser, sizeof(Slot.m_Sync.m_aUsername));
+		str_copy(Slot.m_Sync.m_aPassword, pPass, sizeof(Slot.m_Sync.m_aPassword));
+		str_copy(Slot.m_Sync.m_aLanguage, "zh-cn", sizeof(Slot.m_Sync.m_aLanguage));
+		mem_zero(Slot.m_Sync.m_Holding, sizeof(Slot.m_Sync.m_Holding));
+		mem_zero(Slot.m_Sync.m_ItemCount, sizeof(Slot.m_Sync.m_ItemCount));
+		ClearItemsInSync(&Slot.m_Sync);
+		Slot.m_Error = -1;
+
+		m_pEngine->AddJob(&Slot.m_Job, JobRunner, &Slot);
+		return true;
+	}
+	return false;
+}
+
+bool CAccountSystem::StartSaveJob(int ClientId, int UserId, const SAccSyncData *pSync)
+{
+	if(!m_Enabled || !m_pEngine || UserId <= 0 || !pSync)
+		return false;
+
+	for(auto &Slot : m_aJobs)
+	{
+		if(Slot.m_Submitted)
+			continue;
+
+		mem_zero(&Slot, sizeof(Slot));
+		Slot.m_pSys = this;
+		Slot.m_Submitted = true;
+		Slot.m_Type = JOB_SAVE_ACCOUNT;
+		Slot.m_ClientId = ClientId;
+		Slot.m_AccountId = UserId;
+		mem_copy(&Slot.m_Sync, pSync, sizeof(Slot.m_Sync));
+		Slot.m_Error = -1;
+
+		m_pEngine->AddJob(&Slot.m_Job, JobRunner, &Slot);
+		return true;
+	}
+	return false;
+}
+
+bool CAccountSystem::StartItemsJob(int ClientId, int UserId, const SAccSyncData *pSync)
+{
+	if(!m_Enabled || !m_pEngine || UserId <= 0 || !pSync)
+		return false;
+
+	for(auto &Slot : m_aJobs)
+	{
+		if(Slot.m_Submitted)
+			continue;
+
+		mem_zero(&Slot, sizeof(Slot));
+		Slot.m_pSys = this;
+		Slot.m_Submitted = true;
+		Slot.m_Type = JOB_SAVE_ITEMS;
+		Slot.m_ClientId = ClientId;
+		Slot.m_AccountId = UserId;
+		mem_copy(&Slot.m_Sync, pSync, sizeof(Slot.m_Sync));
+		Slot.m_Error = -1;
+
+		m_pEngine->AddJob(&Slot.m_Job, JobRunner, &Slot);
+		return true;
+	}
+	return false;
+}
+
+#ifdef CONF_MYSQL
+
+int CAccountSystem::JobRunner(void *pData)
+{
+	SJob *pSlot = (SJob *)pData;
+	CAccountSystem *pSys = (CAccountSystem *)pSlot->m_pSys;
+	MYSQL *pSql = (MYSQL *)pSys->m_Pool.Acquire();
+	if(!pSql)
+	{
+		pSlot->m_Error = 100;
+		return -1;
+	}
+
+	if(pSlot->m_Type == JOB_REGISTER)
+	{
+		char aEscUser[128];
+		char aEscPass[128];
+		mysql_real_escape_string(pSql, aEscUser, pSlot->m_Sync.m_aUsername, str_length(pSlot->m_Sync.m_aUsername));
+		mysql_real_escape_string(pSql, aEscPass, pSlot->m_Sync.m_aPassword, str_length(pSlot->m_Sync.m_aPassword));
+
+		char aQuery[512];
+		str_format(aQuery, sizeof(aQuery), "SELECT UserID FROM tw_Accounts WHERE Username='%s' LIMIT 1", aEscUser);
+		if(!SqlExec(pSql, aQuery))
+		{
+			pSlot->m_Error = 102;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+
+		MYSQL_RES *pRes = mysql_store_result(pSql);
+		if(pRes && mysql_num_rows(pRes) > 0)
+		{
+			mysql_free_result(pRes);
+			pSlot->m_Error = 1;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+		if(pRes)
+			mysql_free_result(pRes);
+
+		str_format(aQuery, sizeof(aQuery), "INSERT INTO tw_Accounts(Username, Password) VALUES ('%s','%s')", aEscUser, aEscPass);
+		if(!SqlExec(pSql, aQuery))
+		{
+			pSlot->m_Error = 102;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+		pSlot->m_AccountId = (int64)mysql_insert_id(pSql);
+		pSlot->m_Error = 0;
+	}
+	else if(pSlot->m_Type == JOB_LOGIN)
+	{
+		char aEscUser[128];
+		char aEscPass[128];
+		mysql_real_escape_string(pSql, aEscUser, pSlot->m_Sync.m_aUsername, str_length(pSlot->m_Sync.m_aUsername));
+		mysql_real_escape_string(pSql, aEscPass, pSlot->m_Sync.m_aPassword, str_length(pSlot->m_Sync.m_aPassword));
+
+		char aQuery[512];
+		str_format(aQuery, sizeof(aQuery), "SELECT UserID FROM tw_Accounts WHERE Username='%s' LIMIT 1", aEscUser);
+
+		if(!SqlExec(pSql, aQuery))
+		{
+			pSlot->m_Error = 103;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+
+		MYSQL_RES *pRes = mysql_store_result(pSql);
+		if(!pRes || mysql_num_rows(pRes) == 0)
+		{
+			if(pRes)
+				mysql_free_result(pRes);
+			pSlot->m_Error = 2;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+		mysql_free_result(pRes);
+
+		str_format(aQuery, sizeof(aQuery),
+			"SELECT UserID,Username,Password,Language,Sword,Pickaxe,Axe FROM tw_Accounts WHERE Username='%s' AND Password='%s' LIMIT 1",
+			aEscUser, aEscPass);
+
+		if(!SqlExec(pSql, aQuery))
+		{
+			pSlot->m_Error = 103;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+
+		pRes = mysql_store_result(pSql);
+		if(!pRes || mysql_num_rows(pRes) == 0)
+		{
+			if(pRes)
+				mysql_free_result(pRes);
+			pSlot->m_Error = 3;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+
+		MYSQL_ROW Row = mysql_fetch_row(pRes);
+		if(!Row || !Row[0] || !Row[1] || !Row[2])
+		{
+			mysql_free_result(pRes);
+			pSlot->m_Error = 103;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+
+		pSlot->m_AccountId = (int64)atoll(Row[0]);
+		str_copy(pSlot->m_Sync.m_aUsername, Row[1], sizeof(pSlot->m_Sync.m_aUsername));
+		str_copy(pSlot->m_Sync.m_aPassword, Row[2], sizeof(pSlot->m_Sync.m_aPassword));
+		str_copy(pSlot->m_Sync.m_aLanguage, Row[3] ? Row[3] : "zh-cn", sizeof(pSlot->m_Sync.m_aLanguage));
+
+		pSlot->m_Sync.m_Holding[ITYPE_SWORD] = str_toint(Row[4] ? Row[4] : "0");
+		pSlot->m_Sync.m_Holding[ITYPE_PICKAXE] = str_toint(Row[5] ? Row[5] : "0");
+		pSlot->m_Sync.m_Holding[ITYPE_AXE] = str_toint(Row[6] ? Row[6] : "0");
+
+		mysql_free_result(pRes);
+
+		if(!LoadItemsForUser(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync))
+		{
+			pSlot->m_Error = 104;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+
+		pSlot->m_Error = 0;
+	}
+	else if(pSlot->m_Type == JOB_SAVE_ACCOUNT)
+	{
+		char aEscUser[128];
+		char aEscPass[128];
+		char aEscLang[128];
+		mysql_real_escape_string(pSql, aEscUser, pSlot->m_Sync.m_aUsername, str_length(pSlot->m_Sync.m_aUsername));
+		mysql_real_escape_string(pSql, aEscPass, pSlot->m_Sync.m_aPassword, str_length(pSlot->m_Sync.m_aPassword));
+		mysql_real_escape_string(pSql, aEscLang, pSlot->m_Sync.m_aLanguage, str_length(pSlot->m_Sync.m_aLanguage));
+
+		char aQuery[1024];
+		str_format(aQuery, sizeof(aQuery),
+			"UPDATE tw_Accounts SET Username='%s',Password='%s',Language='%s',Sword=%d,Axe=%d,Pickaxe=%d WHERE UserID=%lld",
+			aEscUser, aEscPass, aEscLang,
+			pSlot->m_Sync.m_Holding[ITYPE_SWORD],
+			pSlot->m_Sync.m_Holding[ITYPE_AXE],
+			pSlot->m_Sync.m_Holding[ITYPE_PICKAXE],
+			(long long)pSlot->m_AccountId);
+		if(!SqlExec(pSql, aQuery))
+			pSlot->m_Error = 105;
+		else
+		{
+			SaveItems(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync);
+			pSlot->m_Error = 0;
+		}
+	}
+	else if(pSlot->m_Type == JOB_SAVE_ITEMS)
+	{
+		SaveItems(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync);
+		pSlot->m_Error = 0;
+	}
+
+	pSys->m_Pool.Release(pSql);
+	return 0;
+}
+
+#else
+
+int CAccountSystem::JobRunner(void *pData)
+{
+	(void)pData;
+	return 0;
+}
+
+#endif
+
+void CAccountSystem::PumpCompletedJobs()
+{
+	if(!m_Enabled || !m_pGame)
+		return;
+
+	for(auto &Slot : m_aJobs)
+	{
+		if(!Slot.m_Submitted)
+			continue;
+		if(Slot.m_Job.Status() != CJob::STATE_DONE)
+			continue;
+
+		const int ClientId = Slot.m_ClientId;
+		CPlayer *pP = (ClientId >= 0 && ClientId < MAX_CLIENTS) ? m_pGame->m_apPlayers[ClientId] : nullptr;
+
+		if(Slot.m_Type == JOB_REGISTER)
+		{
+			if(Slot.m_Error == 0)
+			{
+				if(pP && !pP->IsDummy())
+					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "注册成功。");
+				if(!StartJob(JOB_LOGIN, ClientId, Slot.m_Sync.m_aUsername, Slot.m_Sync.m_aPassword))
+				{
+					if(pP && !pP->IsDummy())
+						m_pGame->SendChat(-1, CHAT_ALL, ClientId, "自动登录排队失败，请使用 /login。");
+				}
+			}
+			else if(Slot.m_Error == 1)
+			{
+				if(pP && !pP->IsDummy())
+					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "用户名已被占用。");
+			}
+			else
+			{
+				if(pP && !pP->IsDummy())
+					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "注册失败（服务器）。");
+			}
+		}
+		else if(Slot.m_Type == JOB_LOGIN)
+		{
+			if(Slot.m_Error == 0 && pP && !pP->IsDummy() && m_pGame->Server()->ClientIngame(ClientId))
+			{
+				pP->SetAccountId(Slot.m_AccountId);
+				mem_copy(&pP->m_AccData, &Slot.m_Sync, sizeof(pP->m_AccData));
+				if(!pP->m_AccData.m_Holding[ITYPE_PICKAXE] && !pP->m_AccData.m_Holding[ITYPE_AXE] && !pP->m_AccData.m_Holding[ITYPE_SWORD])
+				{
+					pP->m_AccData.m_Holding[ITYPE_PICKAXE] = ITEM_PICKAXE_LOG;
+					pP->m_AccData.m_Holding[ITYPE_AXE] = ITEM_AXE_LOG;
+					pP->m_AccData.m_Holding[ITYPE_SWORD] = ITEM_SWORD_LOG;
+				}
+				m_pGame->SendChat(-1, CHAT_ALL, ClientId, "登录成功。");
+			}
+			else if(Slot.m_Error == 2)
+			{
+				if(pP && !pP->IsDummy())
+					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "用户不存在。");
+			}
+			else if(Slot.m_Error == 3)
+			{
+				if(pP && !pP->IsDummy())
+					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "密码错误。");
+			}
+			else
+			{
+				if(pP && !pP->IsDummy())
+					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "登录失败（服务器）。");
+			}
+		}
+
+		Slot.m_Submitted = false;
+		mem_zero(&Slot.m_Job, sizeof(Slot.m_Job));
+	}
+}
+
+void CAccountSystem::OnGameTick()
+{
+	PumpCompletedJobs();
+}
+
+void CAccountSystem::OnClientDisconnect(int ClientId)
+{
+	if(!m_Enabled || !m_pGame)
+		return;
+	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	if(!pP || pP->GetAccountId() < 0)
+		return;
+
+	const int UserId = (int)pP->GetAccountId();
+	SAccSyncData Sync;
+	mem_copy(&Sync, &pP->m_AccData, sizeof(Sync));
+	pP->ClearAccount();
+	StartSaveJob(ClientId, UserId, &Sync);
+}
+
+void CAccountSystem::RequestSaveItems(int ClientId)
+{
+	if(!m_Enabled || !m_pGame)
+		return;
+	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	if(!pP || pP->GetAccountId() < 0)
+		return;
+	StartItemsJob(ClientId, (int)pP->GetAccountId(), &pP->m_AccData);
+}
+
+void CAccountSystem::RequestSaveAccount(int ClientId)
+{
+	if(!m_Enabled || !m_pGame)
+		return;
+	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	if(!pP || pP->GetAccountId() < 0)
+		return;
+	StartSaveJob(ClientId, (int)pP->GetAccountId(), &pP->m_AccData);
+}
+
+void CAccountSystem::ComChatRegister(IConsole::IResult *pResult, void *pUser)
+{
+	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	CAccountSystem *pAcc = &pGame->m_Accounts;
+
+	const char *pU = pResult->GetString(0);
+	const char *pPw = pResult->GetString(1);
+
+	if(!pAcc->m_Enabled)
+	{
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "服务器未启用账号系统。");
+		return;
+	}
+	if(!UsernameOk(pU) || !PasswordOk(pPw))
+	{
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "用户名 3–63（字母数字下划线），密码 6–63 位。");
+		return;
+	}
+	if(!pAcc->StartJob(JOB_REGISTER, pCtx->m_ClientID, pU, pPw))
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "服务器忙，请稍后再试。");
+	else
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "正在注册…");
+}
+
+void CAccountSystem::ComChatLogin(IConsole::IResult *pResult, void *pUser)
+{
+	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	CAccountSystem *pAcc = &pGame->m_Accounts;
+
+	const char *pU = pResult->GetString(0);
+	const char *pPw = pResult->GetString(1);
+
+	if(!pAcc->m_Enabled)
+	{
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "服务器未启用账号系统。");
+		return;
+	}
+	if(!UsernameOk(pU) || !PasswordOk(pPw))
+	{
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "用户名或密码格式无效。");
+		return;
+	}
+	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
+	if(pP && pP->GetAccountId() >= 0)
+	{
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "你已经登录。");
+		return;
+	}
+	if(!pAcc->StartJob(JOB_LOGIN, pCtx->m_ClientID, pU, pPw))
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "服务器忙，请稍后再试。");
+	else
+		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "正在登录…");
+}
+
+void CAccountSystem::ComAccInfo(IConsole::IResult *pResult, void *pUser)
+{
+	(void)pResult;
+	CGameContext *pGame = (CGameContext *)pUser;
+	CAccountSystem *pAcc = &pGame->m_Accounts;
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "accounts: enabled=%d mysql_pool=%d",
+		pAcc->m_Enabled ? 1 : 0,
+#ifdef CONF_MYSQL
+		pAcc->m_Pool.IsInitialized() ? 1 : 0
+#else
+		0
+#endif
+	);
+	pGame->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "acc", aBuf);
+}
+
+void CAccountSystem::RegisterChatCommands(CCommandManager *pManager, CGameContext *pGame)
+{
+	pManager->AddCommand("register", "注册账号", "sr", ComChatRegister, pGame);
+	pManager->AddCommand("login", "登录账号", "sr", ComChatLogin, pGame);
+}
+
+void CAccountSystem::RegisterConsoleCommands(IConsole *pConsole, CGameContext *pGame)
+{
+	pConsole->Register("acc_info", "", CFGFLAG_SERVER, ComAccInfo, pGame, "Print MySQL account subsystem status");
+}

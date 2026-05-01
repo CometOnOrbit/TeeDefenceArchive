@@ -8,7 +8,7 @@
 class CLaser : public CChildEntity
 {
 public:
-	CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Damage);
+	CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Damage, bool Explosive = false, float HitForce = 0.0f, int ElectronStacks = 0, int CardHostItemId = -1);
 
 	virtual void Reset();
 	virtual void Tick();
@@ -26,6 +26,10 @@ private:
 	int m_Bounces;
 	int m_EvalTick;
 	int m_Damage;
+	bool m_Explosive;
+	float m_HitForce;
+	int m_ElectronStacks;
+	int m_CardHostItemId;
 };
 
 #endif

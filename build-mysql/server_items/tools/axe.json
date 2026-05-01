@@ -1,0 +1,71 @@
+{
+    "item": {
+        "type": 1,
+        "multiple": [
+            {
+                "id": 9,
+                "name": "Wooden Axe",
+                "desc": "An axe made of wood.",
+                "proba": 90,
+                "damage": 13,
+                "capacity": 0,
+                "max": 0,
+                "formula": {
+                    "Log": 10
+                }
+            },
+            {
+                "id": 12,
+                "name": "Copper Axe",
+                "desc": "An axe made of copper.",
+                "damage": 17,
+                "proba": 90,
+                "capacity": 10,
+                "max": 0,
+                "formula": {
+                    "Log": 60,
+                    "Copper": 25
+                }
+            },
+            {
+                "id": 14,
+                "name": "Iron Axe",
+                "desc": "An axe made of iron.",
+                "damage": 25,
+                "proba": 90,
+                "capacity": 20,
+                "max": 0,
+                "formula": {
+                    "Log": 220,
+                    "Iron": 25
+                }
+            },
+            {
+                "id": 17,
+                "name": "Golden Axe",
+                "desc": "An axe made of gold.",
+                "damage": 50,
+                "proba": 90,
+                "capacity": 30,
+                "max": 0,
+                "formula": {
+                    "Log": 500,
+                    "Golden": 10
+                }
+            },
+            {
+                "id": 20,
+                "name": "Diamond Axe",
+                "desc": "An axe made of diamond.",
+                "damage": 100,
+                "proba": 100,
+                "capacity": 50,
+                "max": 0,
+                "formula": {
+                    "Log": 500,
+                    "Diamond": 25
+                }
+            }
+        ]
+    }
+}

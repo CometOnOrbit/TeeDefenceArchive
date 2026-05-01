@@ -3,6 +3,7 @@
 #ifndef GAME_SERVER_GAMECONTEXT_H
 #define GAME_SERVER_GAMECONTEXT_H
 
+#include <base/tl/array.h>
 #include <base/tl/sorted_array.h>
 
 #include <engine/console.h>
@@ -12,7 +13,11 @@
 #include <game/layers.h>
 #include <game/voting.h>
 
+#include "account.h"
 #include "gameworld.h"
+#include "item_system.h"
+
+class CBotEngine;
 
 /*
 	Tick
@@ -86,8 +91,14 @@ public:
 	class CGameController *m_pController;
 	CGameWorld m_World;
 	CCommandManager m_CommandManager;
+	CAccountSystem m_Accounts;
+	CItemHelper *m_pItemHelper;
+	class CBotEngine *m_pBotEngine;
 
 	CCommandManager *CommandManager() { return &m_CommandManager; }
+	CAccountSystem *Accounts() { return &m_Accounts; }
+	CItemHelper *ItemHelper() { return m_pItemHelper; }
+	CBotEngine *BotEngine() { return m_pBotEngine; }
 
 	// helper functions
 	class CCharacter *GetPlayerChar(int ClientID);
@@ -123,6 +134,75 @@ public:
 	class CHeap *m_pVoteOptionHeap;
 	CVoteOptionServer *m_pVoteOptionFirst;
 	CVoteOptionServer *m_pVoteOptionLast;
+
+	enum EVoteMenuPage
+	{
+		PAGE_MENU = 0,
+		PAGE_INVENTORY,
+		PAGE_CHECK_ITEM,
+		PAGE_CRAFT,
+		PAGE_CRAFT_SELECTED,
+		PAGE_EQUIPMENT,
+		PAGE_TURRET,
+	};
+
+	struct SPlayerVote
+	{
+		enum EVoteSelect
+		{
+			ITEMLIST = 0,
+			ITEM,
+			EQUIPMENT,
+			NUM_SELECT,
+		};
+
+		struct SVoteOptions
+		{
+			char m_aDescription[VOTE_DESC_LENGTH];
+			char m_aCommand[VOTE_CMD_LENGTH];
+		};
+
+		array<SVoteOptions> m_aVoteOptions;
+		int m_LastPage;
+		int m_Page;
+		int m_Select[NUM_SELECT];
+		bool m_Confirm;
+		char m_aExtraText[VOTE_DESC_LENGTH];
+
+		void Reset()
+		{
+			m_aVoteOptions.clear();
+			m_LastPage = 0;
+			m_Page = 0;
+			m_Confirm = false;
+			for(int i = 0; i < NUM_SELECT; i++)
+				m_Select[i] = 0;
+			m_aExtraText[0] = 0;
+		}
+	};
+
+	SPlayerVote m_aPlayerVotes[MAX_CLIENTS];
+	int m_VoteBuildClientID;
+
+	SPlayerVote *GetPlayerVote(int ClientID) { return &m_aPlayerVotes[ClientID]; }
+
+	void AddVote(const char *pDesc, const char *pCmd, int ClientID);
+	void AddVote_ListInventory(int ItemType, const char *pCmdPrefix, bool Equip = false);
+	void AddVote_ListCraft(int ItemType);
+	void AddVote_ListFormula(int ItemID);
+	void AddVote_Craft(int ItemID);
+	void AddVote_Back();
+	void AddVote_Space(int Num = 1);
+	void AddVote_Goto(int Page, const char *pDesc);
+	void AddVote_TextLine(const char *pText);
+	void SetVoteLastPage(int Page);
+	void SetVoteBuildClientID(int CID) { m_VoteBuildClientID = CID; }
+
+	void InitVotes(int ClientID);
+	void ClearVotes(int ClientID);
+	void CountItemNum(int ClientID);
+	bool TryHandleVoteMenuOption(int ClientID, const char *pDescription);
+	void ProcessVoteMenuCommand(int ClientID, const char *pCmdLine);
 
 	// ----- send functions -----
 	void SendChat(int ChatterClientID, int Mode, int To, const char *pText);
@@ -166,6 +246,7 @@ public:
 
 	virtual void OnClientConnected(int ClientID, bool AsSpec) { OnClientConnected(ClientID, false, AsSpec); }
 	void OnClientConnected(int ClientID, bool Dummy, bool AsSpec);
+	virtual void OnBotConnected(int ClientID) override;
 	void OnClientTeamChange(int ClientID);
 	virtual void OnClientEnter(int ClientID);
 	virtual void OnClientDrop(int ClientID, const char *pReason);

@@ -1,5 +1,5 @@
-Teeworlds LastDay
-=================
-This is the rework of old teeworlds survival craft modification LastDay.
+TeeDefense (Teeworlds Archive)
+==============================
+Tower-defense mod for Teeworlds: defend the main tower against waves of zombies.
 
-It's based on Teeworlds Archive 0.7.6
+Based on Teeworlds Archive 0.7.6.

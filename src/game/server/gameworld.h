@@ -25,11 +25,14 @@ public:
 		ENTTYPE_CHARACTER,
 		ENTTYPE_FLAG,
 
-		ENTTYPE_RIWALL,
+		ENTTYPE_TOWERMAIN,
+		ENTTYPE_TURRET,
 		NUM_ENTTYPES,
 
 		ENTFLAG_HITABLE = 1,
 		ENTFLAG_CHILD = 2,
+		/** Resource node (CKs); distinguishes from CPickup while sharing ENTTYPE_PICKUP. **/
+		ENTFLAG_CKS = 4,
 	};
 
 private:

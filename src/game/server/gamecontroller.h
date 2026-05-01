@@ -10,6 +10,15 @@
 
 #include <generated/protocol.h>
 
+class CTowerMain;
+class CPlayer;
+
+enum
+{
+	NUM_TD_ZOMB = 3,
+	TD_REMOVE_QUEUE = MAX_CLIENTS,
+};
+
 /*
 	Class: Game Controller
 		Controls the main game logic. Keeping track of team and player score,
@@ -26,6 +35,38 @@ class CGameController
 	bool GetPlayersReadyState(int WithoutID = -1);
 	void SetPlayersReadyState(bool ReadyState);
 
+	int ClampTeam(int Team) const;
+
+	// TeeDefense (private state)
+	int m_TdWarmup;
+	int m_TdGameOverTick;
+	int m_TdZombStart;
+	int m_TdWave;
+	int m_TdZombie[NUM_TD_ZOMB];
+	int m_TdZombLeft;
+	int m_aTdDummyRemove[TD_REMOVE_QUEUE];
+	int m_TdDummyRemoveLen;
+	CTowerMain *m_pTower;
+
+	int m_TdPendingZomb;
+
+	void TdResetPendingRemoves();
+	void TdDoWarmup(int Seconds);
+	void TdStartRound();
+	void TdEndRound();
+	void TdDoWincheck();
+	void TdStartWave(int Wave);
+	void TdCheckZombie();
+	int TdRandZomb();
+	bool TdEndWave();
+	void TdDoZombMessage(int Which);
+	void TdSetWaveAlg(int Modulus, int WaveThird);
+	int TdGetZombieOrder(int WaveThird);
+	void TdBroadcastGameInfo();
+	void TdRunZombieBrain(class CPlayer *pP);
+	vec2 TdGetZombieRallyPos() const;
+
+protected:
 	// spawn
 	struct CSpawnEval
 	{
@@ -47,10 +88,6 @@ class CGameController
 	float EvaluateSpawnPos(CSpawnEval *pEval, vec2 Pos) const;
 	void EvaluateSpawnType(CSpawnEval *pEval, int Type) const;
 
-	// team
-	int ClampTeam(int Team) const;
-
-protected:
 	CGameContext *GameServer() const { return m_pGameServer; }
 	CConfig *Config() const { return m_pConfig; }
 	IServer *Server() const { return m_pServer; }
@@ -63,7 +100,11 @@ protected:
 
 public:
 	CGameController(class CGameContext *pGameServer);
-	~CGameController() {}
+	virtual ~CGameController() {}
+
+	void PreTick();
+	int GetDummyTeam() const;
+	void OnBotPlayerCreated(class CPlayer *pPlayer);
 
 	// event
 	/*
@@ -120,15 +161,14 @@ public:
 
 	// team
 	bool CanJoinTeam(int Team, int NotThisID) const;
-	bool CanChangeTeam(CPlayer *pPplayer, int JoinTeam) const;
+	bool CanChangeTeam(class CPlayer *pPplayer, int JoinTeam) const;
 
 	void DoTeamChange(class CPlayer *pPlayer, int Team, bool DoChatMsg = true);
 
 	int GetRealPlayerNum() const { return m_RealPlayerNum; }
 	int GetStartTeam();
 
-	void HandleCharacterTiles(class CCharacter *pChr, vec2 LastPos, vec2 NewPos) {};
-	// static void Com_Example(IConsole::IResult *pResult, void *pContext);
+	void HandleCharacterTiles(class CCharacter *pChr, vec2 LastPos, vec2 NewPos);
 	static void Com_About(IConsole::IResult *pResult, void *pContext);
 	void RegisterChatCommands(CCommandManager *pManager);
 
@@ -138,6 +178,15 @@ public:
 	void SendSystemChat(int TargetID, const char *pMsg);
 	// return: Reload timer
 	int OnCharacterFireWeapon(class CCharacter *pChr, vec2 Direction, int Weapon);
+
+	void TdSetWave(int Wave);
+	void TdSetTowerHealth(int Health);
+
+	void NotifyPlayerConnected(class CPlayer *pPlayer);
+
+	static void ConTdSetWave(IConsole::IResult *pResult, void *pUser);
+	static void ConTdSetTowerHealth(IConsole::IResult *pResult, void *pUser);
+	static void RegisterTeeDefenseConsoleCommands(CGameContext *pCtx);
 };
 
 #endif

@@ -2,6 +2,7 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 
 #include "entities/character.h"
+#include "entities/turret.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
 #include "player.h"
@@ -17,8 +18,9 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_DieTick = Server()->Tick();
 	m_ScoreStartTick = Server()->Tick();
 	m_pCharacter = 0;
+	m_pTurret = nullptr;
 	m_ClientID = ClientID;
-	m_Team = AsSpec ? TEAM_SPECTATORS : GameServer()->m_pController->GetStartTeam();
+	m_Team = AsSpec ? TEAM_SPECTATORS : (Dummy ? GameServer()->m_pController->GetDummyTeam() : GameServer()->m_pController->GetStartTeam());
 	m_SpecMode = SPEC_FREEVIEW;
 	m_SpectatorID = -1;
 	m_ActiveSpecSwitch = 0;
@@ -27,6 +29,22 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_InactivityTickCounter = 0;
 	m_Dummy = Dummy;
 	m_IsReadyToPlay = true;
+	m_AccountId = -1;
+	m_Zomb = ZOMB_NONE;
+	m_ZombAiLowSpeedTicks = 0;
+	m_ZombAiJumpCooldown = 0;
+	m_ZombAiLastMoveDir = 1;
+	m_ZombAiHookCooldown = 0;
+	m_ZombAiHumanScanTick = -1000000;
+	m_ZombAiCachedHumanPos = vec2(0.0f, 0.0f);
+	m_ZombAiCachedHumanDist = 1.0e12f;
+	m_ZombAiCachedHasHuman = false;
+	m_ZombAiCachedHumanCid = -1;
+	m_ZombAiPathGoal = vec2(1.0e9f, 1.0e9f);
+	m_ZombAiMcJumpTried = false;
+	mem_zero(&m_ZombAiLastInp, sizeof(m_ZombAiLastInp));
+	ZombieNavClear(this);
+	ResetAccData();
 	m_RespawnDisabled = GameServer()->m_pController->GetStartRespawnState();
 	m_DeadSpecMode = false;
 	m_Spawning = false;
@@ -35,8 +53,74 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 
 CPlayer::~CPlayer()
 {
+	delete m_pTurret;
+	m_pTurret = nullptr;
 	delete m_pCharacter;
 	m_pCharacter = 0;
+}
+
+void CPlayer::ResetAccData()
+{
+	mem_zero(&m_AccData, sizeof(m_AccData));
+	str_copy(m_AccData.m_aLanguage, "zh-cn", sizeof(m_AccData.m_aLanguage));
+	for(int i = 0; i < NUM_ITEM; i++)
+		str_copy(m_AccData.m_aItems[i].m_aExtra, "{\"Extra\":{\"Cards\":[],\"Parts\":[]}}", sizeof(m_AccData.m_aItems[i].m_aExtra));
+}
+
+void CPlayer::ClearAccount()
+{
+	m_AccountId = -1;
+	ResetAccData();
+}
+
+void CPlayer::InitZombie(int Zomb)
+{
+	m_Zomb = Zomb;
+	m_ZombAiLowSpeedTicks = 0;
+	m_ZombAiJumpCooldown = 0;
+	m_ZombAiLastMoveDir = 1;
+	m_ZombAiHookCooldown = 0;
+	m_ZombAiHumanScanTick = -1000000;
+	m_ZombAiCachedHumanPos = vec2(0.0f, 0.0f);
+	m_ZombAiCachedHumanDist = 1.0e12f;
+	m_ZombAiCachedHasHuman = false;
+	m_ZombAiCachedHumanCid = -1;
+	m_ZombAiPathGoal = vec2(1.0e9f, 1.0e9f);
+	m_ZombAiMcJumpTried = false;
+	mem_zero(&m_ZombAiLastInp, sizeof(m_ZombAiLastInp));
+	ZombieNavClear(this);
+	switch(Zomb)
+	{
+	case ZOMB_ZABY:
+		Server()->SetClientName(GetCID(), "Zaby");
+		break;
+	case ZOMB_ZOOKER:
+		Server()->SetClientName(GetCID(), "Zooker");
+		break;
+	case ZOMB_ZABER:
+		Server()->SetClientName(GetCID(), "Zaber");
+		break;
+	default:
+		break;
+	}
+}
+
+bool CPlayer::PressTab() const
+{
+	return (m_PlayerFlags & PLAYERFLAG_SCOREBOARD) != 0;
+}
+
+const char *CPlayer::GetExtra(int ItemType) const
+{
+	const int Id = (ItemType >= 0 && ItemType < NUM_ITYPE) ? m_AccData.m_Holding[ItemType] : 0;
+	return GetExtraForItem(Id);
+}
+
+const char *CPlayer::GetExtraForItem(int ItemID) const
+{
+	if(ItemID < 0 || ItemID >= NUM_ITEM)
+		return "";
+	return m_AccData.m_aItems[ItemID].m_aExtra;
 }
 
 void CPlayer::Tick()
@@ -175,6 +259,10 @@ void CPlayer::Snap(int SnappingClient)
 
 void CPlayer::OnDisconnect()
 {
+	DestroyTurret();
+
+	m_pGameServer->Accounts()->OnClientDisconnect(m_ClientID);
+
 	KillCharacter();
 
 	if(m_Team != TEAM_SPECTATORS)
@@ -273,8 +361,28 @@ CCharacter *CPlayer::GetCharacter()
 	return 0;
 }
 
+bool CPlayer::CreateTurret()
+{
+	CCharacter *pChr = GetCharacter();
+	if(!pChr)
+		return false;
+	const int TurretItem = GetHolding(ITYPE_TURRET);
+	if(TurretItem <= 0)
+		return false;
+	DestroyTurret();
+	m_pTurret = new CTurret(&GameServer()->m_World, pChr->GetPos(), m_ClientID, TurretItem);
+	return m_pTurret != nullptr;
+}
+
+void CPlayer::DestroyTurret()
+{
+	delete m_pTurret;
+	m_pTurret = nullptr;
+}
+
 void CPlayer::KillCharacter(int Weapon)
 {
+	DestroyTurret();
 	if(m_pCharacter)
 	{
 		m_pCharacter->Die(m_ClientID, Weapon);

@@ -1,12 +1,13 @@
 /* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include <game/server/gamecontext.h>
+#include <game/server/player.h>
 #include <generated/server_data.h>
 
 #include "character.h"
 #include "laser.h"
 
-CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Damage) : CChildEntity(pGameWorld, CGameWorld::ENTTYPE_LASER, 0, Pos)
+CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Damage, bool Explosive, float HitForce, int ElectronStacks, int CardHostItemId) : CChildEntity(pGameWorld, CGameWorld::ENTTYPE_LASER, 0, Pos)
 {
 	m_Damage = Damage;
 	m_Owner = Owner;
@@ -14,6 +15,10 @@ CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEner
 	m_Dir = Direction;
 	m_Bounces = 0;
 	m_EvalTick = 0;
+	m_Explosive = Explosive;
+	m_HitForce = HitForce;
+	m_ElectronStacks = ElectronStacks;
+	m_CardHostItemId = CardHostItemId;
 	GameWorld()->InsertEntity(this);
 	DoBounce();
 }
@@ -29,7 +34,15 @@ bool CLaser::HitCharacter(vec2 From, vec2 To)
 	m_From = From;
 	m_Pos = At;
 	m_Energy = -1;
-	pHit->TakeHit(vec2(0.f, 0.f), normalize(To - From), m_Damage, this, WEAPON_LASER);
+	if(m_Explosive)
+		GameWorld()->CreateExplosion(At, this, WEAPON_LASER, m_Damage);
+	else
+	{
+		vec2 F = normalize(To - From) * maximum(0.001f, m_HitForce);
+		pHit->TakeHit(F, normalize(To - From), m_Damage, this, WEAPON_LASER);
+		if(m_ElectronStacks > 0 && pHit->ObjType() == CGameWorld::ENTTYPE_CHARACTER)
+			static_cast<CCharacter *>(pHit)->ApplyElectronSlow(m_ElectronStacks);
+	}
 	return true;
 }
 
@@ -67,6 +80,27 @@ void CLaser::DoBounce()
 				m_Energy = -1;
 
 			GameWorld()->CreateSound(m_Pos, SOUND_LASER_BOUNCE);
+
+			CItemHelper *pH = GameServer()->ItemHelper();
+			if(pH && m_Owner >= 0 && m_Owner < MAX_CLIENTS)
+			{
+				CPlayer *pOwner = GameServer()->m_apPlayers[m_Owner];
+				if(pOwner)
+				{
+					const int HostItem = m_CardHostItemId >= 0 ? m_CardHostItemId : pOwner->GetHolding(ITYPE_SWORD);
+					if(HostItem > 0)
+					{
+						const char *pEx = pOwner->GetExtraForItem(HostItem);
+						const int Exp = pH->GetCard(pEx, ITEM_CARD_EXPLOSION_ID);
+						if(Exp > 0)
+						{
+							const int Fu = pH->GetCard(pEx, ITEM_CARD_FUSION_ID);
+							const int BoomDmg = maximum(1, m_Damage * (2 + Fu) / 2);
+							GameWorld()->CreateExplosion(m_Pos, this, WEAPON_LASER, BoomDmg);
+						}
+					}
+				}
+			}
 		}
 	}
 	else

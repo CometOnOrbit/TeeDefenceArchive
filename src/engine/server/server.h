@@ -209,6 +209,10 @@ public:
 	int ClientCountry(int ClientID) const;
 	bool ClientIngame(int ClientID) const;
 
+	bool IsClientSlotEmpty(int ClientID) const;
+	void DummyJoin(int ClientID, const char *pName);
+	void DummyRemove(int ClientID);
+
 	virtual int SendMsg(CMsgPacker *pMsg, int Flags, int ClientID);
 
 	void DoSnapshot();

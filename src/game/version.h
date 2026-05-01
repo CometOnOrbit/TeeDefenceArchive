@@ -12,7 +12,7 @@
 #define SETTINGS_FILENAME "settings_archive"
 static const char GAME_RELEASE_VERSION[8] = "0.7.6";
 
-#define MOD_NAME "LastDay"
-#define MOD_SUBTITLE "Rework"
+#define MOD_NAME "TeeDefense"
+#define MOD_SUBTITLE "TowerDefense"
 #define MOD_VERSION "0.1.0"
 #endif

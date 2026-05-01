@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.16.3)
 
 file(STRINGS src/game/version.h VERSION_LINE
   LIMIT_COUNT 1
@@ -17,7 +17,7 @@ else()
   message(FATAL_ERROR "Couldn't parse version from src/game/version.h")
 endif()
 
-project(teeworlds-lastday LANGUAGES C CXX VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
+project(teeworlds-teedefense LANGUAGES C CXX VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
 set(ORIGINAL_CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
 set(ORIGINAL_CMAKE_REQUIRED_INCLUDES ${CMAKE_REQUIRED_INCLUDES})
@@ -679,6 +679,7 @@ set(EXPECTED_DATA
   mapres/winter_mountains.png
   mapres/winter_mountains2.png
   mapres/winter_mountains3.png
+  maps/TDef-Shwar.map
 )
 
 set_glob(DATA GLOB_RECURSE "json;map;png;rules;ttc;ttf;txt;opus" datasrc ${EXPECTED_DATA})
@@ -913,7 +914,15 @@ set_src(ENGINE_SERVER GLOB src/engine/server
   server.h
 )
 set_src(GAME_SERVER GLOB_RECURSE src/game/server
+  account.cpp
+  account.h
   alloc.h
+  botengine.cpp
+  botengine.h
+  crafting.cpp
+  crafting.h
+  entities/CKs.cpp
+  entities/CKs.h
   entities/character.cpp
   entities/character.h
   entities/laser.cpp
@@ -922,6 +931,10 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entities/pickup.h
   entities/projectile.cpp
   entities/projectile.h
+  entities/tower-main.cpp
+  entities/tower-main.h
+  entities/turret.cpp
+  entities/turret.h
   entity.cpp
   entity.h
   eventhandler.cpp
@@ -932,8 +945,18 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   gamecontroller.h
   gameworld.cpp
   gameworld.h
+  item_card_ops.cpp
+  item_card_ops.h
+  item_system.cpp
+  item_system.h
   player.cpp
   player.h
+  sql_pool.cpp
+  sql_pool.h
+  vote_menu.cpp
+  zombie_ai.cpp
+  zombie_nav.cpp
+  zombie_nav.h
 )
 set(GAME_GENERATED_SERVER
   src/generated/server_data.cpp
@@ -960,6 +983,35 @@ add_executable(${TARGET_SERVER}
   $<TARGET_OBJECTS:game-shared>
 )
 target_link_libraries(${TARGET_SERVER} ${LIBS_SERVER})
+
+option(ENABLE_MYSQL "Build server with MySQL client (account system)" ON)
+set(MYSQL_CLIENT_INCLUDE_DIR "")
+set(MYSQL_CLIENT_LIBRARIES "")
+if(ENABLE_MYSQL)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(PC_MYSQL QUIET mysqlclient)
+    if(NOT PC_MYSQL_FOUND)
+      pkg_check_modules(PC_MYSQL QUIET mariadb)
+    endif()
+  endif()
+  if(PC_MYSQL_FOUND)
+    set(MYSQL_CLIENT_INCLUDE_DIR ${PC_MYSQL_INCLUDE_DIRS})
+    set(MYSQL_CLIENT_LIBRARIES ${PC_MYSQL_LIBRARIES})
+  else()
+    find_path(MYSQL_CLIENT_INCLUDE_DIR mysql.h PATH_SUFFIXES mysql mariadb)
+    find_library(MYSQL_CLIENT_LIBRARIES NAMES mysqlclient mariadb)
+  endif()
+endif()
+
+if(ENABLE_MYSQL AND MYSQL_CLIENT_INCLUDE_DIR AND MYSQL_CLIENT_LIBRARIES)
+  target_compile_definitions(${TARGET_SERVER} PRIVATE CONF_MYSQL=1)
+  target_include_directories(${TARGET_SERVER} PRIVATE ${MYSQL_CLIENT_INCLUDE_DIR})
+  target_link_libraries(${TARGET_SERVER} ${MYSQL_CLIENT_LIBRARIES})
+  message(STATUS " * MySQL client for accounts: yes")
+else()
+  message(STATUS " * MySQL client for accounts: no (optional)")
+endif()
+
 list(APPEND TARGETS_OWN ${TARGET_SERVER})
 list(APPEND TARGETS_LINK ${TARGET_SERVER})
 

@@ -3,13 +3,30 @@
 #ifndef GAME_SERVER_PLAYER_H
 #define GAME_SERVER_PLAYER_H
 
+#include <base/system.h>
+#include <base/vmath.h>
+
+#include <generated/protocol.h>
+
 #include "alloc.h"
+#include "item_system.h"
+#include "zombie_nav.h"
+
+class CTurret;
 
 enum
 {
 	WEAPON_GAME = -3, // team switching etc
 	WEAPON_SELF = -2, // console kill command
 	WEAPON_WORLD = -1, // death tiles etc
+};
+
+enum EZombType
+{
+	ZOMB_NONE = 0,
+	ZOMB_ZABY = 1,
+	ZOMB_ZOOKER,
+	ZOMB_ZABER,
 };
 
 struct CTeeInfos
@@ -37,6 +54,21 @@ public:
 	int GetCID() const { return m_ClientID; }
 	bool IsDummy() const { return m_Dummy; }
 
+	int64 GetAccountId() const { return m_AccountId; }
+	void SetAccountId(int64 Id) { m_AccountId = Id; }
+	void ResetAccData();
+	void ClearAccount();
+
+	void InitZombie(int Zomb);
+	int GetZomb() const { return m_Zomb; }
+	bool PressTab() const;
+
+	int GetHolding(int ItemType) const { return m_AccData.m_Holding[ItemType]; }
+	const char *GetExtra(int ItemType) const;
+	const char *GetExtraForItem(int ItemID) const;
+
+	SAccSyncData m_AccData;
+
 	void Tick();
 	void PostTick();
 	void Snap(int SnappingClient);
@@ -47,6 +79,8 @@ public:
 
 	void KillCharacter(int Weapon = WEAPON_GAME);
 	CCharacter *GetCharacter();
+	bool CreateTurret();
+	void DestroyTurret();
 
 	//---------------------------------------------------------
 	// this is used for snapping so we know how we can clip the view for the player
@@ -96,6 +130,29 @@ public:
 
 	int m_InactivityTickCounter;
 
+	int64 m_AccountId;
+	int m_Zomb;
+	int m_ZombAiLowSpeedTicks;
+	int m_ZombAiJumpCooldown;
+	int m_ZombAiLastMoveDir;
+	int m_ZombAiHookCooldown;
+	int m_ZombAiHumanScanTick;
+	vec2 m_ZombAiCachedHumanPos;
+	float m_ZombAiCachedHumanDist;
+	bool m_ZombAiCachedHasHuman;
+	int m_ZombAiCachedHumanCid;
+	vec2 m_ZombAiPathGoal;
+	bool m_ZombAiMcJumpTried;
+	CNetObj_PlayerInput m_ZombAiLastInp;
+
+	short m_aZombNavTx[ZOMB_NAV_PATH_CAP];
+	short m_aZombNavTy[ZOMB_NAV_PATH_CAP];
+	int m_ZombNavLen;
+	int m_ZombNavIndex;
+	int m_ZombNavNextRebuildTick;
+	short m_ZombNavCachedGoalTX;
+	short m_ZombNavCachedGoalTY;
+
 	struct
 	{
 		int m_TargetX;
@@ -125,6 +182,8 @@ private:
 	int m_ClientID;
 	int m_Team;
 	bool m_Dummy;
+
+	CTurret *m_pTurret;
 
 	// used for spectator mode
 	int m_SpecMode;

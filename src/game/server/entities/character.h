@@ -50,10 +50,13 @@ public:
 	bool TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weapon);
 	virtual bool TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, int Weapon);
 
+	void ApplyElectronSlow(int CardStacks);
+
 	bool Spawn(class CPlayer *pPlayer, vec2 Pos);
 
 	bool IncreaseHealth(int Amount);
 	bool IncreaseArmor(int Amount);
+	void SetHealthDirect(int Amount);
 
 	bool GiveWeapon(int Weapon, int Ammo);
 	void GiveNinja();
@@ -63,6 +66,18 @@ public:
 	bool IsAlive() const { return m_Alive; }
 	class CPlayer *GetPlayer() { return m_pPlayer; }
 	int GetCID();
+	vec2 GetVelocity() const { return m_Core.m_Vel; }
+	int WeaponAmmo(int Weapon) const;
+	int HookState() const { return m_Core.m_HookState; }
+	int GetActiveWeapon() const { return m_ActiveWeapon; }
+	const CNetObj_PlayerInput &LatestInput() const { return m_LatestInput; }
+	CCharacterCore *GetCore() { return &m_Core; }
+	const CCharacterCore *GetCore() const { return &m_Core; }
+
+	bool m_InMining;
+	int m_MiningTick;
+	bool m_LockedCK;
+	vec2 m_LockPos;
 
 	// need this hook for gamecontroller to call ninja fire
 	void DoNinjaFire(vec2 Direction, int MoveTime);
@@ -115,6 +130,8 @@ private:
 
 	int m_Health;
 	int m_Armor;
+
+	int m_CardElectronTicks;
 
 	int m_TriggeredEvents;
 

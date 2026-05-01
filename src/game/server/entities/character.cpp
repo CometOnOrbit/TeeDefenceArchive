@@ -4,6 +4,7 @@
 
 #include <game/server/gamecontext.h>
 #include <game/server/gamecontroller.h>
+#include <game/server/item_system.h>
 #include <game/server/player.h>
 #include <generated/server_data.h>
 
@@ -78,8 +79,22 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	GameWorld()->InsertEntity(this);
 	m_Alive = true;
 
+	m_InMining = false;
+	m_MiningTick = -1;
+	m_LockedCK = false;
+	m_LockPos = vec2(0.0f, 0.0f);
+	m_CardElectronTicks = 0;
+
 	for(int i = 0; i < NUM_WEAPONS; i++)
 		m_aWeapons[i].m_Valid = true;
+
+	m_NumInputs = 0;
+	mem_zero(&m_Input, sizeof(m_Input));
+	mem_zero(&m_LatestInput, sizeof(m_LatestInput));
+	mem_zero(&m_LatestPrevInput, sizeof(m_LatestPrevInput));
+	m_Input.m_TargetY = -1;
+	m_LatestInput.m_TargetY = -1;
+	m_LatestPrevInput.m_TargetY = -1;
 
 	GameServer()->m_pController->OnCharacterSpawn(this);
 
@@ -310,6 +325,21 @@ void CCharacter::HandleWeapons()
 
 	// ammo regen
 	int AmmoRegenTime = g_pData->m_Weapons.m_aId[m_ActiveWeapon].m_Ammoregentime;
+	if(AmmoRegenTime > 0)
+	{
+		if(CItemHelper *pH = GameServer()->ItemHelper())
+		{
+			const char *pSx = m_pPlayer->GetExtraForItem(m_pPlayer->GetHolding(ITYPE_SWORD));
+			const char *pPx = m_pPlayer->GetExtraForItem(m_pPlayer->GetHolding(ITYPE_PICKAXE));
+			int QL = pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID);
+			QL += (pH->GetCard(pPx, ITEM_CARD_QUICKLY_LOADING_ID) + 1) / 2;
+			if(QL > 0)
+				AmmoRegenTime = maximum(1, AmmoRegenTime - QL * (Server()->TickSpeed() / 25));
+			const int QF = pH->GetCard(pSx, ITEM_CARD_QUICKLY_FIRE_ID);
+			if(QF > 0 && QL > 0)
+				AmmoRegenTime = maximum(1, AmmoRegenTime - Server()->TickSpeed() / 40);
+		}
+	}
 	if(AmmoRegenTime && m_aWeapons[m_ActiveWeapon].m_Ammo >= 0)
 	{
 		// If equipped and not active, regen ammo?
@@ -367,6 +397,13 @@ void CCharacter::SetEmote(int Emote, int Tick)
 int CCharacter::GetCID()
 {
 	return m_pPlayer->GetCID();
+}
+
+int CCharacter::WeaponAmmo(int Weapon) const
+{
+	if(Weapon < 0 || Weapon >= NUM_WEAPONS)
+		return 0;
+	return m_aWeapons[Weapon].m_Ammo;
 }
 
 void CCharacter::DoNinjaFire(vec2 Direction, int MoveTime)
@@ -458,8 +495,31 @@ void CCharacter::ResetInput()
 
 void CCharacter::Tick()
 {
+	if(m_LockedCK && m_Input.m_Jump)
+		m_LockedCK = false;
+
+	if(m_LockedCK)
+	{
+		m_Input.m_Jump = 0;
+		m_Input.m_Direction = 0;
+		m_Input.m_Hook = 0;
+		m_Core.m_HookState = HOOK_IDLE;
+	}
+
 	m_Core.m_Input = m_Input;
 	m_Core.Tick(true);
+
+	if(m_CardElectronTicks > 0)
+	{
+		m_Core.m_Vel *= 0.86f;
+		m_CardElectronTicks--;
+	}
+
+	if(m_LockedCK)
+	{
+		m_Core.m_Vel = vec2(0.0f, 0.0f);
+		m_Core.m_Pos = m_LockPos;
+	}
 
 	// handle leaving gamelayer
 	if(GameLayerClipped(m_Pos))
@@ -469,6 +529,11 @@ void CCharacter::Tick()
 
 	// handle Weapons
 	HandleWeapons();
+
+	if(Server()->Tick() % 25 == 0 && m_InMining)
+		m_InMining = false;
+	if(m_MiningTick > -1)
+		m_MiningTick--;
 }
 
 void CCharacter::TickDefered()
@@ -587,10 +652,17 @@ void CCharacter::TickPaused()
 
 bool CCharacter::IncreaseHealth(int Amount)
 {
-	if(m_Health >= 10)
+	const int Max = GameServer()->Config()->m_SvPlayerMaxHealth;
+	if(m_Health >= Max)
 		return false;
-	m_Health = clamp(m_Health + Amount, 0, 10);
+	m_Health = clamp(m_Health + Amount, 0, Max);
 	return true;
+}
+
+void CCharacter::SetHealthDirect(int Amount)
+{
+	const int Max = GameServer()->Config()->m_SvPlayerMaxHealth;
+	m_Health = clamp(Amount, 0, Max);
 }
 
 bool CCharacter::IncreaseArmor(int Amount)
@@ -665,6 +737,20 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	{
 		if(GameServer()->m_pController->IsFriendlyFire(m_pPlayer->GetCID(), From, Dmg))
 			return false;
+		if(GameServer()->m_apPlayers[From] && !GameServer()->m_apPlayers[From]->IsDummy())
+		{
+			if(Weapon != WEAPON_LASER && Weapon != WEAPON_WORLD && Weapon != WEAPON_SELF && Weapon != WEAPON_NINJA)
+			{
+				if(CItemHelper *pH = GameServer()->ItemHelper())
+				{
+					const char *pEx = GameServer()->m_apPlayers[From]->GetExtraForItem(GameServer()->m_apPlayers[From]->GetHolding(ITYPE_SWORD));
+					const int El = pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID);
+					const int Frc = pH->GetCard(pEx, ITEM_CARD_FORCE_ID);
+					if(El > 0)
+						ApplyElectronSlow(El + minimum(El, Frc));
+				}
+			}
+		}
 	}
 	else
 	{
@@ -746,6 +832,13 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	SetEmote(EMOTE_PAIN, Server()->Tick() + 500 * Server()->TickSpeed() / 1000);
 
 	return true;
+}
+
+void CCharacter::ApplyElectronSlow(int CardStacks)
+{
+	if(CardStacks <= 0)
+		return;
+	m_CardElectronTicks += (Server()->TickSpeed() * CardStacks) / 8;
 }
 
 bool CCharacter::TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, int Weapon)

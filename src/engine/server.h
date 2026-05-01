@@ -70,6 +70,11 @@ public:
 	virtual bool DemoRecorder_IsRecording() = 0;
 
 	virtual void ExpireServerInfo() = 0;
+
+	// This shit fucks me 2 hours!!!
+	virtual bool IsClientSlotEmpty(int ClientID) const = 0;
+	virtual void DummyJoin(int ClientID, const char *pName) = 0;
+	virtual void DummyRemove(int ClientID) = 0;
 };
 
 class IGameServer : public IInterface
@@ -89,6 +94,7 @@ public:
 	virtual void OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID) = 0;
 
 	virtual void OnClientConnected(int ClientID, bool AsSpec) = 0;
+	virtual void OnBotConnected(int ClientID) = 0;
 	virtual void OnClientEnter(int ClientID) = 0;
 	virtual void OnClientDrop(int ClientID, const char *pReason) = 0;
 	virtual void OnClientDirectInput(int ClientID, void *pInput) = 0;

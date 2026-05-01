@@ -30,6 +30,8 @@
 
 #include <mastersrv/mastersrv.h>
 
+#include <game/version.h>
+
 #include "register.h"
 #include "server.h"
 
@@ -425,6 +427,52 @@ bool CServer::ClientIngame(int ClientID) const
 	return ClientID >= 0 && ClientID < MAX_CLIENTS && m_aClients[ClientID].m_State == CServer::CClient::STATE_INGAME;
 }
 
+bool CServer::IsClientSlotEmpty(int ClientID) const
+{
+	return ClientID >= 0 && ClientID < MAX_CLIENTS && m_aClients[ClientID].m_State == CClient::STATE_EMPTY;
+}
+
+void CServer::DummyJoin(int ClientID, const char *pName)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+	if(m_aClients[ClientID].m_State != CClient::STATE_EMPTY)
+		return;
+
+	m_aClients[ClientID].m_State = CClient::STATE_INGAME;
+	m_aClients[ClientID].m_Version = CLIENT_VERSION;
+	str_copy(m_aClients[ClientID].m_aName, pName, sizeof(m_aClients[ClientID].m_aName));
+	m_aClients[ClientID].m_aClan[0] = 0;
+	m_aClients[ClientID].m_Country = -1;
+	m_aClients[ClientID].Reset();
+
+	GameServer()->OnBotConnected(ClientID);
+}
+
+void CServer::DummyRemove(int ClientID)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+	if(!GameServer()->IsClientBot(ClientID))
+		return;
+	if(m_aClients[ClientID].m_State < CClient::STATE_READY)
+		return;
+
+	GameServer()->OnClientDrop(ClientID, "teedefense zombie removed");
+
+	m_aClients[ClientID].m_State = CClient::STATE_EMPTY;
+	m_aClients[ClientID].m_aName[0] = 0;
+	m_aClients[ClientID].m_aClan[0] = 0;
+	m_aClients[ClientID].m_Country = -1;
+	m_aClients[ClientID].m_Authed = AUTHED_NO;
+	m_aClients[ClientID].m_AuthTries = 0;
+	m_aClients[ClientID].m_pRconCmdToSend = 0;
+	m_aClients[ClientID].m_MapListEntryToSend = -1;
+	m_aClients[ClientID].m_NoRconNote = false;
+	m_aClients[ClientID].m_Quitting = false;
+	m_aClients[ClientID].m_Snapshots.PurgeAll();
+}
+
 void CServer::InitRconPasswordIfUnset()
 {
 	if(m_RconPasswordSet)
@@ -461,8 +509,8 @@ int CServer::SendMsg(CMsgPacker *pMsg, int Flags, int ClientID)
 	if(!pMsg)
 		return -1;
 
-	// drop invalid packet
-	if(ClientID != -1 && (ClientID < 0 || ClientID >= MAX_CLIENTS || m_aClients[ClientID].m_State == CClient::STATE_EMPTY || m_aClients[ClientID].m_Quitting))
+	// drop invalid packet or bot slots (dummies: STATE_INGAME but no network connection)
+	if(ClientID != -1 && (ClientID < 0 || ClientID >= MAX_CLIENTS || m_aClients[ClientID].m_State == CClient::STATE_EMPTY || m_aClients[ClientID].m_Quitting || (GameServer() && GameServer()->IsClientBot(ClientID))))
 		return 0;
 
 	mem_zero(&Packet, sizeof(CNetChunk));
@@ -486,11 +534,13 @@ int CServer::SendMsg(CMsgPacker *pMsg, int Flags, int ClientID)
 			// broadcast
 			for(int i = 0; i < MAX_CLIENTS; i++)
 			{
-				if(m_aClients[i].m_State == CClient::STATE_INGAME && !m_aClients[i].m_Quitting)
-				{
-					Packet.m_ClientID = i;
-					m_NetServer.Send(&Packet);
-				}
+				if(m_aClients[i].m_State != CClient::STATE_INGAME || m_aClients[i].m_Quitting)
+					continue;
+				if(GameServer() && GameServer()->IsClientBot(i))
+					continue;
+
+				Packet.m_ClientID = i;
+				m_NetServer.Send(&Packet);
 			}
 		}
 		else
