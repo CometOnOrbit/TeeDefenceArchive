@@ -78,6 +78,7 @@ class CGameContext : public IGameServer
 public:
 	IServer *Server() const { return m_pServer; }
 	class CConfig *Config() { return m_pConfig; }
+	class CConfig *Config() const { return m_pConfig; }
 	class IConsole *Console() { return m_pConsole; }
 	class IStorage *Storage() { return m_pStorage; }
 	CCollision *Collision() { return &m_Collision; }
@@ -172,6 +173,9 @@ public:
 	void SendChatTo(int ToClientID, const char *pText);
 	void SendChatLoc(int ToClientID, const char *pKey, const char *pDefault);
 	void SendChatLocF(int ToClientID, const char *pKey, const char *pDefault, ...);
+	void SendCommunityInfo(int ToClientID);
+	int TdQQGroup() const;
+	int TdQQSponsor() const;
 	void SendChatAllLoc(const char *pKey, const char *pDefault);
 	void SendChatAllLocF(const char *pKey, const char *pDefault, ...);
 	void SendBroadcast(int ClientID, const char *pText);

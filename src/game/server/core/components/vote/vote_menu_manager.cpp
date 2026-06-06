@@ -343,7 +343,25 @@ void CVoteMenuManager::InitVotes(int ClientID)
 		AddVote_Goto(PAGE_EQUIPMENT, VL(GS(), pP, "menu.goto.equipment", u8"☞ 装备"));
 		AddVote_Goto(PAGE_TURRET, VL(GS(), pP, "menu.goto.turret", u8"☞ 炮塔"));
 		AddVote_Goto(PAGE_WORLDS, VL(GS(), pP, "menu.goto.worlds", u8"☞ 世界/地图"));
+		AddVote_Goto(PAGE_COMMUNITY, VL(GS(), pP, "menu.goto.community", u8"☞ 社区与赞助"));
 		AddVote_Space();
+	}
+	break;
+
+	case PAGE_COMMUNITY:
+	{
+		SetVoteLastPage(PAGE_MENU);
+		AddVote_TextLine(VL(GS(), pP, "community.title", u8"☪ 社区与赞助"));
+		AddVote_TextLine(VL(GS(), pP, "menu.sep.short", "---"));
+		{
+			char aLine[128];
+			str_format(aLine, sizeof(aLine), VL(GS(), pP, "community.qq_group", u8"交流 QQ 群：%d"), GS()->TdQQGroup());
+			AddVote_TextLine(aLine);
+			str_format(aLine, sizeof(aLine), VL(GS(), pP, "community.sponsor", u8"赞助 QQ：%d"), GS()->TdQQSponsor());
+			AddVote_TextLine(aLine);
+		}
+		AddVote_TextLine(VL(GS(), pP, "community.thanks", u8"感谢支持 — 用于服务器与模式开发"));
+		AddVote_TextLine(VL(GS(), pP, "menu.sep.long", "---------------------"));
 	}
 	break;
 

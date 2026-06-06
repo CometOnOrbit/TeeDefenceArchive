@@ -552,6 +552,7 @@ void CAccountSystem::PumpCompletedJobs()
 					pP->m_AccData.m_Holding[ITYPE_SWORD] = ITEM_SWORD_LOG;
 				}
 				m_pGame->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
+				m_pGame->SendCommunityInfo(ClientId);
 				if(SPlayerVote *pV = m_pGame->GetPlayerVote(ClientId))
 					pV->m_Page = PAGE_MENU;
 				m_pGame->ClearVotes(ClientId);

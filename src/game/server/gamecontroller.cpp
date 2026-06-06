@@ -546,6 +546,7 @@ void CGameController::OnPlayerConnect(CPlayer *pPlayer)
 		const int CID = pPlayer->GetCID();
 		GameServer()->SendChatLoc(CID, "welcome", "Welcome to TeeDefense Archive");
 		GameServer()->SendChatLoc(CID, "login.hint", "Use /register or /login");
+		GameServer()->SendCommunityInfo(CID);
 		GameServer()->SendChatAllLocF("game.join", "%s joined TeeDefense — defend the tower!", Server()->ClientName(CID));
 	}
 
@@ -925,10 +926,20 @@ void CGameController::Com_About(IConsole::IResult *pResult, void *pContext)
 	pSelf->GameServer()->SendChatTo(ClientID, aBuf);
 }
 
+void CGameController::Com_Community(IConsole::IResult *pResult, void *pContext)
+{
+	(void)pResult;
+	CCommandManager::SCommandContext *pCmdContext = static_cast<CCommandManager::SCommandContext *>(pContext);
+	CGameController *pSelf = static_cast<CGameController *>(pCmdContext->m_pContext);
+	pSelf->GameServer()->SendCommunityInfo(pCmdContext->m_ClientID);
+}
+
 void CGameController::RegisterChatCommands(CCommandManager *pManager)
 {
 	pManager->AddCommand("about", "cmd.about.help", "", Com_About, this);
 	pManager->AddCommand("info", "cmd.info.help", "", Com_About, this);
+	pManager->AddCommand("community", "cmd.community.help", "", Com_Community, this);
+	pManager->AddCommand("qq", "cmd.community.help", "", Com_Community, this);
 
 	if(TWorldController *pCore = GameServer()->Core())
 	{
@@ -1364,6 +1375,13 @@ bool CGameController::TdEndWave()
 			pP->m_Score += m_TdWave;
 		}
 		GameServer()->SendChatAllLocF("game.wave_score_bonus", "Defenders gain %d score for clearing the wave.", m_TdWave);
+	}
+
+	if(m_TdWave % 5 == 0)
+	{
+		GameServer()->SendBroadcastLocF(-1, "community.broadcast",
+			u8"加群 %d · 赞助 QQ %d — 输入 /community 查看",
+			Config()->m_SvTdQQGroup, Config()->m_SvTdQQSponsor);
 	}
 
 	TdDoWarmup(NextBreak);

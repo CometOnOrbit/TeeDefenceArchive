@@ -62,6 +62,8 @@ MACRO_CONFIG_INT(SvMaxZombieSpawn, sv_max_zombie_spawn, 20, 1, 100, CFGFLAG_SERV
 MACRO_CONFIG_INT(SvTdTowerHitRadius, sv_td_tower_hit_radius, 200, 48, 360, CFGFLAG_SERVER, "Radius (px) for projectile/hammer hits against the main tower")
 MACRO_CONFIG_INT(SvTdTowerTouchDamage, sv_td_tower_touch_damage, 1, 0, 50, CFGFLAG_SERVER, "Tower HP lost when a zombie reaches the tower (suicide rush)")
 MACRO_CONFIG_INT(SvTdWaveScoreBonus, sv_td_wave_score_bonus, 1, 0, 1, CFGFLAG_SERVER, "Grant score to defenders when a wave is cleared")
+MACRO_CONFIG_INT(SvTdQQGroup, sv_td_qq_group, 1007351135, 0, 2000000000, CFGFLAG_SERVER, "Player community QQ group number shown in-game")
+MACRO_CONFIG_INT(SvTdQQSponsor, sv_td_qq_sponsor, 1562151175, 0, 2000000000, CFGFLAG_SERVER, "Author QQ for sponsorship shown in-game")
 
 MACRO_CONFIG_INT(SvTurretRadius, sv_turret_radius, 32, 8, 256, CFGFLAG_SERVER, "Turret ring base radius in pixels (visual grows per tier)")
 MACRO_CONFIG_INT(SvTurretFireRange, sv_turret_fire_range, 800, 64, 4000, CFGFLAG_SERVER, "Turret auto-aim range vs dummy zombies (pixels)")

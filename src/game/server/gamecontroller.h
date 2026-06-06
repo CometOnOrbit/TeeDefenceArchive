@@ -177,6 +177,7 @@ public:
 
 	void HandleCharacterTiles(class CCharacter *pChr, vec2 LastPos, vec2 NewPos);
 	static void Com_About(IConsole::IResult *pResult, void *pContext);
+	static void Com_Community(IConsole::IResult *pResult, void *pContext);
 	void RegisterChatCommands(CCommandManager *pManager);
 
 	bool CanCharacterPickup(class CCharacter *pChr) const;

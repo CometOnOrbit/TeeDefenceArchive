@@ -282,6 +282,28 @@ void CGameContext::SendChatLocF(int ToClientID, const char *pKey, const char *pD
 	SendChatTo(ToClientID, aBuf);
 }
 
+void CGameContext::SendCommunityInfo(int ToClientID)
+{
+	if(ToClientID < 0 || ToClientID >= MAX_CLIENTS || !m_apPlayers[ToClientID] || m_apPlayers[ToClientID]->IsDummy())
+		return;
+	if(!Server()->ClientIngame(ToClientID))
+		return;
+
+	SendChatLocF(ToClientID, "community.qq_group", u8"服务器交流 QQ 群：%d", TdQQGroup());
+	SendChatLocF(ToClientID, "community.sponsor", u8"赞助模式 & 服务器请联系作者 QQ：%d", TdQQSponsor());
+	SendChatLoc(ToClientID, "community.menu_hint", u8"按 ESC 打开投票菜单 →「社区与赞助」可再次查看");
+}
+
+int CGameContext::TdQQGroup() const
+{
+	return Config()->m_SvTdQQGroup;
+}
+
+int CGameContext::TdQQSponsor() const
+{
+	return Config()->m_SvTdQQSponsor;
+}
+
 void CGameContext::SendChatAllLoc(const char *pKey, const char *pDefault)
 {
 	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
