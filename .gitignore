@@ -1,6 +1,7 @@
 /.bam
 /bam
 /build
+/build-mysql
 /config.lua
 /objs
 /other/*/include
