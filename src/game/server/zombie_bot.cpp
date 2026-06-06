@@ -72,7 +72,7 @@ int CZombieBot::GetTile(vec2 Pos) const
 
 int CZombieBot::ZombieFirstSlot() const
 {
-	return maximum((int)MAX_HUMAN_CLIENTS, m_pGameServer->Config()->m_SvMaxClients);
+	return minimum((int)MAX_HUMAN_CLIENTS, m_pGameServer->Config()->m_SvMaxClients);
 }
 
 bool CZombieBot::IsGrounded()

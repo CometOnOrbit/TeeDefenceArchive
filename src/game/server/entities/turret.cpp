@@ -144,19 +144,34 @@ void CTurret::Snap(int SnappingClient)
 	const float AngleStep = 2.0f * pi / (float)NUM_RING_LASERS;
 	const int Subtype = GetVisualLevel();
 
-	CNetObj_DDNetLaser *pCenter = static_cast<CNetObj_DDNetLaser *>(Server()->SnapNewItem(NETOBJTYPE_DDNETLASER, m_aCenterId, sizeof(CNetObj_DDNetLaser)));
-	if(pCenter)
+	if(GameServer()->ClientUsesDDNetLaser(SnappingClient))
 	{
-		pCenter->m_FromX = (int)m_Pos.x;
-		pCenter->m_FromY = (int)m_Pos.y;
-		pCenter->m_ToX = (int)m_Pos.x;
-		pCenter->m_ToY = (int)m_Pos.y;
-		pCenter->m_StartTick = Server()->Tick();
-		pCenter->m_Owner = m_Owner;
-		pCenter->m_Type = 0;
-		pCenter->m_SwitchNumber = -1;
-		pCenter->m_Subtype = Subtype;
-		pCenter->m_Flags = LASERFLAG_NO_PREDICT;
+		CNetObj_DDNetLaser *pCenter = static_cast<CNetObj_DDNetLaser *>(Server()->SnapNewItem(NETOBJTYPE_DDNETLASER, m_aCenterId, sizeof(CNetObj_DDNetLaser)));
+		if(pCenter)
+		{
+			pCenter->m_FromX = (int)m_Pos.x;
+			pCenter->m_FromY = (int)m_Pos.y;
+			pCenter->m_ToX = (int)m_Pos.x;
+			pCenter->m_ToY = (int)m_Pos.y;
+			pCenter->m_StartTick = Server()->Tick();
+			pCenter->m_Owner = m_Owner;
+			pCenter->m_Type = 0;
+			pCenter->m_SwitchNumber = -1;
+			pCenter->m_Subtype = Subtype;
+			pCenter->m_Flags = LASERFLAG_NO_PREDICT;
+		}
+	}
+	else
+	{
+		CNetObj_Laser *pCenter = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, m_aCenterId, sizeof(CNetObj_Laser)));
+		if(pCenter)
+		{
+			pCenter->m_X = (int)m_Pos.x;
+			pCenter->m_Y = (int)m_Pos.y;
+			pCenter->m_FromX = (int)m_Pos.x;
+			pCenter->m_FromY = (int)m_Pos.y;
+			pCenter->m_StartTick = Server()->Tick();
+		}
 	}
 
 	for(int i = 0; i < NUM_RING_LASERS; i++)
@@ -222,19 +237,34 @@ void CTurretPreview::Snap(int SnappingClient)
 	const float AngleStep = 2.0f * pi / (float)NUM_RING_LASERS;
 	const int Subtype = GetVisualLevel() + (m_Valid ? 0 : 8);
 
-	CNetObj_DDNetLaser *pCenter = static_cast<CNetObj_DDNetLaser *>(Server()->SnapNewItem(NETOBJTYPE_DDNETLASER, m_aCenterId, sizeof(CNetObj_DDNetLaser)));
-	if(pCenter)
+	if(GameServer()->ClientUsesDDNetLaser(SnappingClient))
 	{
-		pCenter->m_FromX = (int)m_Pos.x;
-		pCenter->m_FromY = (int)m_Pos.y;
-		pCenter->m_ToX = (int)m_Pos.x;
-		pCenter->m_ToY = (int)m_Pos.y;
-		pCenter->m_StartTick = Server()->Tick();
-		pCenter->m_Owner = m_Owner;
-		pCenter->m_Type = 0;
-		pCenter->m_SwitchNumber = -1;
-		pCenter->m_Subtype = Subtype;
-		pCenter->m_Flags = LASERFLAG_NO_PREDICT;
+		CNetObj_DDNetLaser *pCenter = static_cast<CNetObj_DDNetLaser *>(Server()->SnapNewItem(NETOBJTYPE_DDNETLASER, m_aCenterId, sizeof(CNetObj_DDNetLaser)));
+		if(pCenter)
+		{
+			pCenter->m_FromX = (int)m_Pos.x;
+			pCenter->m_FromY = (int)m_Pos.y;
+			pCenter->m_ToX = (int)m_Pos.x;
+			pCenter->m_ToY = (int)m_Pos.y;
+			pCenter->m_StartTick = Server()->Tick();
+			pCenter->m_Owner = m_Owner;
+			pCenter->m_Type = 0;
+			pCenter->m_SwitchNumber = -1;
+			pCenter->m_Subtype = Subtype;
+			pCenter->m_Flags = LASERFLAG_NO_PREDICT;
+		}
+	}
+	else
+	{
+		CNetObj_Laser *pCenter = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, m_aCenterId, sizeof(CNetObj_Laser)));
+		if(pCenter)
+		{
+			pCenter->m_X = (int)m_Pos.x;
+			pCenter->m_Y = (int)m_Pos.y;
+			pCenter->m_FromX = (int)m_Pos.x;
+			pCenter->m_FromY = (int)m_Pos.y;
+			pCenter->m_StartTick = Server()->Tick();
+		}
 	}
 
 	for(int i = 0; i < NUM_RING_LASERS; i++)

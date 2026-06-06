@@ -717,20 +717,31 @@ void CCharacter::Die(int Killer, int Weapon)
 		GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
 	}
 
-	// send the kill message
+	const int VictimServer = m_pPlayer->GetCID();
 	CNetMsg_Sv_KillMsg Msg;
-	Msg.m_Victim = m_pPlayer->GetCID();
 	Msg.m_ModeSpecial = ModeSpecial;
 	Msg.m_Assist = -1;
-	for(int i = 0; i < MAX_CLIENTS; i++)
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
 	{
 		if(!Server()->ClientIngame(i))
 			continue;
+
+		const int Victim = GameServer()->ClientDisplaySlot(i, VictimServer);
+		if(Victim < 0)
+			continue;
+
+		Msg.m_Victim = Victim;
 
 		if(Killer < 0 && Server()->GetClientVersion(i) < MIN_KILLMESSAGE_CLIENTVERSION)
 		{
 			Msg.m_Killer = 0;
 			Msg.m_Weapon = WEAPON_WORLD;
+		}
+		else if(Killer >= MAX_HUMAN_CLIENTS)
+		{
+			const int KillerDisplay = GameServer()->ClientDisplaySlot(i, Killer);
+			Msg.m_Killer = KillerDisplay >= 0 ? KillerDisplay : -1;
+			Msg.m_Weapon = Weapon;
 		}
 		else
 		{
@@ -884,7 +895,11 @@ void CCharacter::Snap(int SnappingClient)
 		if(NetworkClippedLine(SnappingClient, m_Pos, m_Core.m_HookPos))
 			return;
 	}
-	CNetObj_Character *pCharacter = static_cast<CNetObj_Character *>(Server()->SnapNewItem(NETOBJTYPE_CHARACTER, m_pPlayer->GetCID(), sizeof(CNetObj_Character)));
+	const int SnapID = GameServer()->ClientSnapID(SnappingClient, m_pPlayer->GetCID());
+	if(SnapID < 0)
+		return;
+
+	CNetObj_Character *pCharacter = static_cast<CNetObj_Character *>(Server()->SnapNewItem(NETOBJTYPE_CHARACTER, SnapID, sizeof(CNetObj_Character)));
 	if(!pCharacter)
 		return;
 
@@ -900,6 +915,12 @@ void CCharacter::Snap(int SnappingClient)
 	{
 		pCharacter->m_Tick = m_ReckoningTick;
 		m_SendCore.Write(pCharacter);
+	}
+
+	if(SnappingClient >= 0 && !GameServer()->ClientUsesExtendedSlots(SnappingClient) && pCharacter->m_HookedPlayer >= MAX_HUMAN_CLIENTS)
+	{
+		const int HookedSnap = GameServer()->ClientSnapID(SnappingClient, pCharacter->m_HookedPlayer);
+		pCharacter->m_HookedPlayer = HookedSnap >= 0 ? HookedSnap : -1;
 	}
 
 	pCharacter->m_Emote = m_EmoteType;

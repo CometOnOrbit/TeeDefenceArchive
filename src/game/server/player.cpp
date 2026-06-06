@@ -297,7 +297,11 @@ void CPlayer::Snap(int SnappingClient)
 	if(!IsDummy() && !Server()->ClientIngame(m_ClientID))
 		return;
 
-	CNetObj_PlayerInfo *pPlayerInfo = static_cast<CNetObj_PlayerInfo *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFO, m_ClientID, sizeof(CNetObj_PlayerInfo)));
+	const int SnapID = m_pGameServer->ClientSnapID(SnappingClient, m_ClientID);
+	if(SnapID < 0)
+		return;
+
+	CNetObj_PlayerInfo *pPlayerInfo = static_cast<CNetObj_PlayerInfo *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFO, SnapID, sizeof(CNetObj_PlayerInfo)));
 	if(!pPlayerInfo)
 		return;
 
@@ -314,20 +318,29 @@ void CPlayer::Snap(int SnappingClient)
 	pPlayerInfo->m_Latency = SnappingClient == -1 ? m_Latency.m_Min : GameServer()->m_apPlayers[SnappingClient]->m_aActLatency[m_ClientID];
 	pPlayerInfo->m_Score = m_Score;
 
-	CNetObj_PlayerInfoExtra *pPlayerInfoExtra = static_cast<CNetObj_PlayerInfoExtra *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFOEXTRA, m_ClientID, sizeof(CNetObj_PlayerInfoExtra)));
-	if(!pPlayerInfoExtra)
-		return;
-	pPlayerInfoExtra->m_RealClientID = m_ClientID;
-	pPlayerInfoExtra->m_PlayerFlagsExtra = 0;
-	
+	const bool ZombieBot = IsDummy() && m_Zomb != ZOMB_NONE;
+	const bool MappedSlot = SnapID != m_ClientID;
+	if(MappedSlot || ZombieBot)
+	{
+		CNetObj_PlayerInfoExtra *pPlayerInfoExtra = static_cast<CNetObj_PlayerInfoExtra *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFOEXTRA, SnapID, sizeof(CNetObj_PlayerInfoExtra)));
+		if(pPlayerInfoExtra)
+		{
+			pPlayerInfoExtra->m_RealClientID = m_ClientID;
+			pPlayerInfoExtra->m_PlayerFlagsExtra = ZombieBot ? PLAYERFLAGEXTRA_HIDDEN_IN_BOARD : 0;
+		}
+	}
+
 	if(m_ClientID == SnappingClient && (m_Team == TEAM_SPECTATORS || m_DeadSpecMode))
 	{
-		CNetObj_SpectatorInfo *pSpectatorInfo = static_cast<CNetObj_SpectatorInfo *>(Server()->SnapNewItem(NETOBJTYPE_SPECTATORINFO, m_ClientID, sizeof(CNetObj_SpectatorInfo)));
+		CNetObj_SpectatorInfo *pSpectatorInfo = static_cast<CNetObj_SpectatorInfo *>(Server()->SnapNewItem(NETOBJTYPE_SPECTATORINFO, SnapID, sizeof(CNetObj_SpectatorInfo)));
 		if(!pSpectatorInfo)
 			return;
 
 		pSpectatorInfo->m_SpecMode = m_SpecMode;
-		pSpectatorInfo->m_SpectatorID = m_SpectatorID;
+		int SpecID = m_SpectatorID;
+		if(SpecID >= 0 && SnappingClient >= 0 && !m_pGameServer->ClientUsesExtendedSlots(SnappingClient))
+			SpecID = m_pGameServer->ClientDisplaySlot(SnappingClient, SpecID);
+		pSpectatorInfo->m_SpectatorID = SpecID;
 		pSpectatorInfo->m_X = m_ViewPos.x;
 		pSpectatorInfo->m_Y = m_ViewPos.y;
 	}

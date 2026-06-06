@@ -29,6 +29,16 @@
 #include "player.h"
 #include "botengine.h"
 
+static const char *SafeNetSkin(const char *pSkin)
+{
+	return pSkin && pSkin[0] ? pSkin : "standard";
+}
+
+static int ZombieFirstSlot(const CConfig *pCfg)
+{
+	return minimum((int)MAX_HUMAN_CLIENTS, pCfg->m_SvMaxClients);
+}
+
 enum
 {
 	RESET,
@@ -53,6 +63,10 @@ void CGameContext::Construct(int Resetting)
 	m_pItemHelper = nullptr;
 	m_pTWorld = nullptr;
 	m_pBotEngine = nullptr;
+	for(int i = 0; i < MAX_CLIENTS; i++)
+		m_aLegacyDisplaySlot[i] = -1;
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		m_aLegacyDisplayOwner[i] = -1;
 
 	if(Resetting == NO_RESET)
 	{
@@ -835,68 +849,37 @@ void CGameContext::OnClientEnter(int ClientID)
 
 	m_VoteUpdate = true;
 
-	// update client infos (others before local)
-	CNetMsg_Sv_ClientInfo NewClientInfoMsg;
-	NewClientInfoMsg.m_ClientID = ClientID;
-	NewClientInfoMsg.m_Local = 0;
-	NewClientInfoMsg.m_Team = pPlayer->GetTeam();
-	NewClientInfoMsg.m_pName = Server()->ClientName(ClientID);
-	NewClientInfoMsg.m_pClan = Server()->ClientClan(ClientID);
-	NewClientInfoMsg.m_Country = Server()->ClientCountry(ClientID);
-	NewClientInfoMsg.m_Silent = IsDummy;
+	RebuildLegacySlotMap();
 
-	if(Config()->m_SvSilentSpectatorMode && pPlayer->GetTeam() == TEAM_SPECTATORS)
-		NewClientInfoMsg.m_Silent = true;
+	const bool Silent = Config()->m_SvSilentSpectatorMode && pPlayer->GetTeam() == TEAM_SPECTATORS;
 
-	for(int p = 0; p < NUM_SKINPARTS; p++)
+	if(IsDummy)
 	{
-		NewClientInfoMsg.m_apSkinPartNames[p] = pPlayer->m_TeeInfos.m_aaSkinPartNames[p];
-		NewClientInfoMsg.m_aUseCustomColors[p] = pPlayer->m_TeeInfos.m_aUseCustomColors[p];
-		NewClientInfoMsg.m_aSkinPartColors[p] = pPlayer->m_TeeInfos.m_aSkinPartColors[p];
+		BroadcastClientInfo(ClientID, true);
 	}
-
-	for(int i = 0; i < MAX_CLIENTS; ++i)
+	else
 	{
-		if(i == ClientID || !m_apPlayers[i] || !Server()->ClientIngame(i))
-			continue;
-
-		// new info for others
-		if(Server()->ClientIngame(i) && !m_apPlayers[i]->IsDummy())
-			Server()->SendPackMsg(&NewClientInfoMsg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
-
-		// existing infos for new player (real clients only — dummies have no socket)
-		if(!IsDummy)
+		for(int i = 0; i < MAX_CLIENTS; ++i)
 		{
-			CNetMsg_Sv_ClientInfo ClientInfoMsg;
-			ClientInfoMsg.m_ClientID = i;
-			ClientInfoMsg.m_Local = 0;
-			ClientInfoMsg.m_Team = m_apPlayers[i]->GetTeam();
-			ClientInfoMsg.m_pName = Server()->ClientName(i);
-			ClientInfoMsg.m_pClan = Server()->ClientClan(i);
-			ClientInfoMsg.m_Country = Server()->ClientCountry(i);
-			ClientInfoMsg.m_Silent = true;
-			for(int p = 0; p < NUM_SKINPARTS; p++)
-			{
-				ClientInfoMsg.m_apSkinPartNames[p] = m_apPlayers[i]->m_TeeInfos.m_aaSkinPartNames[p];
-				ClientInfoMsg.m_aUseCustomColors[p] = m_apPlayers[i]->m_TeeInfos.m_aUseCustomColors[p];
-				ClientInfoMsg.m_aSkinPartColors[p] = m_apPlayers[i]->m_TeeInfos.m_aSkinPartColors[p];
-			}
-			Server()->SendPackMsg(&ClientInfoMsg, MSGFLAG_VITAL | MSGFLAG_NORECORD, ClientID);
-		}
-	}
+			if(i == ClientID || !m_apPlayers[i] || !Server()->ClientIngame(i))
+				continue;
 
-	if(!IsDummy)
-	{
-		NewClientInfoMsg.m_Local = 1;
-		Server()->SendPackMsg(&NewClientInfoMsg, MSGFLAG_VITAL | MSGFLAG_NORECORD, ClientID);
+			if(!m_apPlayers[i]->IsDummy())
+				SendClientInfo(i, ClientID, false, Silent);
+
+			const bool ExistingSilent = Config()->m_SvSilentSpectatorMode && m_apPlayers[i]->GetTeam() == TEAM_SPECTATORS;
+			SendClientInfo(ClientID, i, false, m_apPlayers[i]->IsDummy() || ExistingSilent);
+		}
+
+		SendClientInfo(ClientID, ClientID, true, Silent);
 	}
 
 	if(Server()->DemoRecorder_IsRecording())
 	{
 		CNetMsg_De_ClientEnter Msg;
-		Msg.m_pName = NewClientInfoMsg.m_pName;
+		Msg.m_pName = Server()->ClientName(ClientID);
 		Msg.m_ClientID = ClientID;
-		Msg.m_Team = NewClientInfoMsg.m_Team;
+		Msg.m_Team = pPlayer->GetTeam();
 		Server()->SendPackMsg(&Msg, MSGFLAG_NOSEND, -1);
 	}
 
@@ -971,13 +954,26 @@ void CGameContext::OnClientDrop(int ClientID, const char *pReason)
 			Server()->SendPackMsg(&Msg, MSGFLAG_NOSEND, -1);
 		}
 
-		CNetMsg_Sv_ClientDrop Msg;
-		Msg.m_ClientID = ClientID;
-		Msg.m_pReason = pReason;
-		Msg.m_Silent = IsClientBot(ClientID);
-		if(Config()->m_SvSilentSpectatorMode && m_apPlayers[ClientID]->GetTeam() == TEAM_SPECTATORS)
-			Msg.m_Silent = true;
-		Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, -1);
+		const bool Silent = IsClientBot(ClientID) ||
+			(Config()->m_SvSilentSpectatorMode && m_apPlayers[ClientID]->GetTeam() == TEAM_SPECTATORS);
+		const char *pDropReason = pReason && pReason[0] ? pReason : "disconnected";
+
+		RebuildLegacySlotMap();
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			if(!Server()->ClientIngame(i))
+				continue;
+
+			const int DisplayID = ClientDisplaySlot(i, ClientID);
+			if(DisplayID < 0)
+				continue;
+
+			CNetMsg_Sv_ClientDrop Msg;
+			Msg.m_ClientID = DisplayID;
+			Msg.m_pReason = pDropReason;
+			Msg.m_Silent = Silent;
+			Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+		}
 	}
 
 	// mark client's projectile has team projectile
@@ -1806,6 +1802,9 @@ void CGameContext::OnShutdown()
 
 void CGameContext::OnSnap(int ClientID)
 {
+	if(ClientID >= 0 && ClientID < MAX_HUMAN_CLIENTS && !ClientUsesExtendedSlots(ClientID))
+		RebuildLegacySlotMap();
+
 	// add tuning to demo
 	CTuningParams StandardTuning;
 	if(ClientID == -1 && Server()->DemoRecorder_IsRecording() && mem_comp(&StandardTuning, &m_Tuning, sizeof(CTuningParams)) != 0)
@@ -1900,6 +1899,124 @@ void CGameContext::OnUpdatePlayerServerInfo(CJsonWriter *pJsonWriter, int Client
 int CGameContext::GetMaxPlayerSlots()
 {
 	return minimum(Config()->m_SvMaxClients, (int)MAX_HUMAN_CLIENTS);
+}
+
+bool CGameContext::ClientUsesExtendedSlots(int ClientID) const
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || !Server()->ClientIngame(ClientID))
+		return true;
+	// Teeworlds Archive 0.7.6 sends CLIENT_VERSION (0x0706); DDNet 0.7 mode sends PREV_CLIENT_VERSION (0x0705) and supports 128 slots.
+	return Server()->GetClientVersion(ClientID) < CLIENT_VERSION;
+}
+
+bool CGameContext::ClientUsesDDNetLaser(int SnappingClient) const
+{
+	if(SnappingClient == -1)
+		return true;
+	return ClientUsesExtendedSlots(SnappingClient);
+}
+
+int CGameContext::ClientDisplaySlot(int Recipient, int ServerSlot) const
+{
+	if(ServerSlot < 0 || ServerSlot >= MAX_CLIENTS)
+		return -1;
+	if(Recipient < 0 || ClientUsesExtendedSlots(Recipient) || ServerSlot < MAX_CLIENTS)
+		return ServerSlot;
+	return m_aLegacyDisplaySlot[ServerSlot];
+}
+
+int CGameContext::ClientSnapID(int SnappingClient, int ServerSlot) const
+{
+	if(SnappingClient == -1)
+		return ServerSlot;
+	return ClientDisplaySlot(SnappingClient, ServerSlot);
+}
+
+void CGameContext::RebuildLegacySlotMap()
+{
+	int aOldDisplay[MAX_CLIENTS];
+	for(int i = 0; i < MAX_CLIENTS; i++)
+		aOldDisplay[i] = m_aLegacyDisplaySlot[i];
+
+	for(int i = 0; i < MAX_CLIENTS; i++)
+		m_aLegacyDisplaySlot[i] = -1;
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		m_aLegacyDisplayOwner[i] = -1;
+
+	bool aHumanSlotUsed[MAX_HUMAN_CLIENTS] = {false};
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	{
+		if(m_apPlayers[i] && Server()->ClientIngame(i) && !m_apPlayers[i]->IsDummy())
+			aHumanSlotUsed[i] = true;
+	}
+
+	const int Zombie0 = ZombieFirstSlot(Config());
+	for(int i = Zombie0; i < MAX_CLIENTS; i++)
+	{
+		if(!m_apPlayers[i] || !m_apPlayers[i]->IsDummy() || m_apPlayers[i]->GetZomb() == ZOMB_NONE)
+			continue;
+
+		const int Old = aOldDisplay[i];
+		if(Old >= 0 && Old < MAX_HUMAN_CLIENTS && !aHumanSlotUsed[Old])
+		{
+			m_aLegacyDisplaySlot[i] = Old;
+			m_aLegacyDisplayOwner[Old] = i;
+		}
+	}
+
+	int NextDisplay = MAX_HUMAN_CLIENTS - 1;
+	for(int i = Zombie0; i < MAX_CLIENTS; i++)
+	{
+		if(m_aLegacyDisplaySlot[i] >= 0)
+			continue;
+		if(!m_apPlayers[i] || !m_apPlayers[i]->IsDummy() || m_apPlayers[i]->GetZomb() == ZOMB_NONE)
+			continue;
+
+		while(NextDisplay >= 0 && (aHumanSlotUsed[NextDisplay] || m_aLegacyDisplayOwner[NextDisplay] >= 0))
+			NextDisplay--;
+		if(NextDisplay < 0)
+			break;
+
+		m_aLegacyDisplaySlot[i] = NextDisplay;
+		m_aLegacyDisplayOwner[NextDisplay] = i;
+	}
+}
+
+void CGameContext::SendClientInfo(int Recipient, int ServerSlot, bool Local, bool Silent)
+{
+	if(Recipient < 0 || Recipient >= MAX_CLIENTS || !m_apPlayers[ServerSlot])
+		return;
+
+	const int DisplayID = ClientDisplaySlot(Recipient, ServerSlot);
+	if(DisplayID < 0)
+		return;
+
+	CNetMsg_Sv_ClientInfo Msg;
+	Msg.m_ClientID = DisplayID;
+	Msg.m_Local = Local ? 1 : 0;
+	Msg.m_Team = m_apPlayers[ServerSlot]->GetTeam();
+	Msg.m_pName = Server()->ClientName(ServerSlot);
+	Msg.m_pClan = Server()->ClientClan(ServerSlot);
+	Msg.m_Country = Server()->ClientCountry(ServerSlot);
+	Msg.m_Silent = Silent;
+	for(int p = 0; p < NUM_SKINPARTS; p++)
+	{
+		Msg.m_apSkinPartNames[p] = SafeNetSkin(m_apPlayers[ServerSlot]->m_TeeInfos.m_aaSkinPartNames[p]);
+		Msg.m_aUseCustomColors[p] = m_apPlayers[ServerSlot]->m_TeeInfos.m_aUseCustomColors[p];
+		Msg.m_aSkinPartColors[p] = m_apPlayers[ServerSlot]->m_TeeInfos.m_aSkinPartColors[p];
+	}
+	Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, Recipient);
+}
+
+void CGameContext::BroadcastClientInfo(int ServerSlot, bool Silent)
+{
+	RebuildLegacySlotMap();
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	{
+		if(!Server()->ClientIngame(i))
+			continue;
+		SendClientInfo(i, ServerSlot, false, Silent);
+	}
 }
 
 CAccountSystem *CGameContext::Accounts()

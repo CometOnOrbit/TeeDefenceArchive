@@ -98,6 +98,10 @@ public:
 	CItemHelper *m_pItemHelper;
 	class CBotEngine *m_pBotEngine;
 
+	// Legacy 0.7 clients (MAX_CLIENTS=64) need zombie slots 64+ remapped into 0..63.
+	int m_aLegacyDisplaySlot[MAX_CLIENTS];
+	int m_aLegacyDisplayOwner[MAX_HUMAN_CLIENTS];
+
 	CCommandManager *CommandManager() { return &m_CommandManager; }
 	CAccountSystem *Accounts();
 	const CAccountSystem *Accounts() const;
@@ -246,6 +250,14 @@ public:
 	virtual void OnUpdatePlayerServerInfo(CJsonWriter *pJsonWriter, int ClientID);
 
 	virtual int GetMaxPlayerSlots();
+
+	bool ClientUsesExtendedSlots(int ClientID) const;
+	bool ClientUsesDDNetLaser(int SnappingClient) const;
+	int ClientSnapID(int SnappingClient, int ServerSlot) const;
+	int ClientDisplaySlot(int Recipient, int ServerSlot) const;
+	void RebuildLegacySlotMap();
+	void SendClientInfo(int Recipient, int ServerSlot, bool Local, bool Silent);
+	void BroadcastClientInfo(int ServerSlot, bool Silent);
 };
 
 inline int64 CmaskAll() { return -1; }

@@ -128,6 +128,7 @@
     "account.register.pending": "Registering…",
     "account.login.usage": "Invalid username or password format.",
     "account.login.already": "You are already logged in.",
+    "account.login.already_online": "This account is already logged in elsewhere.",
     "account.login.pending": "Logging in…",
     "language.status": "Language: %s (use /language zh-cn or /language en)",
     "language.changed": "%s: %s",

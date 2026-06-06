@@ -32,7 +32,7 @@
 
 static int TdZombieFirstSlot(const CConfig *pCfg)
 {
-	return maximum((int)MAX_HUMAN_CLIENTS, pCfg->m_SvMaxClients);
+	return minimum((int)MAX_HUMAN_CLIENTS, pCfg->m_SvMaxClients);
 }
 
 static bool IsZombiePlayer(const CPlayer *pPlayer)
@@ -1371,7 +1371,8 @@ void CGameController::TdCheckZombie()
 	if(TdEndWave())
 		return;
 
-	if(TdCountZombiePopulation() >= m_TdZombStart)
+	const int ConcurrentCap = minimum((int)TD_MAX_ACTIVE_ZOMBIES, m_TdZombStart);
+	if(TdCountZombiePopulation() >= ConcurrentCap)
 		return;
 
 	vec2 SpawnPos;

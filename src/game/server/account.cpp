@@ -10,6 +10,7 @@
 #include <engine/console.h>
 #include <engine/engine.h>
 #include <engine/shared/config.h>
+#include <engine/shared/protocol.h>
 
 #include <game/commands.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
@@ -51,6 +52,44 @@ static bool PasswordOk(const char *p)
 {
 	int l = str_length(p);
 	return l >= 6 && l <= 63;
+}
+
+static bool IsAccountOnline(CGameContext *pGame, int64 AccountId, int ExcludeClientId)
+{
+	if(!pGame || AccountId < 0)
+		return false;
+
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	{
+		if(i == ExcludeClientId)
+			continue;
+		CPlayer *pP = pGame->m_apPlayers[i];
+		if(!pP || pP->IsDummy() || !pGame->Server()->ClientIngame(i))
+			continue;
+		if(pP->GetAccountId() == AccountId)
+			return true;
+	}
+	return false;
+}
+
+static bool IsUsernameLoggedInElsewhere(CGameContext *pGame, const char *pUsername, int ExcludeClientId)
+{
+	if(!pGame || !pUsername || !pUsername[0])
+		return false;
+
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	{
+		if(i == ExcludeClientId)
+			continue;
+		CPlayer *pP = pGame->m_apPlayers[i];
+		if(!pP || pP->IsDummy() || !pGame->Server()->ClientIngame(i))
+			continue;
+		if(pP->GetAccountId() < 0)
+			continue;
+		if(str_comp_nocase(pP->m_AccData.m_aUsername, pUsername) == 0)
+			return true;
+	}
+	return false;
 }
 
 #ifdef CONF_MYSQL
@@ -637,16 +676,24 @@ void CAccountSystem::PumpCompletedJobs()
 		{
 			if(Slot.m_Error == 0 && pP && !pP->IsDummy() && m_pGame->Server()->ClientIngame(ClientId))
 			{
-				pP->SetAccountId(Slot.m_AccountId);
-				mem_copy(&pP->m_AccData, &Slot.m_Sync, sizeof(pP->m_AccData));
-				pP->m_AccData.m_aPassword[0] = 0;
-				pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
-				m_pGame->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
-				m_pGame->SendCommunityInfo(ClientId);
-				m_pGame->EnterGame(ClientId);
-				if(SPlayerVote *pV = m_pGame->GetPlayerVote(ClientId))
-					pV->m_Page = PAGE_MENU;
-				m_pGame->ClearVotes(ClientId);
+				if(IsAccountOnline(m_pGame, Slot.m_AccountId, ClientId))
+				{
+					if(pP && !pP->IsDummy())
+						m_pGame->SendChatLoc(ClientId, "account.login.already_online", u8"该账号已在其他客户端登录。");
+				}
+				else
+				{
+					pP->SetAccountId(Slot.m_AccountId);
+					mem_copy(&pP->m_AccData, &Slot.m_Sync, sizeof(pP->m_AccData));
+					pP->m_AccData.m_aPassword[0] = 0;
+					pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
+					m_pGame->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
+					m_pGame->SendCommunityInfo(ClientId);
+					m_pGame->EnterGame(ClientId);
+					if(SPlayerVote *pV = m_pGame->GetPlayerVote(ClientId))
+						pV->m_Page = PAGE_MENU;
+					m_pGame->ClearVotes(ClientId);
+				}
 			}
 			else if(Slot.m_Error == 2)
 			{
@@ -758,6 +805,11 @@ void CAccountSystem::ComChatLogin(IConsole::IResult *pResult, void *pUser)
 	if(pP && pP->GetAccountId() >= 0)
 	{
 		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.already", u8"你已经登录。");
+		return;
+	}
+	if(IsUsernameLoggedInElsewhere(pGame, pU, pCtx->m_ClientID))
+	{
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.already_online", u8"该账号已在其他客户端登录。");
 		return;
 	}
 	if(!pAcc->StartJob(JOB_LOGIN, pCtx->m_ClientID, pU, pPw))

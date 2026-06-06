@@ -6,6 +6,8 @@
 #include <base/tl/array.h>
 #include <base/vmath.h>
 
+#include <engine/shared/protocol.h>
+
 #include <game/commands.h>
 
 #include <generated/protocol.h>
@@ -16,6 +18,7 @@ class CPlayer;
 enum
 {
 	NUM_TD_ZOMB = 13,
+	TD_MAX_ACTIVE_ZOMBIES = MAX_ZOMBIE_CLIENTS,
 	TD_REMOVE_QUEUE = MAX_CLIENTS,
 	TD_DIFF_EASY = 0,
 	TD_DIFF_NORMAL = 1,

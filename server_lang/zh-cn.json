@@ -128,6 +128,7 @@
     "account.register.pending": "正在注册…",
     "account.login.usage": "用户名或密码格式无效。",
     "account.login.already": "你已经登录。",
+    "account.login.already_online": "该账号已在其他客户端登录。",
     "account.login.pending": "正在登录…",
     "language.status": "语言: %s（使用 /language zh-cn 或 /language en）",
     "language.changed": "%s: %s",
