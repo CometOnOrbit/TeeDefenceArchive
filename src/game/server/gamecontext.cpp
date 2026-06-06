@@ -857,11 +857,11 @@ void CGameContext::OnClientEnter(int ClientID)
 
 	for(int i = 0; i < MAX_CLIENTS; ++i)
 	{
-		if(i == ClientID || !m_apPlayers[i] || (!Server()->ClientIngame(i) && !m_apPlayers[i]->IsDummy()))
+		if(i == ClientID || !m_apPlayers[i] || !Server()->ClientIngame(i))
 			continue;
 
 		// new info for others
-		if(Server()->ClientIngame(i))
+		if(Server()->ClientIngame(i) && !m_apPlayers[i]->IsDummy())
 			Server()->SendPackMsg(&NewClientInfoMsg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
 
 		// existing infos for new player (real clients only — dummies have no socket)
