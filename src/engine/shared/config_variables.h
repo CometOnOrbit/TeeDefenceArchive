@@ -64,12 +64,13 @@ MACRO_CONFIG_INT(SvTdTowerTouchDamage, sv_td_tower_touch_damage, 1, 0, 50, CFGFL
 MACRO_CONFIG_INT(SvTdWaveScoreBonus, sv_td_wave_score_bonus, 1, 0, 1, CFGFLAG_SERVER, "Grant score to defenders when a wave is cleared")
 MACRO_CONFIG_INT(SvTdQQGroup, sv_td_qq_group, 1007351135, 0, 2000000000, CFGFLAG_SERVER, "Player community QQ group number shown in-game")
 MACRO_CONFIG_INT(SvTdQQSponsor, sv_td_qq_sponsor, 1562151175, 0, 2000000000, CFGFLAG_SERVER, "Author QQ for sponsorship shown in-game")
+MACRO_CONFIG_INT(SvTdDifficulty, sv_td_difficulty, 1, 0, 2, CFGFLAG_SAVE | CFGFLAG_SERVER, "Default difficulty: 0=easy 1=normal 2=hard (changeable before wave 1 via menu)")
 
 MACRO_CONFIG_INT(SvTurretRadius, sv_turret_radius, 32, 8, 256, CFGFLAG_SERVER, "Turret ring base radius in pixels (visual grows per tier)")
 MACRO_CONFIG_INT(SvTurretFireRange, sv_turret_fire_range, 800, 64, 4000, CFGFLAG_SERVER, "Turret auto-aim range vs dummy zombies (pixels)")
 MACRO_CONFIG_INT(SvTurretFireCooldown, sv_turret_fire_cooldown, 30, 1, 600, CFGFLAG_SERVER, "Ticks between turret shots")
 
-MACRO_CONFIG_INT(SvMysqlEnable, sv_mysql_enable, 0, 0, 1, CFGFLAG_SAVE | CFGFLAG_SERVER, "Enable MySQL account system")
+MACRO_CONFIG_INT(SvMysqlEnable, sv_mysql_enable, 1, 1, 1, CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL account system (required; must be 1)")
 MACRO_CONFIG_STR(SvMysqlHost, sv_mysql_host, 128, "127.0.0.1", CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL host")
 MACRO_CONFIG_INT(SvMysqlPort, sv_mysql_port, 3306, 0, 65535, CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL TCP port (3306 default)")
 MACRO_CONFIG_STR(SvMysqlUser, sv_mysql_user, 64, "teedefense", CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL user")

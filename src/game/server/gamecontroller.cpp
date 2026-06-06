@@ -59,7 +59,75 @@ CGameController::CGameController(CGameContext *pGameServer)
 	m_TdDummyRemoveLen = 0;
 	mem_zero(m_aTdDummyRemove, sizeof(m_aTdDummyRemove));
 	m_TdPendingZomb = ZOMB_ZABY;
+	m_TdDifficulty = clamp(m_pConfig->m_SvTdDifficulty, 0, 2);
 	m_RealPlayerNum = 0;
+}
+
+float CGameController::TdDifficultyZombieMul() const
+{
+	static const float s_aMul[NUM_TD_DIFF] = {0.75f, 1.0f, 1.35f};
+	return s_aMul[m_TdDifficulty];
+}
+
+float CGameController::TdDifficultyHealthMul() const
+{
+	static const float s_aMul[NUM_TD_DIFF] = {0.85f, 1.0f, 1.25f};
+	return s_aMul[m_TdDifficulty];
+}
+
+float CGameController::TdDifficultyAiMul() const
+{
+	static const float s_aMul[NUM_TD_DIFF] = {0.85f, 1.0f, 1.15f};
+	return s_aMul[m_TdDifficulty];
+}
+
+float CGameController::TdDifficultyTowerMul() const
+{
+	static const float s_aMul[NUM_TD_DIFF] = {1.25f, 1.0f, 0.75f};
+	return s_aMul[m_TdDifficulty];
+}
+
+int CGameController::TdGetDifficultyTowerMaxHealth() const
+{
+	return maximum(1, (int)(Config()->m_SvMaxTowerHealth * TdDifficultyTowerMul() + 0.5f));
+}
+
+bool CGameController::TdCanChangeDifficulty() const
+{
+	return m_TdWave == 0 && m_TdGameOverTick == -1;
+}
+
+bool CGameController::TdSetDifficulty(int Difficulty)
+{
+	if(!TdCanChangeDifficulty())
+		return false;
+	m_TdDifficulty = clamp(Difficulty, 0, 2);
+	Config()->m_SvTdDifficulty = m_TdDifficulty;
+	TdRefreshTowerMaxHealth();
+	return true;
+}
+
+void CGameController::TdRefreshTowerMaxHealth()
+{
+	if(!m_pTower)
+		return;
+	const int MaxHp = TdGetDifficultyTowerMaxHealth();
+	if(m_pTower->GetHealth() > MaxHp)
+		m_pTower->SetHealth(MaxHp);
+	else if(m_TdWave == 0)
+		m_pTower->SetHealth(MaxHp);
+}
+
+void CGameController::TdApplyDifficultyToZombieCounts()
+{
+	const float Mul = TdDifficultyZombieMul();
+	if(fabs(Mul - 1.0f) < 0.001f)
+		return;
+	for(unsigned i = 0; i < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); i++)
+	{
+		if(m_TdZombie[i] > 0)
+			m_TdZombie[i] = maximum(1, (int)(m_TdZombie[i] * Mul + 0.5f));
+	}
 }
 
 CGameController::~CGameController()
@@ -207,6 +275,9 @@ void CGameController::TdRunZombieBrain(CPlayer *pP)
 // activity
 void CGameController::DoActivityCheck()
 {
+	return; // nope.
+
+	/*
 	if(Config()->m_SvInactiveKickTime == 0)
 		return;
 
@@ -264,6 +335,7 @@ void CGameController::DoActivityCheck()
 			}
 		}
 	}
+		*/
 }
 
 bool CGameController::GetPlayersReadyState(int WithoutID)
@@ -378,6 +450,7 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 		int Health = maximum(1, m_TdWave);
 		if(Z == ZOMB_ZASTER)
 			Health = maximum(40, m_TdWave * 10);
+		Health = maximum(1, (int)(Health * TdDifficultyHealthMul() + 0.5f));
 
 		pChr->SetHealthDirect(Health);
 		pChr->GiveWeapon(WEAPON_HAMMER, -1);
@@ -432,6 +505,7 @@ bool CGameController::OnEntity(int Index, vec2 Pos)
 	if(Index == ENTITY_MAIN_TOWER)
 	{
 		m_pTower = new CTowerMain(&GameServer()->m_World, Pos);
+		TdRefreshTowerMaxHealth();
 		return true;
 	}
 
@@ -541,17 +615,30 @@ void CGameController::HandleCharacterTiles(class CCharacter *pChr, vec2 LastPos,
 
 void CGameController::OnPlayerConnect(CPlayer *pPlayer)
 {
+	const int ClientID = pPlayer->GetCID();
+
 	if(!pPlayer->IsDummy())
 	{
-		const int CID = pPlayer->GetCID();
-		GameServer()->SendChatLoc(CID, "welcome", "Welcome to TeeDefense Archive");
-		GameServer()->SendChatLoc(CID, "login.hint", "Use /register or /login");
-		GameServer()->SendCommunityInfo(CID);
-		GameServer()->SendChatAllLocF("game.join", "%s joined TeeDefense — defend the tower!", Server()->ClientName(CID));
+		GameServer()->SendChatLoc(ClientID, "welcome", "Welcome to TeeDefense Archive");
+		GameServer()->EnforceSpectatorUntilLogin(pPlayer);
+
+		if(pPlayer->GetAccountId() < 0)
+		{
+			GameServer()->SendChatLoc(ClientID, "login.hint", u8"本服务器需要 MySQL 账号 — 使用 /register 或 /login");
+			GameServer()->SendBroadcastLoc(ClientID, "login.broadcast", u8"旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
+			pPlayer->m_NextLoginHintTick = Server()->Tick() + Server()->TickSpeed() * 20;
+			GameServer()->SendChatAllLocF("game.join_spectator", u8"%s 以旁观者身份加入 — 请 /register 或 /login", Server()->ClientName(ClientID));
+		}
+		else
+		{
+			GameServer()->EnterGame(ClientID);
+			GameServer()->SendCommunityInfo(ClientID);
+			GameServer()->SendChatAllLocF("game.join", "%s joined TeeDefense — defend the tower!", Server()->ClientName(ClientID));
+		}
 	}
 
-	int ClientID = pPlayer->GetCID();
-	pPlayer->Respawn();
+	if(pPlayer->GetAccountId() >= 0)
+		pPlayer->Respawn();
 
 	if(!IsZombiePlayer(pPlayer))
 	{
@@ -639,8 +726,34 @@ void CGameController::Snap(int SnappingClient)
 	}
 }
 
+void CGameController::TickLoginReminders()
+{
+	if(!GameServer()->Accounts() || !GameServer()->Accounts()->IsEnabled())
+		return;
+
+	const int Now = Server()->Tick();
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	{
+		CPlayer *pP = GameServer()->m_apPlayers[i];
+		if(!pP || pP->IsDummy() || !Server()->ClientIngame(i))
+			continue;
+		if(pP->GetAccountId() >= 0)
+			continue;
+
+		GameServer()->EnforceSpectatorUntilLogin(pP);
+
+		if(Now < pP->m_NextLoginHintTick)
+			continue;
+
+		GameServer()->SendChatLoc(i, "login.hint", u8"本服务器需要 MySQL 账号 — 使用 /register 或 /login");
+		GameServer()->SendBroadcastLoc(i, "login.broadcast", u8"旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
+		pP->m_NextLoginHintTick = Now + Server()->TickSpeed() * 25;
+	}
+}
+
 void CGameController::Tick()
 {
+	TickLoginReminders();
 	DoActivityCheck();
 
 	for(int i = 0; i < m_TdDummyRemoveLen; i++)
@@ -853,11 +966,19 @@ bool CGameController::CanChangeTeam(CPlayer *pPlayer, int JoinTeam) const
 {
 	if(!pPlayer->IsDummy() && JoinTeam == TEAM_BLUE)
 		return false;
+	if(GameServer()->RequiresLoginToPlay(pPlayer) && pPlayer->GetAccountId() < 0 && JoinTeam != TEAM_SPECTATORS)
+		return false;
 	return true;
 }
 
 bool CGameController::CanJoinTeam(int Team, int NotThisID) const
 {
+	if(Team != TEAM_SPECTATORS && NotThisID >= 0 && NotThisID < MAX_CLIENTS)
+	{
+		CPlayer *pP = GameServer()->m_apPlayers[NotThisID];
+		if(GameServer()->RequiresLoginToPlay(pP) && pP->GetAccountId() < 0)
+			return false;
+	}
 	return true;
 }
 
@@ -998,7 +1119,7 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 			array<CEntity *> lpEnts;
 			lpEnts.hint_size(8);
 			int Hits = 0;
-			const float HammerQueryR = pChr->GetProximityRadius() * 0.5f + (float)Config()->m_SvTdTowerHitRadius;
+			const float HammerQueryR = pChr->GetProximityRadius() * 1.5f;
 			const int Num = GameServer()->m_World.FindFlagEntities(ProjStartPos, HammerQueryR, lpEnts, CGameWorld::ENTFLAG_HITABLE);
 			for(int i = 0; i < Num; ++i)
 			{
@@ -1069,12 +1190,13 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 
 		case WEAPON_GUN:
 		{
+			const int GunDmg = g_pData->m_Weapons.m_aId[WEAPON_GUN].m_Damage + ExtraDmg;
 			new CProjectile(&GameServer()->m_World, WEAPON_GUN,
 				ClientID,
 				ProjStartPos,
 				Direction,
 				(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_GunLifetime),
-				ExtraDmg, false, MoreForce, -1, WEAPON_GUN);
+				GunDmg, false, MoreForce, -1, WEAPON_GUN);
 
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_GUN_FIRE);
 		}
@@ -1082,6 +1204,7 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 
 		case WEAPON_SHOTGUN:
 		{
+			const int ShotgunDmg = g_pData->m_Weapons.m_aId[WEAPON_SHOTGUN].m_Damage + ExtraDmg;
 			int ShotSpread = 2;
 
 			for(int i = -ShotSpread; i <= ShotSpread; ++i)
@@ -1096,7 +1219,7 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 					ProjStartPos,
 					vec2(cosf(a), sinf(a)) * Speed,
 					(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_ShotgunLifetime),
-					ExtraDmg, false, MoreForce, -1, WEAPON_SHOTGUN);
+					ShotgunDmg, false, MoreForce, -1, WEAPON_SHOTGUN);
 			}
 
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_SHOTGUN_FIRE);
@@ -1118,6 +1241,7 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 
 		case WEAPON_LASER:
 		{
+			const int LaserDmg = g_pData->m_Weapons.m_aId[WEAPON_LASER].m_Damage + ExtraDmg;
 			if(Electron > 0)
 			{
 				vec2 Start = ChrPos + Direction * 50.f;
@@ -1129,14 +1253,14 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 				if(pHit)
 				{
 					To = pHit->GetPos();
-					pHit->TakeHit(Direction, Direction * -1, 1 + ExtraDmg, pChr, WEAPON_LASER);
+					pHit->TakeHit(Direction, Direction * -1, LaserDmg, pChr, WEAPON_LASER);
 				}
 				int Segments = distance(Start, To) / 100;
 				Segments = clamp(Segments, 2, 4);
 				new CElectro(&GameServer()->m_World, Start, To, vec2(cosf(a * 1.2f), sinf(a * 1.2f)) * 40.f, Segments);
 			}
 			const int HostLaser = pPl ? pPl->GetHolding(ITYPE_SWORD) : -1;
-			new CLaser(&GameServer()->m_World, ChrPos, Direction, GameServer()->Tuning()->m_LaserReach, ClientID, ExtraDmg, false, MoreForce, 0, HostLaser);
+			new CLaser(&GameServer()->m_World, ChrPos, Direction, GameServer()->Tuning()->m_LaserReach, ClientID, LaserDmg, false, MoreForce, 0, HostLaser);
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_LASER_FIRE);
 		}
 		break;
@@ -1228,6 +1352,8 @@ void CGameController::TdStartWave(int Wave)
 		m_TdZombie[0] = 25;
 	else
 		TdSetWaveAlg(Wave % 3, Wave / 3);
+
+	TdApplyDifficultyToZombieCounts();
 
 	m_TdZombLeft = 0;
 	for(unsigned i = 0; i < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); i++)
@@ -1443,7 +1569,15 @@ void CGameController::TdSetTowerHealth(int Health)
 {
 	if(!m_pTower)
 		return;
-	m_pTower->SetHealth(clamp(Health, 1, Config()->m_SvMaxTowerHealth));
+	m_pTower->SetHealth(clamp(Health, 1, TdGetDifficultyTowerMaxHealth()));
+}
+
+void CGameController::ConTdSetDifficulty(IConsole::IResult *pResult, void *pUser)
+{
+	CGameContext *pGameServer = static_cast<CGameContext *>(pUser);
+	CGameController *pCtrl = static_cast<CGameController *>(pGameServer->m_pController);
+	if(!pCtrl->TdSetDifficulty(pResult->GetInteger(0)))
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "td", "cannot change difficulty (only before wave 1)");
 }
 
 void CGameController::ConTdSetWave(IConsole::IResult *pResult, void *pUser)
@@ -1462,4 +1596,5 @@ void CGameController::RegisterTeeDefenseConsoleCommands(CGameContext *pCtx)
 {
 	pCtx->Console()->Register("td_set_wave", "i[wave]", CFGFLAG_SERVER, ConTdSetWave, pCtx, "Set next TeeDefense wave number");
 	pCtx->Console()->Register("td_set_tower_health", "i[health]", CFGFLAG_SERVER, ConTdSetTowerHealth, pCtx, "Set main tower current health");
+	pCtx->Console()->Register("td_set_difficulty", "i[0-2]", CFGFLAG_SERVER, ConTdSetDifficulty, pCtx, "Set difficulty: 0=easy 1=normal 2=hard (before wave 1)");
 }

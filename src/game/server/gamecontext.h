@@ -100,6 +100,7 @@ public:
 
 	CCommandManager *CommandManager() { return &m_CommandManager; }
 	CAccountSystem *Accounts();
+	const CAccountSystem *Accounts() const;
 	TWorldController *Core() const { return m_pTWorld; }
 	TWorldController *TW() { return m_pTWorld; }
 	CItemHelper *ItemHelper() { return m_pItemHelper; }
@@ -176,6 +177,9 @@ public:
 	void SendCommunityInfo(int ToClientID);
 	int TdQQGroup() const;
 	int TdQQSponsor() const;
+	bool RequiresLoginToPlay(const class CPlayer *pPlayer) const;
+	void EnforceSpectatorUntilLogin(class CPlayer *pPlayer);
+	void EnterGame(int ClientID);
 	void SendChatAllLoc(const char *pKey, const char *pDefault);
 	void SendChatAllLocF(const char *pKey, const char *pDefault, ...);
 	void SendBroadcast(int ClientID, const char *pText);

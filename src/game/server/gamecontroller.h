@@ -17,6 +17,10 @@ enum
 {
 	NUM_TD_ZOMB = 13,
 	TD_REMOVE_QUEUE = MAX_CLIENTS,
+	TD_DIFF_EASY = 0,
+	TD_DIFF_NORMAL = 1,
+	TD_DIFF_HARD = 2,
+	NUM_TD_DIFF = 3,
 };
 
 /*
@@ -50,6 +54,13 @@ class CGameController
 	class CZombieBot *m_apZombieBots[MAX_CLIENTS];
 
 	int m_TdPendingZomb;
+	int m_TdDifficulty;
+
+	float TdDifficultyZombieMul() const;
+	float TdDifficultyHealthMul() const;
+	float TdDifficultyTowerMul() const;
+	void TdApplyDifficultyToZombieCounts();
+	void TdRefreshTowerMaxHealth();
 
 	void TdResetPendingRemoves();
 	void TdDoWarmup(int Seconds);
@@ -67,6 +78,7 @@ class CGameController
 	int TdGetZombieOrder(int WaveThird);
 	void TdBroadcastGameInfo();
 	void TdRunZombieBrain(class CPlayer *pP);
+	void TickLoginReminders();
 	void TdClearZombieBot(int ClientID);
 	vec2 TdGetZombieRallyPos() const;
 
@@ -188,11 +200,17 @@ public:
 
 	void TdSetWave(int Wave);
 	void TdSetTowerHealth(int Health);
+	int GetTdDifficulty() const { return m_TdDifficulty; }
+	float TdDifficultyAiMul() const;
+	bool TdCanChangeDifficulty() const;
+	bool TdSetDifficulty(int Difficulty);
+	int TdGetDifficultyTowerMaxHealth() const;
 
 	void NotifyPlayerConnected(class CPlayer *pPlayer);
 
 	static void ConTdSetWave(IConsole::IResult *pResult, void *pUser);
 	static void ConTdSetTowerHealth(IConsole::IResult *pResult, void *pUser);
+	static void ConTdSetDifficulty(IConsole::IResult *pResult, void *pUser);
 	static void RegisterTeeDefenseConsoleCommands(CGameContext *pCtx);
 };
 

@@ -20,6 +20,7 @@ public:
 
 	void TakeDamage(int Dmg);
 	int GetHealth() const { return m_Health; }
+	int GetMaxHealth();
 	void SetHealth(int Health);
 
 private:

@@ -37,6 +37,7 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_ActiveSpecSwitch = 0;
 	m_LastActionTick = Server()->Tick();
 	m_TeamChangeTick = Server()->Tick();
+	m_NextLoginHintTick = 0;
 	m_InactivityTickCounter = 0;
 	m_Dummy = Dummy;
 	m_IsReadyToPlay = true;
@@ -650,6 +651,7 @@ bool CPlayer::CreateTurret(vec2 Pos)
 	CancelTurretPlace();
 	DestroyTurret();
 	m_pTurret = new CTurret(&GameServer()->m_World, Pos, m_ClientID, TurretItem);
+	GameServer()->ClearVotes(GetCID());
 	return m_pTurret != nullptr;
 }
 

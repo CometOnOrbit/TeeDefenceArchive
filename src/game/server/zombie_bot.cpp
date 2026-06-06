@@ -556,7 +556,7 @@ void CZombieBot::HandleHook(bool SeeTarget, int MoveDir, float DistMarch)
 float CZombieBot::GetAiScale() const
 {
 	const int Wave = maximum(1, m_pCtrl->GetTdWave());
-	return minimum(1.0f, 0.30f + (Wave - 1) * 0.078f);
+	return minimum(1.0f, 0.30f + (Wave - 1) * 0.078f) * m_pCtrl->TdDifficultyAiMul();
 }
 
 float CZombieBot::GetCombatRadius() const

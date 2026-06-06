@@ -13,6 +13,7 @@
 #include <game/server/core/tworld_controller.h>
 #include <game/server/entities/character.h>
 #include <game/server/gamecontext.h>
+#include <game/server/gamecontroller.h>
 #include <game/server/item_system.h>
 #include <game/server/player.h>
 #include <game/server/turret_ammo.h>
@@ -342,9 +343,41 @@ void CVoteMenuManager::InitVotes(int ClientID)
 		AddVote_Goto(PAGE_CRAFT, VL(GS(), pP, "menu.goto.craft", u8"☞ 合成"));
 		AddVote_Goto(PAGE_EQUIPMENT, VL(GS(), pP, "menu.goto.equipment", u8"☞ 装备"));
 		AddVote_Goto(PAGE_TURRET, VL(GS(), pP, "menu.goto.turret", u8"☞ 炮塔"));
-		AddVote_Goto(PAGE_WORLDS, VL(GS(), pP, "menu.goto.worlds", u8"☞ 世界/地图"));
+		// AddVote_Goto(PAGE_WORLDS, VL(GS(), pP, "menu.goto.worlds", u8"☞ 世界/地图")); // for now
 		AddVote_Goto(PAGE_COMMUNITY, VL(GS(), pP, "menu.goto.community", u8"☞ 社区与赞助"));
+		//if(GS()->m_pController && static_cast<CGameController *>(GS()->m_pController)->TdCanChangeDifficulty()) // for now
+		//	AddVote_Goto(PAGE_DIFFICULTY, VL(GS(), pP, "menu.goto.difficulty", u8"☞ 难度选择"));
 		AddVote_Space();
+	}
+	break;
+
+	case PAGE_DIFFICULTY:
+	{
+		CGameController *pCtrl = GS()->m_pController ? static_cast<CGameController *>(GS()->m_pController) : nullptr;
+		SetVoteLastPage(PAGE_MENU);
+		AddVote_TextLine(VL(GS(), pP, "difficulty.title", u8"☪ 难度选择"));
+		AddVote_TextLine(VL(GS(), pP, "menu.sep.short", "---"));
+		if(pCtrl)
+		{
+			char aLine[128];
+			static const char *const s_apKeys[NUM_TD_DIFF] = {"difficulty.easy", "difficulty.normal", "difficulty.hard"};
+			static const char *const s_apFallback[NUM_TD_DIFF] = {u8"简单", u8"普通", u8"困难"};
+			for(int d = 0; d < NUM_TD_DIFF; d++)
+			{
+				char aCmd[48];
+				str_format(aCmd, sizeof(aCmd), "ccv_menudifficulty %d", d);
+				const char *pLabel = VL(GS(), pP, s_apKeys[d], s_apFallback[d]);
+				if(pCtrl->GetTdDifficulty() == d)
+					str_format(aLine, sizeof(aLine), VL(GS(), pP, "difficulty.selected", u8"✓ %s"), pLabel);
+				else
+					str_copy(aLine, pLabel, sizeof(aLine));
+				AddVote(aLine, aCmd, m_VoteBuildClientID);
+			}
+		}
+		else
+			AddVote_TextLine(VL(GS(), pP, "difficulty.unavailable", u8"当前无法更改难度。"));
+		AddVote_TextLine(VL(GS(), pP, "difficulty.hint", u8"仅第 1 波开始前可更改"));
+		AddVote_TextLine(VL(GS(), pP, "menu.sep.long", "---------------------"));
 	}
 	break;
 
@@ -658,6 +691,9 @@ void CVoteMenuManager::ClearVotes(int ClientID)
 	GS()->Server()->SendPackMsg(&ClearMsg, MSGFLAG_VITAL, ClientID);
 
 	InitVotes(ClientID);
+
+	// make some noise
+	GS()->m_World.CreateSound(GS()->m_apPlayers[ClientID]->m_ViewPos, SOUND_WEAPON_NOAMMO, CmaskOne(ClientID));
 }
 
 bool CVoteMenuManager::TryHandleVoteMenuOption(int ClientID, const char *pDescription)

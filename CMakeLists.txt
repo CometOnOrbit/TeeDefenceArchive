@@ -640,6 +640,7 @@ set_src(ENGINE_SERVER GLOB src/engine/server
 )
 set_src(GAME_SERVER GLOB_RECURSE src/game/server
   account.cpp
+  account_crypto.cpp
   account.h
   alloc.h
   ai/defence.cpp
@@ -756,14 +757,16 @@ if(ENABLE_MYSQL)
   endif()
 endif()
 
-if(ENABLE_MYSQL AND MYSQL_CLIENT_INCLUDE_DIR AND MYSQL_CLIENT_LIBRARIES)
-  target_compile_definitions(${TARGET_SERVER} PRIVATE CONF_MYSQL=1)
-  target_include_directories(${TARGET_SERVER} PRIVATE ${MYSQL_CLIENT_INCLUDE_DIR})
-  target_link_libraries(${TARGET_SERVER} ${MYSQL_CLIENT_LIBRARIES})
-  message(STATUS " * MySQL client for accounts: yes")
-else()
-  message(STATUS " * MySQL client for accounts: no (optional)")
+if(NOT ENABLE_MYSQL)
+  message(FATAL_ERROR "TeeDefense requires ENABLE_MYSQL=ON (account system is mandatory).")
 endif()
+if(NOT MYSQL_CLIENT_INCLUDE_DIR OR NOT MYSQL_CLIENT_LIBRARIES)
+  message(FATAL_ERROR "TeeDefense requires MySQL client (libmysqlclient or mariadb). Install dev package and re-run CMake.")
+endif()
+target_compile_definitions(${TARGET_SERVER} PRIVATE CONF_MYSQL=1)
+target_include_directories(${TARGET_SERVER} PRIVATE ${MYSQL_CLIENT_INCLUDE_DIR})
+target_link_libraries(${TARGET_SERVER} ${MYSQL_CLIENT_LIBRARIES})
+message(STATUS " * MySQL client for accounts: yes (required)")
 
 list(APPEND TARGETS_OWN ${TARGET_SERVER})
 list(APPEND TARGETS_LINK ${TARGET_SERVER})

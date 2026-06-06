@@ -4,6 +4,7 @@
 #include <engine/shared/config.h>
 
 #include <game/server/gamecontext.h>
+#include <game/server/gamecontroller.h>
 #include <game/server/player.h>
 
 #include "character.h"
@@ -25,7 +26,15 @@ CTowerMain::CTowerMain(CGameWorld *pGameWorld, vec2 StandPos)
 
 	GameWorld()->InsertEntity(this);
 
-	m_Health = GameWorld()->Config()->m_SvMaxTowerHealth;
+	m_Health = GetMaxHealth();
+}
+
+int CTowerMain::GetMaxHealth()
+{
+	CGameContext *pCtx = GameWorld()->GameServer();
+	if(pCtx && pCtx->m_pController)
+		return static_cast<CGameController *>(pCtx->m_pController)->TdGetDifficultyTowerMaxHealth();
+	return GameWorld()->Config()->m_SvMaxTowerHealth;
 }
 
 CTowerMain::~CTowerMain()
@@ -68,7 +77,7 @@ void CTowerMain::Tick()
 			if(Server()->Tick() % Server()->TickSpeed() == 0)
 			{
 				pChr->IncreaseHealth(3);
-				GameServer()->SendBroadcastLocF(ClientID, "tower.heal_broadcast", "Tower: %d / %d", m_Health, GameWorld()->Config()->m_SvMaxTowerHealth);
+				GameServer()->SendBroadcastLocF(ClientID, "tower.heal_broadcast", "Tower: %d / %d", m_Health, GetMaxHealth());
 			}
 		}
 	}
@@ -76,12 +85,12 @@ void CTowerMain::Tick()
 
 void CTowerMain::Reset()
 {
-	m_Health = GameWorld()->Config()->m_SvMaxTowerHealth;
+	m_Health = GetMaxHealth();
 }
 
 void CTowerMain::SetHealth(int Health)
 {
-	m_Health = clamp(Health, 0, GameWorld()->Config()->m_SvMaxTowerHealth);
+	m_Health = clamp(Health, 0, GetMaxHealth());
 }
 
 void CTowerMain::Snap(int SnappingClient)

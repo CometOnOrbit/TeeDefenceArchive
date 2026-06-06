@@ -13,6 +13,7 @@
 #include <game/server/core/tworld_controller.h>
 #include <game/server/entities/character.h>
 #include <game/server/gamecontext.h>
+#include <game/server/gamecontroller.h>
 #include <game/server/item_card_ops.h>
 #include <game/server/item_system.h>
 #include <game/server/player.h>
@@ -458,6 +459,31 @@ static void ComVoteTravel(IConsole::IResult *pResult, void *pUser)
 		pGame->Core()->TravelManager()->Execute(pCtx->m_ClientID, pResult->GetInteger(0));
 }
 
+static void ComVoteSetDifficulty(IConsole::IResult *pResult, void *pUser)
+{
+	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	const int CID = pCtx->m_ClientID;
+	if(CID < 0 || !pGame->m_pController)
+		return;
+	CGameController *pCtrl = static_cast<CGameController *>(pGame->m_pController);
+	const int Diff = pResult->GetInteger(0);
+	if(!pCtrl->TdSetDifficulty(Diff))
+	{
+		pGame->SendChatLoc(CID, "difficulty.locked", u8"第 1 波已开始，无法更改难度。");
+		return;
+	}
+	static const char *const s_apKeys[NUM_TD_DIFF] = {"difficulty.easy", "difficulty.normal", "difficulty.hard"};
+	static const char *const s_apFallback[NUM_TD_DIFF] = {u8"简单", u8"普通", u8"困难"};
+	const int D = clamp(Diff, 0, 2);
+	pGame->SendChatLocF(CID, "difficulty.changed", u8"难度已设为：%s", pGame->Loc(CID, s_apKeys[D], s_apFallback[D]));
+	if(pGame->Core() && pGame->Core()->VoteMenuManager())
+	{
+		pGame->Core()->VoteMenuManager()->GetPlayerVote(CID)->m_Page = PAGE_DIFFICULTY;
+		pGame->Core()->VoteMenuManager()->ClearVotes(CID);
+	}
+}
+
 static void ComVoteResetAmmo(IConsole::IResult *pResult, void *pUser)
 {
 	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
@@ -487,6 +513,7 @@ void CCraftManager::RegisterVoteCommands(CCommandManager *pMgr)
 	pMgr->AddCommand("menubumpammo", "", "ii", ComVoteBumpAmmo, pGame);
 	pMgr->AddCommand("menuresetammo", "", "", ComVoteResetAmmo, pGame);
 	pMgr->AddCommand("menutravel", "", "i", ComVoteTravel, pGame);
+	pMgr->AddCommand("menudifficulty", "", "i", ComVoteSetDifficulty, pGame);
 }
 
 void CCraftManager::RegisterChatCommands(CCommandManager *pMgr)

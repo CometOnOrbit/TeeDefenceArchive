@@ -2,6 +2,9 @@
 
 #include "account.h"
 
+#include "account_crypto.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <engine/console.h>
@@ -64,20 +67,94 @@ static bool SqlExec(MYSQL *pSql, const char *pQuery)
 	return true;
 }
 
+static bool ColumnExists(MYSQL *pSql, const char *pTable, const char *pColumn)
+{
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery), "SHOW COLUMNS FROM `%s` LIKE '%s'", pTable, pColumn);
+	if(!SqlExec(pSql, aQuery))
+		return false;
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	const bool Exists = pRes && mysql_num_rows(pRes) > 0;
+	if(pRes)
+		mysql_free_result(pRes);
+	return Exists;
+}
+
+static void SerializeHolding(const int *pHolding, char *pOut, int OutLen)
+{
+	str_format(pOut, OutLen,
+		"{\"pickaxe\":%d,\"axe\":%d,\"sword\":%d,\"turret\":%d}",
+		pHolding[ITYPE_PICKAXE], pHolding[ITYPE_AXE], pHolding[ITYPE_SWORD], pHolding[ITYPE_TURRET]);
+}
+
+static bool ParseHoldingJson(const char *pJson, int *pHolding)
+{
+	if(!pJson || !pJson[0])
+		return false;
+	int aVals[4] = {0};
+	const int n = sscanf(pJson, "{\"pickaxe\":%d,\"axe\":%d,\"sword\":%d,\"turret\":%d}", &aVals[0], &aVals[1], &aVals[2], &aVals[3]);
+	if(n != 4)
+		return false;
+	pHolding[ITYPE_PICKAXE] = aVals[0];
+	pHolding[ITYPE_AXE] = aVals[1];
+	pHolding[ITYPE_SWORD] = aVals[2];
+	pHolding[ITYPE_TURRET] = aVals[3];
+	return true;
+}
+
+static bool LoadHoldingFromRow(MYSQL_ROW Row, int SwordCol, int PickaxeCol, int AxeCol, int HoldingCol, int *pHolding)
+{
+	mem_zero(pHolding, sizeof(int) * NUM_ITYPE);
+	if(HoldingCol >= 0 && Row[HoldingCol] && Row[HoldingCol][0])
+	{
+		if(ParseHoldingJson(Row[HoldingCol], pHolding))
+			return true;
+	}
+	if(SwordCol >= 0 || PickaxeCol >= 0 || AxeCol >= 0)
+	{
+		pHolding[ITYPE_SWORD] = SwordCol >= 0 && Row[SwordCol] ? str_toint(Row[SwordCol]) : 0;
+		pHolding[ITYPE_PICKAXE] = PickaxeCol >= 0 && Row[PickaxeCol] ? str_toint(Row[PickaxeCol]) : 0;
+		pHolding[ITYPE_AXE] = AxeCol >= 0 && Row[AxeCol] ? str_toint(Row[AxeCol]) : 0;
+		return true;
+	}
+	return false;
+}
+
+static bool MigrateAccountsTable(MYSQL *pSql)
+{
+	if(!ColumnExists(pSql, "tw_Accounts", "Holding"))
+	{
+		if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` ADD COLUMN `Holding` JSON DEFAULT NULL"))
+			return false;
+	}
+	if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` MODIFY COLUMN `Password` varchar(128) NOT NULL"))
+		return false;
+	if(ColumnExists(pSql, "tw_Accounts", "Sword"))
+	{
+		if(!SqlExec(pSql,
+			"UPDATE `tw_Accounts` SET `Holding`=JSON_OBJECT("
+			"'pickaxe', IFNULL(`Pickaxe`,0), 'axe', IFNULL(`Axe`,0), 'sword', IFNULL(`Sword`,0), 'turret', 0) "
+			"WHERE `Holding` IS NULL"))
+			return false;
+	}
+	return true;
+}
+
 static bool EnsureSchema(MYSQL *pSql)
 {
 	const char *pAccounts =
 		"CREATE TABLE IF NOT EXISTS `tw_Accounts` ("
 		"  `UserID` int NOT NULL AUTO_INCREMENT,"
 		"  `Username` varchar(64) NOT NULL,"
-		"  `Password` varchar(64) NOT NULL,"
+		"  `Password` varchar(128) NOT NULL,"
 		"  `Language` varchar(64) NOT NULL DEFAULT 'zh-cn',"
-		"  `Sword` int NOT NULL DEFAULT 0,"
-		"  `Pickaxe` int NOT NULL DEFAULT 0,"
-		"  `Axe` int NOT NULL DEFAULT 0,"
-		"  PRIMARY KEY (`UserID`)"
+		"  `Holding` JSON DEFAULT NULL,"
+		"  PRIMARY KEY (`UserID`),"
+		"  UNIQUE KEY `idx_username` (`Username`)"
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
 	if(!SqlExec(pSql, pAccounts))
+		return false;
+	if(!MigrateAccountsTable(pSql))
 		return false;
 
 	const char *pItems =
@@ -85,7 +162,8 @@ static bool EnsureSchema(MYSQL *pSql)
 		"  `UserID` INT NOT NULL,"
 		"  `ItemID` INT NOT NULL,"
 		"  `Num` INT NOT NULL,"
-		"  `Extra` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`Extra`))"
+		"  `Extra` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`Extra`)),"
+		"  PRIMARY KEY (`UserID`, `ItemID`)"
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
 	return SqlExec(pSql, pItems);
 }
@@ -180,16 +258,16 @@ bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pCons
 	m_Enabled = false;
 
 #ifndef CONF_MYSQL
-	dbg_msg("acc", "built without MySQL (install client + enable CONF_MYSQL in CMake)");
-	return true;
+	dbg_msg("acc", "FATAL: server built without MySQL — TeeDefense requires CONF_MYSQL");
+	return false;
 #else
 	if(!pGame || !pEngine || !pConfig)
 		return false;
 
 	if(!pConfig->m_SvMysqlEnable)
 	{
-		dbg_msg("acc", "MySQL accounts disabled (sv_mysql_enable 0)");
-		return true;
+		dbg_msg("acc", "FATAL: sv_mysql_enable must be 1 (MySQL is required)");
+		return false;
 	}
 
 	const int DbPort = pConfig->m_SvMysqlPort ? pConfig->m_SvMysqlPort : 3306;
@@ -216,6 +294,7 @@ bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pCons
 	}
 	m_Pool.Release(pRaw);
 
+	secure_random_init();
 	m_Enabled = true;
 	dbg_msg("acc", "MySQL account system ready (pool=%d, TeeDef tw_*)", PoolSize);
 	return true;
@@ -343,9 +422,16 @@ int CAccountSystem::JobRunner(void *pData)
 	if(pSlot->m_Type == JOB_REGISTER)
 	{
 		char aEscUser[128];
-		char aEscPass[128];
+		char aHash[128];
+		char aEscHash[256];
 		mysql_real_escape_string(pSql, aEscUser, pSlot->m_Sync.m_aUsername, str_length(pSlot->m_Sync.m_aUsername));
-		mysql_real_escape_string(pSql, aEscPass, pSlot->m_Sync.m_aPassword, str_length(pSlot->m_Sync.m_aPassword));
+		if(!AccountPasswordHash(pSlot->m_Sync.m_aPassword, aHash, sizeof(aHash)))
+		{
+			pSlot->m_Error = 102;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+		mysql_real_escape_string(pSql, aEscHash, aHash, str_length(aHash));
 
 		char aQuery[512];
 		str_format(aQuery, sizeof(aQuery), "SELECT UserID FROM tw_Accounts WHERE Username='%s' LIMIT 1", aEscUser);
@@ -367,7 +453,7 @@ int CAccountSystem::JobRunner(void *pData)
 		if(pRes)
 			mysql_free_result(pRes);
 
-		str_format(aQuery, sizeof(aQuery), "INSERT INTO tw_Accounts(Username, Password) VALUES ('%s','%s')", aEscUser, aEscPass);
+		str_format(aQuery, sizeof(aQuery), "INSERT INTO tw_Accounts(Username, Password) VALUES ('%s','%s')", aEscUser, aEscHash);
 		if(!SqlExec(pSql, aQuery))
 		{
 			pSlot->m_Error = 102;
@@ -380,12 +466,18 @@ int CAccountSystem::JobRunner(void *pData)
 	else if(pSlot->m_Type == JOB_LOGIN)
 	{
 		char aEscUser[128];
-		char aEscPass[128];
 		mysql_real_escape_string(pSql, aEscUser, pSlot->m_Sync.m_aUsername, str_length(pSlot->m_Sync.m_aUsername));
-		mysql_real_escape_string(pSql, aEscPass, pSlot->m_Sync.m_aPassword, str_length(pSlot->m_Sync.m_aPassword));
 
-		char aQuery[512];
-		str_format(aQuery, sizeof(aQuery), "SELECT UserID FROM tw_Accounts WHERE Username='%s' LIMIT 1", aEscUser);
+		const bool HasLegacyCols = ColumnExists(pSql, "tw_Accounts", "Sword");
+		char aQuery[768];
+		if(HasLegacyCols)
+			str_format(aQuery, sizeof(aQuery),
+				"SELECT UserID,Username,Password,Language,IFNULL(Holding,''),Sword,Pickaxe,Axe FROM tw_Accounts WHERE Username='%s' LIMIT 1",
+				aEscUser);
+		else
+			str_format(aQuery, sizeof(aQuery),
+				"SELECT UserID,Username,Password,Language,IFNULL(Holding,'') FROM tw_Accounts WHERE Username='%s' LIMIT 1",
+				aEscUser);
 
 		if(!SqlExec(pSql, aQuery))
 		{
@@ -403,28 +495,6 @@ int CAccountSystem::JobRunner(void *pData)
 			pSys->m_Pool.Release(pSql);
 			return -1;
 		}
-		mysql_free_result(pRes);
-
-		str_format(aQuery, sizeof(aQuery),
-			"SELECT UserID,Username,Password,Language,Sword,Pickaxe,Axe FROM tw_Accounts WHERE Username='%s' AND Password='%s' LIMIT 1",
-			aEscUser, aEscPass);
-
-		if(!SqlExec(pSql, aQuery))
-		{
-			pSlot->m_Error = 103;
-			pSys->m_Pool.Release(pSql);
-			return -1;
-		}
-
-		pRes = mysql_store_result(pSql);
-		if(!pRes || mysql_num_rows(pRes) == 0)
-		{
-			if(pRes)
-				mysql_free_result(pRes);
-			pSlot->m_Error = 3;
-			pSys->m_Pool.Release(pSql);
-			return -1;
-		}
 
 		MYSQL_ROW Row = mysql_fetch_row(pRes);
 		if(!Row || !Row[0] || !Row[1] || !Row[2])
@@ -435,16 +505,43 @@ int CAccountSystem::JobRunner(void *pData)
 			return -1;
 		}
 
+		const char *pStoredPass = Row[2];
+		char aUpgradeHash[128];
+		aUpgradeHash[0] = 0;
+		if(!AccountPasswordVerify(pSlot->m_Sync.m_aPassword, pStoredPass, aUpgradeHash, sizeof(aUpgradeHash)))
+		{
+			mysql_free_result(pRes);
+			pSlot->m_Error = 3;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
+
 		pSlot->m_AccountId = (int64)atoll(Row[0]);
 		str_copy(pSlot->m_Sync.m_aUsername, Row[1], sizeof(pSlot->m_Sync.m_aUsername));
-		str_copy(pSlot->m_Sync.m_aPassword, Row[2], sizeof(pSlot->m_Sync.m_aPassword));
+		pSlot->m_Sync.m_aPassword[0] = 0;
 		str_copy(pSlot->m_Sync.m_aLanguage, Row[3] ? Row[3] : "zh-cn", sizeof(pSlot->m_Sync.m_aLanguage));
 
-		pSlot->m_Sync.m_Holding[ITYPE_SWORD] = str_toint(Row[4] ? Row[4] : "0");
-		pSlot->m_Sync.m_Holding[ITYPE_PICKAXE] = str_toint(Row[5] ? Row[5] : "0");
-		pSlot->m_Sync.m_Holding[ITYPE_AXE] = str_toint(Row[6] ? Row[6] : "0");
+		if(HasLegacyCols)
+			LoadHoldingFromRow(Row, 5, 6, 7, 4, pSlot->m_Sync.m_Holding);
+		else
+			LoadHoldingFromRow(Row, -1, -1, -1, 4, pSlot->m_Sync.m_Holding);
 
 		mysql_free_result(pRes);
+
+		if(aUpgradeHash[0])
+		{
+			char aEscHash[256];
+			mysql_real_escape_string(pSql, aEscHash, aUpgradeHash, str_length(aUpgradeHash));
+			str_format(aQuery, sizeof(aQuery), "UPDATE tw_Accounts SET Password='%s' WHERE UserID=%lld", aEscHash, (long long)pSlot->m_AccountId);
+			SqlExec(pSql, aQuery);
+		}
+
+		char aHoldingJson[128];
+		SerializeHolding(pSlot->m_Sync.m_Holding, aHoldingJson, sizeof(aHoldingJson));
+		char aEscHolding[256];
+		mysql_real_escape_string(pSql, aEscHolding, aHoldingJson, str_length(aHoldingJson));
+		str_format(aQuery, sizeof(aQuery), "UPDATE tw_Accounts SET Holding='%s' WHERE UserID=%lld AND Holding IS NULL", aEscHolding, (long long)pSlot->m_AccountId);
+		SqlExec(pSql, aQuery);
 
 		if(!LoadItemsForUser(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync))
 		{
@@ -458,20 +555,18 @@ int CAccountSystem::JobRunner(void *pData)
 	else if(pSlot->m_Type == JOB_SAVE_ACCOUNT)
 	{
 		char aEscUser[128];
-		char aEscPass[128];
 		char aEscLang[128];
+		char aHoldingJson[128];
+		char aEscHolding[256];
 		mysql_real_escape_string(pSql, aEscUser, pSlot->m_Sync.m_aUsername, str_length(pSlot->m_Sync.m_aUsername));
-		mysql_real_escape_string(pSql, aEscPass, pSlot->m_Sync.m_aPassword, str_length(pSlot->m_Sync.m_aPassword));
 		mysql_real_escape_string(pSql, aEscLang, pSlot->m_Sync.m_aLanguage, str_length(pSlot->m_Sync.m_aLanguage));
+		SerializeHolding(pSlot->m_Sync.m_Holding, aHoldingJson, sizeof(aHoldingJson));
+		mysql_real_escape_string(pSql, aEscHolding, aHoldingJson, str_length(aHoldingJson));
 
 		char aQuery[1024];
 		str_format(aQuery, sizeof(aQuery),
-			"UPDATE tw_Accounts SET Username='%s',Password='%s',Language='%s',Sword=%d,Axe=%d,Pickaxe=%d WHERE UserID=%lld",
-			aEscUser, aEscPass, aEscLang,
-			pSlot->m_Sync.m_Holding[ITYPE_SWORD],
-			pSlot->m_Sync.m_Holding[ITYPE_AXE],
-			pSlot->m_Sync.m_Holding[ITYPE_PICKAXE],
-			(long long)pSlot->m_AccountId);
+			"UPDATE tw_Accounts SET Username='%s',Language='%s',Holding='%s' WHERE UserID=%lld",
+			aEscUser, aEscLang, aEscHolding, (long long)pSlot->m_AccountId);
 		if(!SqlExec(pSql, aQuery))
 			pSlot->m_Error = 105;
 		else
@@ -544,15 +639,11 @@ void CAccountSystem::PumpCompletedJobs()
 			{
 				pP->SetAccountId(Slot.m_AccountId);
 				mem_copy(&pP->m_AccData, &Slot.m_Sync, sizeof(pP->m_AccData));
+				pP->m_AccData.m_aPassword[0] = 0;
 				pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
-				if(!pP->m_AccData.m_Holding[ITYPE_PICKAXE] && !pP->m_AccData.m_Holding[ITYPE_AXE] && !pP->m_AccData.m_Holding[ITYPE_SWORD])
-				{
-					pP->m_AccData.m_Holding[ITYPE_PICKAXE] = ITEM_PICKAXE_LOG;
-					pP->m_AccData.m_Holding[ITYPE_AXE] = ITEM_AXE_LOG;
-					pP->m_AccData.m_Holding[ITYPE_SWORD] = ITEM_SWORD_LOG;
-				}
 				m_pGame->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
 				m_pGame->SendCommunityInfo(ClientId);
+				m_pGame->EnterGame(ClientId);
 				if(SPlayerVote *pV = m_pGame->GetPlayerVote(ClientId))
 					pV->m_Page = PAGE_MENU;
 				m_pGame->ClearVotes(ClientId);
@@ -628,9 +719,9 @@ void CAccountSystem::ComChatRegister(IConsole::IResult *pResult, void *pUser)
 	const char *pU = pResult->GetString(0);
 	const char *pPw = pResult->GetString(1);
 
-	if(!pAcc || !pAcc->m_Enabled)
+	if(!pAcc || !pAcc->IsEnabled())
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", u8"服务器未启用账号系统。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", u8"MySQL 账号系统不可用，请联系管理员。");
 		return;
 	}
 	if(!UsernameOk(pU) || !PasswordOk(pPw))
@@ -653,9 +744,9 @@ void CAccountSystem::ComChatLogin(IConsole::IResult *pResult, void *pUser)
 	const char *pU = pResult->GetString(0);
 	const char *pPw = pResult->GetString(1);
 
-	if(!pAcc || !pAcc->m_Enabled)
+	if(!pAcc || !pAcc->IsEnabled())
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", u8"服务器未启用账号系统。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", u8"MySQL 账号系统不可用，请联系管理员。");
 		return;
 	}
 	if(!UsernameOk(pU) || !PasswordOk(pPw))

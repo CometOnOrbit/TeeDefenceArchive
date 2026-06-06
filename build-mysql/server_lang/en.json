@@ -149,7 +149,6 @@
     "cmd.equip.help": "Equip tool i[itemid]",
     "cmd.inv.help": "List inventory",
     "cmd.language.help": "Switch language: zh-cn / en",
-    "kick.inactivity": "Kicked for inactivity",
     "vote.no_reason": "No reason given",
     "vote.kick.reason": "Kicked by vote",
     "vote.ban.reason": "Banned by vote",

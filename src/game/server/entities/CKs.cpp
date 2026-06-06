@@ -12,6 +12,8 @@
 #include "CKs.h"
 #include "character.h"
 
+static const int CK_BARE_HAND_DAMAGE = 10;
+
 CKs::CKs(CGameWorld *pGameWorld, int Type, vec2 Pos)
 	: CEntity(pGameWorld, CGameWorld::ENTTYPE_PICKUP, CGameWorld::ENTFLAG_CKS, Pos, ms_PhysSize)
 {
@@ -71,7 +73,8 @@ void CKs::Tick()
 			pChr->m_InMining = true;
 			GameServer()->m_World.CreateSound(m_Pos, SOUND_HAMMER_FIRE);
 
-			const int BaseDmg = GameServer()->ItemHelper()->GetDmg(pChr->GetPlayer()->m_AccData.m_Holding[Tool]);
+			const int HoldingId = pChr->GetPlayer()->m_AccData.m_Holding[Tool];
+			const int BaseDmg = HoldingId ? GameServer()->ItemHelper()->GetDmg(HoldingId) : CK_BARE_HAND_DAMAGE;
 			Picking(BaseDmg, pChr->GetPlayer());
 		}
 	}
@@ -92,20 +95,26 @@ void CKs::RewardIfDestroyed(CPlayer *pPlayer)
 		GameServer()->Accounts()->RequestSaveItems(CID);
 }
 
-void CKs::Picking(int Time, CPlayer *Player)
+void CKs::Picking(int BaseDmg, CPlayer *Player)
 {
 	int HoldKind = ITYPE_PICKAXE;
 	if(m_Type == ITEM_LOG)
 		HoldKind = ITYPE_AXE;
 
-	const char *pHoldingExtra = Player->GetExtraForItem(Player->GetHolding(HoldKind));
+	const int HoldingId = Player->GetHolding(HoldKind);
 	CItemHelper *pH = GameServer()->ItemHelper();
+	const char *pHoldingExtra = HoldingId ? Player->GetExtraForItem(HoldingId) : "";
 
-	const int CardDmg = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID) : 0;
-
-	int DmgPart = Time * (1 + CardDmg);
-	if(HoldKind == ITYPE_AXE && CardDmg == 0)
-		DmgPart = Time * 2;
+	int DmgPart;
+	if(!HoldingId)
+		DmgPart = CK_BARE_HAND_DAMAGE;
+	else
+	{
+		const int CardDmg = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID) : 0;
+		DmgPart = BaseDmg * (1 + CardDmg);
+		if(HoldKind == ITYPE_AXE && CardDmg == 0)
+			DmgPart = BaseDmg * 2;
+	}
 
 	m_Health -= DmgPart;
 	RewardIfDestroyed(Player);

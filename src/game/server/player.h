@@ -176,6 +176,7 @@ public:
 	int m_ScoreStartTick;
 	int m_LastActionTick;
 	int m_TeamChangeTick;
+	int m_NextLoginHintTick;
 
 	int m_InactivityTickCounter;
 

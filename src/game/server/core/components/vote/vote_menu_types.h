@@ -17,6 +17,7 @@ enum EVoteMenuPage
 	PAGE_TURRET_AMMO,
 	PAGE_WORLDS,
 	PAGE_COMMUNITY,
+	PAGE_DIFFICULTY,
 };
 
 struct SPlayerVote

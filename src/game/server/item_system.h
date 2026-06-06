@@ -95,7 +95,7 @@ struct SPlayerItemData
 struct SAccSyncData
 {
 	char m_aUsername[64];
-	char m_aPassword[64];
+	char m_aPassword[128];
 	char m_aLanguage[64];
 	int m_Holding[NUM_ITYPE];
 	int m_ItemCount[NUM_ITYPE];

@@ -8,7 +8,7 @@ void CAccountManager::OnPostInit()
 	if(!GS() || !Engine())
 		return;
 	if(!m_Accounts.Init(GS(), Engine(), Console(), GS()->Config()))
-		dbg_msg("server", "account subsystem failed (see sv_mysql_* / MySQL client install)");
+		dbg_msg("server", "FATAL: MySQL account subsystem failed (see sv_mysql_* / database)");
 }
 
 void CAccountManager::OnConsoleInit()

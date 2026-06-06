@@ -1,6 +1,8 @@
 #ifndef GAME_SERVER_COMPONENT_DEFENCE_BOT_MANAGER_H
 #define GAME_SERVER_COMPONENT_DEFENCE_BOT_MANAGER_H
 
+// TODO(roadmap): Defence ally bots — recruit/deploy friendly AI dummies (manager exists, no spawn entry yet).
+
 #include <base/vmath.h>
 #include <engine/shared/protocol.h>
 #include <generated/protocol.h>

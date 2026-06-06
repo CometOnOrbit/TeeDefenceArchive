@@ -2,6 +2,7 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <base/math.h>
 
@@ -302,6 +303,39 @@ int CGameContext::TdQQGroup() const
 int CGameContext::TdQQSponsor() const
 {
 	return Config()->m_SvTdQQSponsor;
+}
+
+bool CGameContext::RequiresLoginToPlay(const CPlayer *pPlayer) const
+{
+	return Accounts() && Accounts()->IsEnabled() && pPlayer && !pPlayer->IsDummy();
+}
+
+void CGameContext::EnforceSpectatorUntilLogin(CPlayer *pPlayer)
+{
+	if(!RequiresLoginToPlay(pPlayer) || pPlayer->GetAccountId() >= 0)
+		return;
+
+	if(pPlayer->GetCharacter())
+		pPlayer->KillCharacter(WEAPON_GAME);
+
+	if(pPlayer->GetTeam() != TEAM_SPECTATORS)
+		m_pController->DoTeamChange(pPlayer, TEAM_SPECTATORS, false);
+}
+
+void CGameContext::EnterGame(int ClientID)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || !m_apPlayers[ClientID])
+		return;
+	CPlayer *pP = m_apPlayers[ClientID];
+	if(!RequiresLoginToPlay(pP) || pP->GetAccountId() < 0)
+		return;
+
+	if(pP->GetTeam() != TEAM_RED)
+		m_pController->DoTeamChange(pP, TEAM_RED, false);
+	pP->Respawn();
+
+	SendChatLoc(ClientID, "account.enter_game", u8"已加入防守方，祝你好运！");
+	SendBroadcastLoc(ClientID, "account.enter_game_broadcast", u8"你已加入游戏 — 守护主塔！");
 }
 
 void CGameContext::SendChatAllLoc(const char *pKey, const char *pDefault)
@@ -884,7 +918,8 @@ void CGameContext::OnClientEnter(int ClientID)
 
 void CGameContext::OnClientConnected(int ClientID, bool Dummy, bool AsSpec)
 {
-	m_apPlayers[ClientID] = new(ClientID) CPlayer(this, ClientID, Dummy, AsSpec);
+	const bool ForceSpec = !Dummy && Accounts() && Accounts()->IsEnabled();
+	m_apPlayers[ClientID] = new(ClientID) CPlayer(this, ClientID, Dummy, AsSpec || ForceSpec);
 	m_apPlayers[ClientID]->m_IsReadyToEnter = false;
 	GetPlayerVote(ClientID)->Reset();
 
@@ -1235,6 +1270,11 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 					m_VoteUpdate = true;
 				pPlayer->m_TeamChangeTick = Server()->Tick() + Server()->TickSpeed() * 3;
 				m_pController->DoTeamChange(pPlayer, pMsg->m_Team);
+			}
+			else if(RequiresLoginToPlay(pPlayer) && pPlayer->GetAccountId() < 0 && pMsg->m_Team == TEAM_RED)
+			{
+				SendChatLoc(ClientID, "login.hint", u8"本服务器需要 MySQL 账号 — 使用 /register 或 /login");
+				SendBroadcastLoc(ClientID, "login.broadcast", u8"旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
 			}
 		}
 		else if(MsgID == NETMSGTYPE_CL_SETSPECTATORMODE)
@@ -1713,6 +1753,12 @@ void CGameContext::OnInit()
 	IEngine *pEngine = Kernel()->RequestInterface<IEngine>();
 	m_pTWorld->OnInit(m_pServer, m_pConsole, m_pStorage, pEngine);
 
+	if(!Accounts() || !Accounts()->IsEnabled())
+	{
+		dbg_msg("server", "FATAL: MySQL account system is required but failed to start (check sv_mysql_* and database)");
+		exit(1);
+	}
+
 	m_pController->RegisterChatCommands(CommandManager());
 
 	// create all entities from the game layer
@@ -1857,6 +1903,11 @@ int CGameContext::GetMaxPlayerSlots()
 }
 
 CAccountSystem *CGameContext::Accounts()
+{
+	return m_pTWorld ? m_pTWorld->Account() : nullptr;
+}
+
+const CAccountSystem *CGameContext::Accounts() const
 {
 	return m_pTWorld ? m_pTWorld->Account() : nullptr;
 }
