@@ -13,9 +13,11 @@
 #include <game/layers.h>
 #include <game/voting.h>
 
-#include "account.h"
+#include "core/components/vote/vote_menu_types.h"
 #include "gameworld.h"
 #include "item_system.h"
+class CAccountSystem;
+class TWorldController;
 
 class CBotEngine;
 
@@ -91,13 +93,16 @@ public:
 	class CGameController *m_pController;
 	CGameWorld m_World;
 	CCommandManager m_CommandManager;
-	CAccountSystem m_Accounts;
+	TWorldController *m_pTWorld;
 	CItemHelper *m_pItemHelper;
 	class CBotEngine *m_pBotEngine;
 
 	CCommandManager *CommandManager() { return &m_CommandManager; }
-	CAccountSystem *Accounts() { return &m_Accounts; }
+	CAccountSystem *Accounts();
+	TWorldController *Core() const { return m_pTWorld; }
+	TWorldController *TW() { return m_pTWorld; }
 	CItemHelper *ItemHelper() { return m_pItemHelper; }
+	const CItemHelper *ItemHelper() const { return m_pItemHelper; }
 	CBotEngine *BotEngine() { return m_pBotEngine; }
 
 	// helper functions
@@ -135,56 +140,7 @@ public:
 	CVoteOptionServer *m_pVoteOptionFirst;
 	CVoteOptionServer *m_pVoteOptionLast;
 
-	enum EVoteMenuPage
-	{
-		PAGE_MENU = 0,
-		PAGE_INVENTORY,
-		PAGE_CHECK_ITEM,
-		PAGE_CRAFT,
-		PAGE_CRAFT_SELECTED,
-		PAGE_EQUIPMENT,
-		PAGE_TURRET,
-	};
-
-	struct SPlayerVote
-	{
-		enum EVoteSelect
-		{
-			ITEMLIST = 0,
-			ITEM,
-			EQUIPMENT,
-			NUM_SELECT,
-		};
-
-		struct SVoteOptions
-		{
-			char m_aDescription[VOTE_DESC_LENGTH];
-			char m_aCommand[VOTE_CMD_LENGTH];
-		};
-
-		array<SVoteOptions> m_aVoteOptions;
-		int m_LastPage;
-		int m_Page;
-		int m_Select[NUM_SELECT];
-		bool m_Confirm;
-		char m_aExtraText[VOTE_DESC_LENGTH];
-
-		void Reset()
-		{
-			m_aVoteOptions.clear();
-			m_LastPage = 0;
-			m_Page = 0;
-			m_Confirm = false;
-			for(int i = 0; i < NUM_SELECT; i++)
-				m_Select[i] = 0;
-			m_aExtraText[0] = 0;
-		}
-	};
-
-	SPlayerVote m_aPlayerVotes[MAX_CLIENTS];
-	int m_VoteBuildClientID;
-
-	SPlayerVote *GetPlayerVote(int ClientID) { return &m_aPlayerVotes[ClientID]; }
+	SPlayerVote *GetPlayerVote(int ClientID);
 
 	void AddVote(const char *pDesc, const char *pCmd, int ClientID);
 	void AddVote_ListInventory(int ItemType, const char *pCmdPrefix, bool Equip = false);
@@ -196,7 +152,7 @@ public:
 	void AddVote_Goto(int Page, const char *pDesc);
 	void AddVote_TextLine(const char *pText);
 	void SetVoteLastPage(int Page);
-	void SetVoteBuildClientID(int CID) { m_VoteBuildClientID = CID; }
+	void SetVoteBuildClientID(int CID);
 
 	void InitVotes(int ClientID);
 	void ClearVotes(int ClientID);
@@ -204,9 +160,23 @@ public:
 	bool TryHandleVoteMenuOption(int ClientID, const char *pDescription);
 	void ProcessVoteMenuCommand(int ClientID, const char *pCmdLine);
 
+	// localization (server_lang via index.json)
+	const char *LangOf(int ClientID) const;
+	const char *Loc(int ClientID, const char *pKey, const char *pDefault) const;
+	void LocFormat(char *pBuf, int BufSize, int ClientID, const char *pKey, const char *pDefault, ...) const;
+	const char *LocItemName(int ClientID, int ID, bool IncludeZero = true) const;
+	int ResolveItemId(int ClientID, const char *pToken) const;
+
 	// ----- send functions -----
 	void SendChat(int ChatterClientID, int Mode, int To, const char *pText);
+	void SendChatTo(int ToClientID, const char *pText);
+	void SendChatLoc(int ToClientID, const char *pKey, const char *pDefault);
+	void SendChatLocF(int ToClientID, const char *pKey, const char *pDefault, ...);
+	void SendChatAllLoc(const char *pKey, const char *pDefault);
+	void SendChatAllLocF(const char *pKey, const char *pDefault, ...);
 	void SendBroadcast(int ClientID, const char *pText);
+	void SendBroadcastLoc(int ClientID, const char *pKey, const char *pDefault);
+	void SendBroadcastLocF(int ClientID, const char *pKey, const char *pDefault, ...);
 	void SendEmoticon(int ClientID, int Emoticon);
 	void SendWeaponPickup(int ClientID, int Weapon);
 	void SendMotd(int ClientID);
@@ -271,7 +241,17 @@ public:
 };
 
 inline int64 CmaskAll() { return -1; }
-inline int64 CmaskOne(int ClientID) { return (int64) 1 << ClientID; }
+inline int64 CmaskOne(int ClientID)
+{
+	if(ClientID < 0 || ClientID >= MAX_HUMAN_CLIENTS)
+		return 0;
+	return (int64)1 << ClientID;
+}
 inline int64 CmaskAllExceptOne(int ClientID) { return CmaskAll() ^ CmaskOne(ClientID); }
-inline bool CmaskIsSet(int64 Mask, int ClientID) { return (Mask & CmaskOne(ClientID)) != 0; }
+inline bool CmaskIsSet(int64 Mask, int ClientID)
+{
+	if(ClientID < 0 || ClientID >= MAX_HUMAN_CLIENTS)
+		return false;
+	return (Mask & CmaskOne(ClientID)) != 0;
+}
 #endif

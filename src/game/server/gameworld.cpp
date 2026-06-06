@@ -4,6 +4,8 @@
 #include <generated/server_data.h>
 
 #include "entities/character.h"
+#include "entities/growingexplosion.h"
+#include "entities/plasma.h"
 #include "entity.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
@@ -149,14 +151,14 @@ void CGameWorld::RemoveEntities()
 
 void CGameWorld::Tick()
 {
-	// update all objects
+	// update all objects (index loop: Tick() may InsertEntity into any list)
 	for(int i = 0; i < NUM_ENTTYPES; i++)
-		for(auto &pEnt : m_alpEntityLists[i])
-			pEnt->Tick();
+		for(int j = 0; j < m_alpEntityLists[i].size(); j++)
+			m_alpEntityLists[i][j]->Tick();
 
 	for(int i = 0; i < NUM_ENTTYPES; i++)
-		for(auto &pEnt : m_alpEntityLists[i])
-			pEnt->TickDefered();
+		for(int j = 0; j < m_alpEntityLists[i].size(); j++)
+			m_alpEntityLists[i][j]->TickDefered();
 
 	RemoveEntities();
 }
@@ -187,6 +189,16 @@ CEntity *CGameWorld::IntersectEntity(vec2 Pos0, vec2 Pos1, float Radius, vec2 &N
 	}
 
 	return pClosest;
+}
+
+CCharacter *CGameWorld::IntersectCharacter(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, CCharacter *pNotThis)
+{
+	vec2 At;
+	CEntity *pHit = IntersectEntity(Pos0, Pos1, Radius, At, ENTTYPE_CHARACTER, pNotThis);
+	if(!pHit)
+		return nullptr;
+	NewPos = At;
+	return static_cast<CCharacter *>(pHit);
 }
 
 CEntity *CGameWorld::IntersectFlagEntity(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, int Flag, CEntity *pNotThis)
@@ -296,6 +308,21 @@ void CGameWorld::CreateHammerHit(vec2 Pos)
 		pEvent->m_X = (int) Pos.x;
 		pEvent->m_Y = (int) Pos.y;
 	}
+}
+
+int CGameWorld::DamageOwnerFromEntity(CEntity *pFrom) const
+{
+	if(!pFrom)
+		return -1;
+	if(pFrom->ObjType() == ENTTYPE_CHARACTER)
+		return static_cast<CCharacter *>(pFrom)->GetCID();
+	if(pFrom->ObjType() == ENTTYPE_GROWINGEXPLOSION)
+		return static_cast<CGrowingExplosion *>(pFrom)->GetOwner();
+	if(pFrom->ObjType() == ENTTYPE_PLASMA)
+		return static_cast<CPlasma *>(pFrom)->GetOwner();
+	if(pFrom->ObjFlag() & ENTFLAG_CHILD)
+		return static_cast<const CChildEntity *>(pFrom)->GetOwner();
+	return -1;
 }
 
 void CGameWorld::CreateExplosion(vec2 Pos, CEntity *pOwner, int Weapon, int MaxDamage)

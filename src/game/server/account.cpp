@@ -9,6 +9,8 @@
 #include <engine/shared/config.h>
 
 #include <game/commands.h>
+#include <game/server/core/components/vote/vote_menu_manager.h>
+#include <game/server/core/tworld_controller.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
 
@@ -518,22 +520,22 @@ void CAccountSystem::PumpCompletedJobs()
 			if(Slot.m_Error == 0)
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "注册成功。");
+					m_pGame->SendChatLoc(ClientId, "account.register.ok", u8"注册成功。");
 				if(!StartJob(JOB_LOGIN, ClientId, Slot.m_Sync.m_aUsername, Slot.m_Sync.m_aPassword))
 				{
 					if(pP && !pP->IsDummy())
-						m_pGame->SendChat(-1, CHAT_ALL, ClientId, "自动登录排队失败，请使用 /login。");
+						m_pGame->SendChatLoc(ClientId, "account.register.autologin_fail", u8"自动登录排队失败，请使用 /login。");
 				}
 			}
 			else if(Slot.m_Error == 1)
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "用户名已被占用。");
+					m_pGame->SendChatLoc(ClientId, "account.register.taken", u8"用户名已被占用。");
 			}
 			else
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "注册失败（服务器）。");
+					m_pGame->SendChatLoc(ClientId, "account.register.fail", u8"注册失败（服务器）。");
 			}
 		}
 		else if(Slot.m_Type == JOB_LOGIN)
@@ -542,28 +544,32 @@ void CAccountSystem::PumpCompletedJobs()
 			{
 				pP->SetAccountId(Slot.m_AccountId);
 				mem_copy(&pP->m_AccData, &Slot.m_Sync, sizeof(pP->m_AccData));
+				pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
 				if(!pP->m_AccData.m_Holding[ITYPE_PICKAXE] && !pP->m_AccData.m_Holding[ITYPE_AXE] && !pP->m_AccData.m_Holding[ITYPE_SWORD])
 				{
 					pP->m_AccData.m_Holding[ITYPE_PICKAXE] = ITEM_PICKAXE_LOG;
 					pP->m_AccData.m_Holding[ITYPE_AXE] = ITEM_AXE_LOG;
 					pP->m_AccData.m_Holding[ITYPE_SWORD] = ITEM_SWORD_LOG;
 				}
-				m_pGame->SendChat(-1, CHAT_ALL, ClientId, "登录成功。");
+				m_pGame->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
+				if(SPlayerVote *pV = m_pGame->GetPlayerVote(ClientId))
+					pV->m_Page = PAGE_MENU;
+				m_pGame->ClearVotes(ClientId);
 			}
 			else if(Slot.m_Error == 2)
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "用户不存在。");
+					m_pGame->SendChatLoc(ClientId, "account.login.not_found", u8"用户不存在。");
 			}
 			else if(Slot.m_Error == 3)
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "密码错误。");
+					m_pGame->SendChatLoc(ClientId, "account.login.wrong_pass", u8"密码错误。");
 			}
 			else
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChat(-1, CHAT_ALL, ClientId, "登录失败（服务器）。");
+					m_pGame->SendChatLoc(ClientId, "account.login.fail", u8"登录失败（服务器）。");
 			}
 		}
 
@@ -616,68 +622,68 @@ void CAccountSystem::ComChatRegister(IConsole::IResult *pResult, void *pUser)
 {
 	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
-	CAccountSystem *pAcc = &pGame->m_Accounts;
+	CAccountSystem *pAcc = pGame->Accounts();
 
 	const char *pU = pResult->GetString(0);
 	const char *pPw = pResult->GetString(1);
 
-	if(!pAcc->m_Enabled)
+	if(!pAcc || !pAcc->m_Enabled)
 	{
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "服务器未启用账号系统。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", u8"服务器未启用账号系统。");
 		return;
 	}
 	if(!UsernameOk(pU) || !PasswordOk(pPw))
 	{
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "用户名 3–63（字母数字下划线），密码 6–63 位。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.register.usage", u8"用户名 3–63（字母数字下划线），密码 6–63 位。");
 		return;
 	}
 	if(!pAcc->StartJob(JOB_REGISTER, pCtx->m_ClientID, pU, pPw))
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "服务器忙，请稍后再试。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.busy", u8"服务器忙，请稍后再试。");
 	else
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "正在注册…");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.register.pending", u8"正在注册…");
 }
 
 void CAccountSystem::ComChatLogin(IConsole::IResult *pResult, void *pUser)
 {
 	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
-	CAccountSystem *pAcc = &pGame->m_Accounts;
+	CAccountSystem *pAcc = pGame->Accounts();
 
 	const char *pU = pResult->GetString(0);
 	const char *pPw = pResult->GetString(1);
 
-	if(!pAcc->m_Enabled)
+	if(!pAcc || !pAcc->m_Enabled)
 	{
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "服务器未启用账号系统。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", u8"服务器未启用账号系统。");
 		return;
 	}
 	if(!UsernameOk(pU) || !PasswordOk(pPw))
 	{
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "用户名或密码格式无效。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.usage", u8"用户名或密码格式无效。");
 		return;
 	}
 	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
 	if(pP && pP->GetAccountId() >= 0)
 	{
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "你已经登录。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.already", u8"你已经登录。");
 		return;
 	}
 	if(!pAcc->StartJob(JOB_LOGIN, pCtx->m_ClientID, pU, pPw))
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "服务器忙，请稍后再试。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.busy", u8"服务器忙，请稍后再试。");
 	else
-		pGame->SendChat(-1, CHAT_ALL, pCtx->m_ClientID, "正在登录…");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.pending", u8"正在登录…");
 }
 
 void CAccountSystem::ComAccInfo(IConsole::IResult *pResult, void *pUser)
 {
 	(void)pResult;
 	CGameContext *pGame = (CGameContext *)pUser;
-	CAccountSystem *pAcc = &pGame->m_Accounts;
+	CAccountSystem *pAcc = pGame->Accounts();
 	char aBuf[128];
 	str_format(aBuf, sizeof(aBuf), "accounts: enabled=%d mysql_pool=%d",
-		pAcc->m_Enabled ? 1 : 0,
+		pAcc && pAcc->m_Enabled ? 1 : 0,
 #ifdef CONF_MYSQL
-		pAcc->m_Pool.IsInitialized() ? 1 : 0
+		pAcc && pAcc->m_Pool.IsInitialized() ? 1 : 0
 #else
 		0
 #endif
@@ -685,10 +691,32 @@ void CAccountSystem::ComAccInfo(IConsole::IResult *pResult, void *pUser)
 	pGame->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "acc", aBuf);
 }
 
+static void ComChatLanguage(IConsole::IResult *pResult, void *pUser)
+{
+	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	const int CID = pCtx->m_ClientID;
+	if(CID < 0 || !pGame->m_apPlayers[CID])
+		return;
+	CPlayer *pP = pGame->m_apPlayers[CID];
+	if(pResult->NumArguments() < 1)
+	{
+		pGame->SendChatLocF(CID, "language.status", "Language: %s (use /language zh-cn or /language en)", pP->GetLanguage());
+		return;
+	}
+	pP->SetLanguage(pResult->GetString(0));
+	pGame->SendChatCommands(CID);
+	if(pGame->Core() && pGame->Core()->VoteMenuManager())
+		pGame->Core()->VoteMenuManager()->ClearVotes(CID);
+	pGame->SendChatLocF(CID, "language.changed", "%s: %s", pGame->Loc(CID, "menu.title", "Player menu"), pP->GetLanguage());
+}
+
 void CAccountSystem::RegisterChatCommands(CCommandManager *pManager, CGameContext *pGame)
 {
-	pManager->AddCommand("register", "注册账号", "sr", ComChatRegister, pGame);
-	pManager->AddCommand("login", "登录账号", "sr", ComChatLogin, pGame);
+	pManager->AddCommand("register", "cmd.register.help", "sr", ComChatRegister, pGame);
+	pManager->AddCommand("login", "cmd.login.help", "sr", ComChatLogin, pGame);
+	if(pManager->AddCommand("language", "cmd.language.help", "?s", ComChatLanguage, pGame) != 0)
+		dbg_msg("server", "failed to register /language chat command");
 }
 
 void CAccountSystem::RegisterConsoleCommands(IConsole *pConsole, CGameContext *pGame)

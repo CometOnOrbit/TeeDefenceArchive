@@ -482,6 +482,12 @@ public:
 	void Drop(int ClientID, const char *pReason);
 
 	// status requests
+	bool ClientSlotOnline(int ClientID) const
+	{
+		return ClientID >= 0 && ClientID < NET_MAX_CLIENTS &&
+			m_aSlots[ClientID].m_Connection.State() != NET_CONNSTATE_OFFLINE &&
+			m_aSlots[ClientID].m_Connection.State() != NET_CONNSTATE_ERROR;
+	}
 	const NETADDR *ClientAddr(int ClientID) const { return m_aSlots[ClientID].m_Connection.PeerAddress(); }
 	class CNetBan *NetBan() const { return m_pNetBan; }
 

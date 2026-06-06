@@ -27,6 +27,8 @@ public:
 
 		ENTTYPE_TOWERMAIN,
 		ENTTYPE_TURRET,
+		ENTTYPE_GROWINGEXPLOSION,
+		ENTTYPE_PLASMA,
 		NUM_ENTTYPES,
 
 		ENTFLAG_HITABLE = 1,
@@ -123,6 +125,7 @@ public:
 	*/
 	CEntity *IntersectEntity(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, int Type, CEntity *pNotThis = 0);
 	CEntity *IntersectFlagEntity(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, int Flag, CEntity *pNotThis = 0);
+	class CCharacter *IntersectCharacter(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, class CCharacter *pNotThis = nullptr);
 
 	/*
 		Function: insert_entity
@@ -173,6 +176,7 @@ public:
 	void Tick();
 
 	// helper functions
+	int DamageOwnerFromEntity(class CEntity *pFrom) const;
 	void CreateDamage(vec2 Pos, int Id, vec2 Source, int HealthAmount, int ArmorAmount, bool Self);
 	void CreateExplosion(vec2 Pos, class CEntity *pOwner, int Weapon, int MaxDamage);
 	void CreateHammerHit(vec2 Pos);

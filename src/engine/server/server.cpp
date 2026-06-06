@@ -326,6 +326,12 @@ void CServer::Kick(int ClientID, const char *pReason)
 		return;
 	}
 
+	if(ClientID >= MAX_HUMAN_CLIENTS && GameServer() && GameServer()->IsClientBot(ClientID))
+	{
+		DummyRemove(ClientID);
+		return;
+	}
+
 	m_NetServer.Drop(ClientID, pReason);
 }
 
@@ -434,7 +440,7 @@ bool CServer::IsClientSlotEmpty(int ClientID) const
 
 void CServer::DummyJoin(int ClientID, const char *pName)
 {
-	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+	if(ClientID < MAX_HUMAN_CLIENTS || ClientID >= MAX_CLIENTS)
 		return;
 	if(m_aClients[ClientID].m_State != CClient::STATE_EMPTY)
 		return;
@@ -510,7 +516,7 @@ int CServer::SendMsg(CMsgPacker *pMsg, int Flags, int ClientID)
 		return -1;
 
 	// drop invalid packet or bot slots (dummies: STATE_INGAME but no network connection)
-	if(ClientID != -1 && (ClientID < 0 || ClientID >= MAX_CLIENTS || m_aClients[ClientID].m_State == CClient::STATE_EMPTY || m_aClients[ClientID].m_Quitting || (GameServer() && GameServer()->IsClientBot(ClientID))))
+	if(ClientID != -1 && (ClientID < 0 || ClientID >= MAX_CLIENTS || m_aClients[ClientID].m_State == CClient::STATE_EMPTY || m_aClients[ClientID].m_Quitting || !m_NetServer.ClientSlotOnline(ClientID) || (GameServer() && GameServer()->IsClientBot(ClientID))))
 		return 0;
 
 	mem_zero(&Packet, sizeof(CNetChunk));
@@ -573,6 +579,10 @@ void CServer::DoSnapshot()
 	{
 		// client must be ingame to receive snapshots
 		if(m_aClients[i].m_State != CClient::STATE_INGAME)
+			continue;
+
+		// dummy/zombie slots have no network peer
+		if(!m_NetServer.ClientSlotOnline(i))
 			continue;
 
 		// this client is trying to recover, don't spam snapshots
@@ -1097,13 +1107,15 @@ void CServer::GenerateServerInfo(CPacker *pPacker, int ServerInfoVersion, bool I
 	int PlayerCount = 0, ClientCount = 0;
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
-		if(m_aClients[i].m_State != CClient::STATE_EMPTY)
-		{
-			if(GameServer()->IsClientPlayer(i))
-				PlayerCount++;
+		if(m_aClients[i].m_State == CClient::STATE_EMPTY)
+			continue;
+		if(i >= MAX_HUMAN_CLIENTS || (GameServer() && GameServer()->IsClientBot(i)))
+			continue;
 
-			ClientCount++;
-		}
+		if(GameServer()->IsClientPlayer(i))
+			PlayerCount++;
+
+		ClientCount++;
 	}
 
 	pPacker->AddString(GameServer()->Version(), 32);
@@ -1132,7 +1144,10 @@ void CServer::GenerateServerInfo(CPacker *pPacker, int ServerInfoVersion, bool I
 	{
 		for(int i = 0; i < MAX_CLIENTS; i++)
 		{
-			if(m_aClients[i].m_State != CClient::STATE_EMPTY)
+			if(m_aClients[i].m_State == CClient::STATE_EMPTY)
+				continue;
+			if(i >= MAX_HUMAN_CLIENTS || GameServer()->IsClientBot(i))
+				continue;
 			{
 				pPacker->AddString(ClientName(i), 0); // client name
 				pPacker->AddString(ClientClan(i), 0); // client clan
@@ -1150,7 +1165,9 @@ int CServer::GenerateServerInfoPlayers(CPacker *pPacker, int ServerInfoVersion, 
 		return -1;
 	while(StartClientID < MAX_CLIENTS)
 	{
-		if(m_aClients[StartClientID].m_State != CClient::STATE_EMPTY)
+		if(m_aClients[StartClientID].m_State != CClient::STATE_EMPTY &&
+			StartClientID < MAX_HUMAN_CLIENTS &&
+			!(GameServer() && GameServer()->IsClientBot(StartClientID)))
 		{
 			CPacker InfoPacker;
 			InfoPacker.Reset();
@@ -1537,16 +1554,31 @@ int CServer::Run()
 				// load map
 				if(LoadMap(Config()->m_SvMap))
 				{
-					// new map loaded
+					// new map loaded — snapshot real clients before OnShutdown (clears game players)
 					bool aSpecs[MAX_CLIENTS];
+					bool aReconnect[MAX_CLIENTS];
 					for(int c = 0; c < MAX_CLIENTS; c++)
+					{
 						aSpecs[c] = GameServer()->IsClientSpectator(c);
+						aReconnect[c] = false;
+						if(m_aClients[c].m_State <= CClient::STATE_AUTH)
+							continue;
+						// Dummy/bot slots (e.g. TD zombies) have no network peer — drop before SendMap
+						if(GameServer()->IsClientBot(c))
+						{
+							m_aClients[c].m_State = CClient::STATE_EMPTY;
+							m_aClients[c].m_aName[0] = 0;
+							m_aClients[c].Reset();
+							continue;
+						}
+						aReconnect[c] = true;
+					}
 
 					GameServer()->OnShutdown();
 
 					for(int c = 0; c < MAX_CLIENTS; c++)
 					{
-						if(m_aClients[c].m_State <= CClient::STATE_AUTH)
+						if(!aReconnect[c])
 							continue;
 
 						SendMap(c);

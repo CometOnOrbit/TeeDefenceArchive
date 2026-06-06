@@ -57,8 +57,8 @@ enum
 	ITEM_CARD_FORCE,
 	ITEM_CARD_MANUAL,
 
-	ITEM_PART_FIRST = 35, // WIP
-	ITEM_PART_COOLING = 36, // WIP
+	ITEM_PART_FIRST = 35,
+	ITEM_PART_COOLING = 36,
 	NUM_ITEM,
 };
 
@@ -146,6 +146,8 @@ public:
 	bool ItemExtraBlocksCraftConsume(const char *pExtraJson) const;
 
 	const char *GetItemName(int ID, bool IncludeZero = true) const;
+	bool HasItemDefinition(int ID) const { return CheckItemValid(ID) && m_aaItemName[ID][0] != 0; }
+	void FormatItemLocKey(int ID, char *pBuf, int BufSize) const;
 
 	/** Reads Extra.Cards[] (id/num). **/
 	int GetCard(const char *pExtraJson, int CardID) const;

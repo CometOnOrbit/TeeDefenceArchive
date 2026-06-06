@@ -1,6 +1,7 @@
 /* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include <new>
+#include <unistd.h>
 
 #include <base/math.h>
 #include <base/system.h>
@@ -269,13 +270,31 @@ void CConsole::SetPrintOutputLevel(int Index, int OutputLevel)
 		m_aPrintCB[Index].m_OutputLevel = clamp(OutputLevel, (int) (OUTPUT_LEVEL_STANDARD), (int) (OUTPUT_LEVEL_DEBUG));
 }
 
+static const char *ConsoleColorForLevel(int Level)
+{
+	switch(Level)
+	{
+	case IConsole::OUTPUT_LEVEL_STANDARD: return "\x1b[36m";
+	case IConsole::OUTPUT_LEVEL_ADDINFO: return "\x1b[32m";
+	case IConsole::OUTPUT_LEVEL_DEBUG: return "\x1b[90m";
+	default: return "\x1b[37m";
+	}
+}
+
 void CConsole::Print(int Level, const char *pFrom, const char *pStr, bool Highlighted)
 {
 	char aTimeBuf[80];
 	str_timestamp_format(aTimeBuf, sizeof(aTimeBuf), FORMAT_TIME);
 
 	char aBuf[1024];
-	str_format(aBuf, sizeof(aBuf), "[%s][%s]: %s", aTimeBuf, pFrom, pStr);
+	const bool Color = isatty(STDOUT_FILENO) != 0;
+	if(Color)
+	{
+		const char *pColor = Highlighted ? "\x1b[33m" : ConsoleColorForLevel(Level);
+		str_format(aBuf, sizeof(aBuf), "%s[%s][%s]: %s\x1b[0m", pColor, aTimeBuf, pFrom, pStr);
+	}
+	else
+		str_format(aBuf, sizeof(aBuf), "[%s][%s]: %s", aTimeBuf, pFrom, pStr);
 	dbg_msg(pFrom, "%s", pStr);
 	for(int i = 0; i < m_NumPrintCB; ++i)
 	{

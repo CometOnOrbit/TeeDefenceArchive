@@ -24,6 +24,9 @@ MACRO_CONFIG_INT(SvVoteKickMin, sv_vote_kick_min, 0, 0, MAX_CLIENTS, CFGFLAG_SAV
 MACRO_CONFIG_INT(SvVoteKickBantime, sv_vote_kick_bantime, 5, 0, 1440, CFGFLAG_SAVE | CFGFLAG_SERVER, "The time to ban a player if kicked by vote. 0 makes it just use kick")
 MACRO_CONFIG_INT(SvAllowSpecVoting, sv_allow_spec_voting, 1, 0, 1, CFGFLAG_SAVE | CFGFLAG_SERVER, "Allow voting by spectators")
 
+MACRO_CONFIG_INT(SvGESnapTime, sv_ge_snap_time, 1, 1, 60, CFGFLAG_SERVER, "Growing-explosion / lightning snap divisor (1 = every tick)")
+MACRO_CONFIG_INT(SvTurretAmmoPerShot, sv_turret_ammo_per_shot, 5, 1, 100, CFGFLAG_SERVER, "Material units consumed per turret shot (split by mix %)")
+
 // debug
 
 MACRO_CONFIG_INT(DbgFocus, dbg_focus, 0, 0, 1, CFGFLAG_CLIENT, "")

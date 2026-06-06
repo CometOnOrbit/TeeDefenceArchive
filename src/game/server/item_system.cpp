@@ -281,6 +281,13 @@ int CItemHelper::GetType(int ID) const
 	return m_aItemType[ID];
 }
 
+void CItemHelper::FormatItemLocKey(int ID, char *pBuf, int BufSize) const
+{
+	if(!pBuf || BufSize <= 0)
+		return;
+	str_format(pBuf, BufSize, "item.id.%d", ID);
+}
+
 const char *CItemHelper::GetItemName(int ID, bool IncludeZero) const
 {
 	if(!IncludeZero && !ID)

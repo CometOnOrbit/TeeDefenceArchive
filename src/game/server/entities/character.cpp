@@ -325,7 +325,21 @@ void CCharacter::HandleWeapons()
 
 	// ammo regen
 	int AmmoRegenTime = g_pData->m_Weapons.m_aId[m_ActiveWeapon].m_Ammoregentime;
-	if(AmmoRegenTime > 0)
+	if(m_ActiveWeapon != WEAPON_HAMMER && m_aWeapons[m_ActiveWeapon].m_Ammo < 10 && !AmmoRegenTime)
+	{
+		if(CItemHelper *pH = GameServer()->ItemHelper())
+		{
+			const char *pSx = m_pPlayer->GetExtraForItem(m_pPlayer->GetHolding(ITYPE_SWORD));
+			const int NumCard = pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID);
+			if(NumCard)
+			{
+				const int MaxPlace = pH->GetMaxPlace(ITEM_CARD_QUICKLY_LOADING_ID);
+				AmmoRegenTime = 1 + MaxPlace * 500 - NumCard * 500;
+				AmmoRegenTime = clamp(AmmoRegenTime, 0, 1 + MaxPlace * 500);
+			}
+		}
+	}
+	else if(AmmoRegenTime > 0)
 	{
 		if(CItemHelper *pH = GameServer()->ItemHelper())
 		{
@@ -675,25 +689,33 @@ bool CCharacter::IncreaseArmor(int Amount)
 
 void CCharacter::Die(int Killer, int Weapon)
 {
+	if(!m_Alive)
+		return;
+
 	// we got to wait 0.5 secs before respawning
 	m_Alive = false;
 	m_pPlayer->m_RespawnTick = Server()->Tick() + Server()->TickSpeed() / 2;
 	int ModeSpecial = GameServer()->m_pController->OnCharacterDeath(this, (Killer < 0) ? 0 : GameServer()->m_apPlayers[Killer], Weapon);
 
-	char aBuf[256];
-	if(Killer < 0)
+	const bool VictimIsZombie = m_pPlayer->IsDummy() && m_pPlayer->GetZomb() != ZOMB_NONE;
+	if(!VictimIsZombie)
 	{
-		str_format(aBuf, sizeof(aBuf), "kill killer='%d:%d:' victim='%d:%d:%s' weapon=%d special=%d",
-			Killer, -1 - Killer,
-			m_pPlayer->GetCID(), m_pPlayer->GetTeam(), Server()->ClientName(m_pPlayer->GetCID()), Weapon, ModeSpecial);
+		char aBuf[256];
+		if(Killer < 0)
+		{
+			str_format(aBuf, sizeof(aBuf), "kill killer='%d:%d:' victim='%d:%d:%s' weapon=%d special=%d",
+				Killer, -1 - Killer,
+				m_pPlayer->GetCID(), m_pPlayer->GetTeam(), Server()->ClientName(m_pPlayer->GetCID()), Weapon, ModeSpecial);
+		}
+		else
+		{
+			const int KillerTeam = GameServer()->m_apPlayers[Killer] ? GameServer()->m_apPlayers[Killer]->GetTeam() : -1;
+			str_format(aBuf, sizeof(aBuf), "kill killer='%d:%d:%s' victim='%d:%d:%s' weapon=%d special=%d",
+				Killer, KillerTeam, Server()->ClientName(Killer),
+				m_pPlayer->GetCID(), m_pPlayer->GetTeam(), Server()->ClientName(m_pPlayer->GetCID()), Weapon, ModeSpecial);
+		}
+		GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
 	}
-	else
-	{
-		str_format(aBuf, sizeof(aBuf), "kill killer='%d:%d:%s' victim='%d:%d:%s' weapon=%d special=%d",
-			Killer, GameServer()->m_apPlayers[Killer]->GetTeam(), Server()->ClientName(Killer),
-			m_pPlayer->GetCID(), m_pPlayer->GetTeam(), Server()->ClientName(m_pPlayer->GetCID()), Weapon, ModeSpecial);
-	}
-	GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
 
 	// send the kill message
 	CNetMsg_Sv_KillMsg Msg;
@@ -731,6 +753,9 @@ void CCharacter::Die(int Killer, int Weapon)
 
 bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weapon)
 {
+	if(!m_Alive)
+		return false;
+
 	m_Core.m_Vel += Force;
 
 	if(From >= 0)
@@ -797,8 +822,8 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	// do damage Hit sound
 	if(From >= 0 && From != m_pPlayer->GetCID() && GameServer()->m_apPlayers[From])
 	{
-		int64 Mask = CmaskOne(From);
-		for(int i = 0; i < MAX_CLIENTS; i++)
+		int64 Mask = From < MAX_HUMAN_CLIENTS ? CmaskOne(From) : CmaskAll();
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
 		{
 			if(GameServer()->m_apPlayers[i] && (GameServer()->m_apPlayers[i]->GetTeam() == TEAM_SPECTATORS || GameServer()->m_apPlayers[i]->m_DeadSpecMode) &&
 				GameServer()->m_apPlayers[i]->GetSpectatorID() == From)
@@ -843,19 +868,15 @@ void CCharacter::ApplyElectronSlow(int CardStacks)
 
 bool CCharacter::TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, int Weapon)
 {
-	int From = -1;
-	if(pFrom)
-	{
-		if(pFrom->ObjType() == CGameWorld::ENTTYPE_CHARACTER)
-			From = static_cast<CCharacter *>(pFrom)->GetCID();
-		if(pFrom->ObjFlag() & CGameWorld::ENTFLAG_CHILD)
-			From = static_cast<CChildEntity *>(pFrom)->GetOwner();
-	}
-	return TakeDamage(Force, Source, Dmg, From, Weapon);
+	return TakeDamage(Force, Source, Dmg, GameWorld()->DamageOwnerFromEntity(pFrom), Weapon);
 }
 
 void CCharacter::Snap(int SnappingClient)
 {
+	if(m_pPlayer && m_pPlayer->GetZomb() == ZOMB_ZINVIS && !m_pPlayer->IsZombVisible() &&
+		SnappingClient != -1 && SnappingClient != m_pPlayer->GetCID())
+		return;
+
 	if(NetworkClipped(SnappingClient))
 	{
 		if(m_Core.m_HookState == HOOK_IDLE)

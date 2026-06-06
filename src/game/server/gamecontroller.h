@@ -15,7 +15,7 @@ class CPlayer;
 
 enum
 {
-	NUM_TD_ZOMB = 3,
+	NUM_TD_ZOMB = 13,
 	TD_REMOVE_QUEUE = MAX_CLIENTS,
 };
 
@@ -47,6 +47,7 @@ class CGameController
 	int m_aTdDummyRemove[TD_REMOVE_QUEUE];
 	int m_TdDummyRemoveLen;
 	CTowerMain *m_pTower;
+	class CZombieBot *m_apZombieBots[MAX_CLIENTS];
 
 	int m_TdPendingZomb;
 
@@ -58,12 +59,15 @@ class CGameController
 	void TdStartWave(int Wave);
 	void TdCheckZombie();
 	int TdRandZomb();
+	int TdCountZombiePopulation() const;
+	bool TdIsWaveCleared() const;
 	bool TdEndWave();
 	void TdDoZombMessage(int Which);
 	void TdSetWaveAlg(int Modulus, int WaveThird);
 	int TdGetZombieOrder(int WaveThird);
 	void TdBroadcastGameInfo();
 	void TdRunZombieBrain(class CPlayer *pP);
+	void TdClearZombieBot(int ClientID);
 	vec2 TdGetZombieRallyPos() const;
 
 protected:
@@ -100,11 +104,14 @@ protected:
 
 public:
 	CGameController(class CGameContext *pGameServer);
-	virtual ~CGameController() {}
+	virtual ~CGameController();
 
 	void PreTick();
 	int GetDummyTeam() const;
 	void OnBotPlayerCreated(class CPlayer *pPlayer);
+	vec2 TdGetZombieMarchGoal() const;
+	int GetTdWave() const { return m_TdWave; }
+	CTowerMain *GetTower() const { return m_pTower; }
 
 	// event
 	/*
@@ -172,10 +179,9 @@ public:
 	static void Com_About(IConsole::IResult *pResult, void *pContext);
 	void RegisterChatCommands(CCommandManager *pManager);
 
-	bool CanCharacterPickup(class CCharacter *pChr) const { return true; }
+	bool CanCharacterPickup(class CCharacter *pChr) const;
 	bool CanCharacterWeaponFullAuto(class CCharacter *pChr, int Weapon);
 
-	void SendSystemChat(int TargetID, const char *pMsg);
 	// return: Reload timer
 	int OnCharacterFireWeapon(class CCharacter *pChr, vec2 Direction, int Weapon);
 

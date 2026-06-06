@@ -11,6 +11,7 @@ GameFlags = Flags("GAMEFLAG", ["TEAMS", "FLAGS", "SURVIVAL", "RACE"])
 GameStateFlags = Flags("GAMESTATEFLAG", ["WARMUP", "SUDDENDEATH", "ROUNDOVER", "GAMEOVER", "PAUSED", "STARTCOUNTDOWN"])
 CoreEventFlags = Flags("COREEVENTFLAG", ["GROUND_JUMP", "AIR_JUMP", "HOOK_ATTACH_PLAYER", "HOOK_ATTACH_GROUND", "HOOK_HIT_NOHOOK"])
 RaceFlags = Flags("RACEFLAG", ["HIDE_KILLMSG", "FINISHMSG_AS_CHAT", "KEEP_WANTED_WEAPON"])
+LaserFlags = Flags("LASERFLAG", ["NO_PREDICT"])
 
 GameMsgIDs = Enum("GAMEMSG", ["TEAM_SWAP", "SPEC_INVALID_ID", "TEAM_SHUFFLE", "TEAM_BALANCE", "CTF_DROP", "CTF_RETURN",
 
@@ -64,7 +65,9 @@ enum
 
 	VOTE_CHOICE_NO = -1,
 	VOTE_CHOICE_PASS = 0,
-	VOTE_CHOICE_YES = 1
+	VOTE_CHOICE_YES = 1,
+
+	NUM_LASERTYPES = 4,
 };
 '''
 
@@ -90,6 +93,7 @@ Flags = [
 	RaceFlags,
     GamePredictionFlags,
     PlayerFlagsExtra,
+	LaserFlags,
 ]
 
 Objects = [
@@ -286,6 +290,19 @@ Objects = [
 	NetObjectEx("PlayerInfoExtra", "player-info-extra@netobj.teeworlds.wiki", [
 		NetIntRange("m_RealClientID", 0, 'max_int'),
         NetIntAny("m_PlayerFlagsExtra"),
+	]),
+
+	NetObjectEx("DDNetLaser", "laser@netobj.ddnet.tw", [
+		NetIntAny("m_ToX"),
+		NetIntAny("m_ToY"),
+		NetIntAny("m_FromX"),
+		NetIntAny("m_FromY"),
+		NetTick("m_StartTick"),
+		NetIntRange("m_Owner", -1, "MAX_CLIENTS-1"),
+		NetIntAny("m_Type"),
+		NetIntAny("m_SwitchNumber", -1),
+		NetIntAny("m_Subtype", -1),
+		NetFlag("m_Flags", LaserFlags),
 	]),
 ]
 

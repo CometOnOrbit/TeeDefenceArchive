@@ -7,17 +7,38 @@
 #include <game/version.h>
 #include <generated/server_data.h>
 
+#include <base/math.h>
+
 #include "entities/character.h"
+#include "entities/electro.h"
 #include "entities/laser.h"
+#include "entities/lightning.h"
 #include "entities/pickup.h"
 #include "entities/projectile.h"
+#include "account.h"
+#include "core/components/accounts/account_manager.h"
+#include "core/components/bots/defence_bot_manager.h"
+#include "core/components/craft/craft_manager.h"
+#include "core/components/vote/vote_menu_manager.h"
+#include "core/tworld_controller.h"
 #include "entities/tower-main.h"
 #include "entities/CKs.h"
-#include "crafting.h"
 #include "item_system.h"
 #include "gamecontext.h"
+#include "botengine.h"
 #include "gamecontroller.h"
 #include "player.h"
+#include "zombie_bot.h"
+
+static int TdZombieFirstSlot(const CConfig *pCfg)
+{
+	return maximum((int)MAX_HUMAN_CLIENTS, pCfg->m_SvMaxClients);
+}
+
+static bool IsZombiePlayer(const CPlayer *pPlayer)
+{
+	return pPlayer && pPlayer->IsDummy() && pPlayer->GetZomb() != ZOMB_NONE;
+}
 
 CGameController::CGameController(CGameContext *pGameServer)
 {
@@ -34,26 +55,51 @@ CGameController::CGameController(CGameContext *pGameServer)
 	mem_zero(m_TdZombie, sizeof(m_TdZombie));
 	m_TdZombLeft = 0;
 	m_pTower = nullptr;
+	mem_zero(m_apZombieBots, sizeof(m_apZombieBots));
 	m_TdDummyRemoveLen = 0;
 	mem_zero(m_aTdDummyRemove, sizeof(m_aTdDummyRemove));
 	m_TdPendingZomb = ZOMB_ZABY;
 	m_RealPlayerNum = 0;
 }
 
+CGameController::~CGameController()
+{
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		delete m_apZombieBots[i];
+		m_apZombieBots[i] = nullptr;
+	}
+}
+
 void CGameController::PreTick()
 {
-	const int Zombie0 = maximum(1, Config()->m_SvTdZombieFirstSlot);
-
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
 		CPlayer *pP = GameServer()->m_apPlayers[i];
 		if(!pP || !pP->IsDummy() || !pP->GetCharacter() || !pP->GetCharacter()->IsAlive())
 			continue;
-		if(i < Zombie0)
-			continue;
-
-		TdRunZombieBrain(pP);
+		if(pP->GetZomb() != ZOMB_NONE)
+			TdRunZombieBrain(pP);
+		else if(TWorldController *pCore = GameServer()->Core())
+			pCore->DefenceBotManager()->TickPlayer(pP);
 	}
+}
+
+vec2 CGameController::TdGetZombieMarchGoal() const
+{
+	vec2 Goal = m_pTower ? m_pTower->GetPos() : TdGetZombieRallyPos();
+	CBotEngine *pBE = GameServer()->BotEngine();
+	if(pBE)
+	{
+		CGraph *pGraph = pBE->GetGraph();
+		if(pGraph && pGraph->m_NumVertices > 0 && pGraph->m_pVertices)
+		{
+			const int V = pBE->GetClosestVertex(Goal);
+			if(V >= 0 && V < pGraph->m_NumVertices)
+				Goal = pGraph->m_pVertices[V].m_Pos;
+		}
+	}
+	return Goal;
 }
 
 vec2 CGameController::TdGetZombieRallyPos() const
@@ -88,20 +134,74 @@ void CGameController::OnBotPlayerCreated(CPlayer *pPlayer)
 	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[4], "standard", MAX_SKIN_ARRAY_SIZE);
 	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[5], "standard", MAX_SKIN_ARRAY_SIZE);
 
+	const int CID = pPlayer->GetCID();
+	delete m_apZombieBots[CID];
+	m_apZombieBots[CID] = nullptr;
+
 	pPlayer->InitZombie(m_TdPendingZomb);
+	const char *pBodySkin = "saddo";
 	switch(m_TdPendingZomb)
 	{
-	case ZOMB_ZOOKER:
-		str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[1], "bluekitty", MAX_SKIN_ARRAY_SIZE);
+	case ZOMB_ZOOMER:
+		pBodySkin = "redstripe";
 		break;
-	case ZOMB_ZABER:
-		str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[1], "twinbop", MAX_SKIN_ARRAY_SIZE);
+	case ZOMB_ZOOKER:
+		pBodySkin = "bluekitty";
+		break;
+	case ZOMB_ZAMER:
+		pBodySkin = "twinbop";
+		break;
+	case ZOMB_ZUNNER:
+		pBodySkin = "cammostripes";
+		break;
+	case ZOMB_ZASTER:
+		pBodySkin = "coala";
+		break;
+	case ZOMB_ZOTTER:
+		pBodySkin = "cammo";
+		break;
+	case ZOMB_ZENADE:
+		pBodySkin = "twintri";
+		break;
+	case ZOMB_FLOMBIE:
+		pBodySkin = "toptri";
+		break;
+	case ZOMB_ZINJA:
+		pBodySkin = "default";
+		break;
+	case ZOMB_ZELE:
+		pBodySkin = "redbopp";
+		break;
+	case ZOMB_ZINVIS:
+		pBodySkin = "pinky";
+		break;
+	case ZOMB_ZEATER:
+		pBodySkin = "warpaint";
 		break;
 	case ZOMB_ZABY:
 	default:
-		str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[1], "bear", MAX_SKIN_ARRAY_SIZE);
+		pBodySkin = "saddo";
 		break;
 	}
+	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[1], pBodySkin, MAX_SKIN_ARRAY_SIZE);
+
+	if(pPlayer->GetZomb() != ZOMB_NONE && GameServer()->BotEngine())
+		m_apZombieBots[CID] = new CZombieBot(GameServer()->BotEngine(), pPlayer, this);
+}
+
+void CGameController::TdRunZombieBrain(CPlayer *pP)
+{
+	const int CID = pP->GetCID();
+	if(!m_apZombieBots[CID] && GameServer()->BotEngine())
+		m_apZombieBots[CID] = new CZombieBot(GameServer()->BotEngine(), pP, this);
+	CZombieBot *pBot = m_apZombieBots[CID];
+	if(!pBot)
+		return;
+
+	pBot->Tick();
+	CNetObj_PlayerInput Inp = pBot->Input();
+	pP->OnPredictedInput(&Inp);
+	pP->OnDirectInput(&Inp);
 }
 
 // activity
@@ -118,7 +218,11 @@ void CGameController::DoActivityCheck()
 			if(GameServer()->m_apPlayers[i]->GetTeam() == TEAM_SPECTATORS)
 			{
 				if(Config()->m_SvInactiveKickSpec)
-					Server()->Kick(i, "Kicked for inactivity");
+				{
+					char aReason[128];
+					str_copy(aReason, GameServer()->Loc(i, "kick.inactivity", "Kicked for inactivity"), sizeof(aReason));
+					Server()->Kick(i, aReason);
+				}
 			}
 			else
 			{
@@ -138,7 +242,11 @@ void CGameController::DoActivityCheck()
 							if(GameServer()->m_apPlayers[j] && GameServer()->m_apPlayers[j]->GetTeam() == TEAM_SPECTATORS)
 								++Spectators;
 						if(Spectators >= Config()->m_SvMaxClients - GameServer()->GetMaxPlayerSlots())
-							Server()->Kick(i, "Kicked for inactivity");
+						{
+							char aReason[128];
+							str_copy(aReason, GameServer()->Loc(i, "kick.inactivity", "Kicked for inactivity"), sizeof(aReason));
+							Server()->Kick(i, aReason);
+						}
 						else
 							DoTeamChange(GameServer()->m_apPlayers[i], TEAM_SPECTATORS);
 					}
@@ -146,7 +254,11 @@ void CGameController::DoActivityCheck()
 					case 3:
 					{
 						// kick the player
-						Server()->Kick(i, "Kicked for inactivity");
+						{
+							char aReason[128];
+							str_copy(aReason, GameServer()->Loc(i, "kick.inactivity", "Kicked for inactivity"), sizeof(aReason));
+							Server()->Kick(i, aReason);
+						}
 					}
 				}
 			}
@@ -176,12 +288,33 @@ void CGameController::SetPlayersReadyState(bool ReadyState)
 	}
 }
 
+bool CGameController::CanCharacterPickup(CCharacter *pChr) const
+{
+	if(!pChr || !pChr->GetPlayer())
+		return false;
+	if(IsZombiePlayer(pChr->GetPlayer()))
+		return false;
+	return true;
+}
+
+void CGameController::TdClearZombieBot(int ClientID)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+	delete m_apZombieBots[ClientID];
+	m_apZombieBots[ClientID] = nullptr;
+}
+
 // event
 int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int Weapon)
 {
-	if(Weapon != WEAPON_GAME && pVictim->GetPlayer()->IsDummy())
+	CPlayer *pVictimPlayer = pVictim->GetPlayer();
+	if(IsZombiePlayer(pVictimPlayer))
 	{
-		if(pKiller && !pKiller->IsDummy())
+		if(pVictimPlayer->IsEliminated())
+			return 0;
+
+		if(pKiller && !pKiller->IsDummy() && Weapon != WEAPON_GAME)
 		{
 			int Reward = ITEM_LOG;
 			const int Rando = rand() % 100 + 1;
@@ -196,20 +329,21 @@ int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int
 			pKiller->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num++;
 			pKiller->m_Score++;
 
-			char aBuf[160];
-			str_format(aBuf, sizeof(aBuf), "掉落：%s（僵尸心+1）", GameServer()->ItemHelper()->GetItemName(Reward));
-			GameServer()->SendChat(pKiller->GetCID(), CHAT_ALL, -1, aBuf);
+			GameServer()->SendChatLocF(pKiller->GetCID(), "game.loot_drop", u8"掉落：%s（僵尸心+1）", GameServer()->LocItemName(pKiller->GetCID(), Reward));
 
 			if(GameServer()->Accounts()->IsEnabled() && pKiller->GetAccountId() >= 0)
 				GameServer()->Accounts()->RequestSaveItems(pKiller->GetCID());
 		}
+
+		pVictimPlayer->ForbidRespawn();
+		TdClearZombieBot(pVictimPlayer->GetCID());
 
 		if(m_TdZombLeft > 0)
 			m_TdZombLeft--;
 		TdDoZombMessage(m_TdZombLeft);
 
 		if(m_TdDummyRemoveLen < TD_REMOVE_QUEUE)
-			m_aTdDummyRemove[m_TdDummyRemoveLen++] = pVictim->GetPlayer()->GetCID();
+			m_aTdDummyRemove[m_TdDummyRemoveLen++] = pVictimPlayer->GetCID();
 
 		return 0;
 	}
@@ -240,17 +374,43 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 
 	if(pChr->GetPlayer()->IsDummy())
 	{
-		pChr->SetHealthDirect(maximum(1, m_TdWave));
+		const int Z = pChr->GetPlayer()->GetZomb();
+		int Health = maximum(1, m_TdWave);
+		if(Z == ZOMB_ZASTER)
+			Health = maximum(40, m_TdWave * 10);
+
+		pChr->SetHealthDirect(Health);
 		pChr->GiveWeapon(WEAPON_HAMMER, -1);
-		pChr->GiveWeapon(WEAPON_GUN, 0);
-		switch(pChr->GetPlayer()->GetZomb())
+		pChr->GiveWeapon(WEAPON_GUN, -1);
+		pChr->GiveWeapon(WEAPON_SHOTGUN, -1);
+		pChr->GiveWeapon(WEAPON_GRENADE, -1);
+		pChr->GiveWeapon(WEAPON_LASER, -1);
+
+		switch(Z)
 		{
-		case ZOMB_ZOOKER:
-			pChr->GiveWeapon(WEAPON_GUN, 20);
+		case ZOMB_ZUNNER:
+		case ZOMB_FLOMBIE:
 			pChr->SetWeapon(WEAPON_GUN);
 			break;
-		case ZOMB_ZABER:
+		case ZOMB_ZOOKER:
+			pChr->SetWeapon(WEAPON_HAMMER);
+			break;
+		case ZOMB_ZOTTER:
+			pChr->SetWeapon(WEAPON_SHOTGUN);
+			break;
+		case ZOMB_ZENADE:
+			pChr->SetWeapon(WEAPON_GRENADE);
+			break;
+		case ZOMB_ZOOMER:
+			pChr->SetWeapon(WEAPON_LASER);
+			break;
+		case ZOMB_ZAMER:
 		case ZOMB_ZABY:
+		case ZOMB_ZASTER:
+		case ZOMB_ZINJA:
+		case ZOMB_ZELE:
+		case ZOMB_ZINVIS:
+		case ZOMB_ZEATER:
 		default:
 			pChr->SetWeapon(WEAPON_HAMMER);
 			break;
@@ -258,6 +418,13 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 	}
 	else
 		pChr->SetHealthDirect(Config()->m_SvPlayerMaxHealth);
+
+	if(IsZombiePlayer(pChr->GetPlayer()))
+	{
+		const int Idx = pChr->GetPlayer()->GetZomb() - ZOMB_ZABY;
+		if(Idx >= 0 && Idx < NUM_TD_ZOMB && m_TdZombie[Idx] > 0)
+			m_TdZombie[Idx]--;
+	}
 }
 
 bool CGameController::OnEntity(int Index, vec2 Pos)
@@ -376,27 +543,34 @@ void CGameController::OnPlayerConnect(CPlayer *pPlayer)
 {
 	if(!pPlayer->IsDummy())
 	{
-		char aWelcome[256];
-		str_format(aWelcome, sizeof(aWelcome), "%s joined TeeDefense — defend the tower!", Server()->ClientName(pPlayer->GetCID()));
-		GameServer()->SendChat(-1, CHAT_ALL, -1, aWelcome);
+		const int CID = pPlayer->GetCID();
+		GameServer()->SendChatLoc(CID, "welcome", "Welcome to TeeDefense Archive");
+		GameServer()->SendChatLoc(CID, "login.hint", "Use /register or /login");
+		GameServer()->SendChatAllLocF("game.join", "%s joined TeeDefense — defend the tower!", Server()->ClientName(CID));
 	}
 
 	int ClientID = pPlayer->GetCID();
 	pPlayer->Respawn();
 
-	char aBuf[128];
-	str_format(aBuf, sizeof(aBuf), "team_join player='%d:%s' team=%d", ClientID, Server()->ClientName(ClientID), pPlayer->GetTeam());
-	GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
+	if(!IsZombiePlayer(pPlayer))
+	{
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "team_join player='%d:%s' team=%d", ClientID, Server()->ClientName(ClientID), pPlayer->GetTeam());
+		GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
+	}
 
 	SendGameInfo(ClientID);
 }
 
 void CGameController::OnPlayerDisconnect(CPlayer *pPlayer)
 {
+	if(IsZombiePlayer(pPlayer))
+		TdClearZombieBot(pPlayer->GetCID());
+
 	pPlayer->OnDisconnect();
 
 	int ClientID = pPlayer->GetCID();
-	if(Server()->ClientIngame(ClientID))
+	if(Server()->ClientIngame(ClientID) && !IsZombiePlayer(pPlayer))
 	{
 		char aBuf[128];
 		str_format(aBuf, sizeof(aBuf), "leave player='%d:%s'", ClientID, Server()->ClientName(ClientID));
@@ -429,6 +603,11 @@ void CGameController::Snap(int SnappingClient)
 	pGameData->m_GameStartTick = m_GameStartTick;
 	pGameData->m_GameStateFlags = 0;
 	pGameData->m_GameStateEndTick = 0; // no timer/infinite = 0, on end = GameEndTick, otherwise = GameStateEndTick
+	if(m_TdWarmup > 0)
+	{
+		pGameData->m_GameStateFlags |= GAMESTATEFLAG_WARMUP;
+		pGameData->m_GameStateEndTick = Server()->Tick() + m_TdWarmup;
+	}
 
 	CNetObj_GameDataPrediction *pGameDataPrediction = static_cast<CNetObj_GameDataPrediction *>(Server()->SnapNewItem(NETOBJTYPE_GAMEDATAPREDICTION, 0, sizeof(CNetObj_GameDataPrediction)));
 	if(!pGameDataPrediction)
@@ -475,8 +654,7 @@ void CGameController::Tick()
 	}
 
 	int Players = 0;
-	const int HumanMax = maximum(1, Config()->m_SvTdZombieFirstSlot);
-	for(int i = 0; i < HumanMax; i++)
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
 	{
 		if(!GameServer()->m_apPlayers[i])
 			continue;
@@ -495,6 +673,12 @@ void CGameController::Tick()
 
 	if(m_TdWarmup > 0)
 	{
+		if(m_TdWarmup % Server()->TickSpeed() == 0)
+		{
+			const int SecLeft = (m_TdWarmup + Server()->TickSpeed() - 1) / Server()->TickSpeed();
+			GameServer()->SendBroadcastLocF(-1, "game.wave_countdown", "Next wave %d in %d s", m_TdWave + 1, SecLeft);
+			TdBroadcastGameInfo();
+		}
 		m_TdWarmup--;
 		if(m_TdWarmup == 0)
 			TdStartRound();
@@ -547,8 +731,16 @@ void CGameController::SendGameInfo(int ClientID)
 	if(m_pTower)
 	{
 		GameInfoMsg.m_ScoreLimit = m_pTower->GetHealth();
-		GameInfoMsg.m_MatchNum = m_TdZombStart;
-		GameInfoMsg.m_MatchCurrent = m_TdZombLeft;
+		if(m_TdWarmup > 0)
+		{
+			GameInfoMsg.m_MatchNum = m_TdWave + 1;
+			GameInfoMsg.m_MatchCurrent = (m_TdWarmup + Server()->TickSpeed() - 1) / Server()->TickSpeed();
+		}
+		else
+		{
+			GameInfoMsg.m_MatchNum = m_TdZombStart;
+			GameInfoMsg.m_MatchCurrent = m_TdZombLeft;
+		}
 	}
 	else
 	{
@@ -582,6 +774,7 @@ bool CGameController::CanSpawn(int Team, vec2 *pOutPos) const
 		EvaluateSpawnType(&Eval, 1);
 	else
 	{
+		Eval.m_RandomSpawn = true;
 		EvaluateSpawnType(&Eval, 0);
 		EvaluateSpawnType(&Eval, 2);
 	}
@@ -619,9 +812,12 @@ void CGameController::EvaluateSpawnType(CSpawnEval *pEval, int Type) const
 		array<CEntity *> lpEnts;
 		lpEnts.hint_size(8);
 		int Num = GameServer()->m_World.FindEntities(m_alSpawnPoints[Type][i], 64, lpEnts, CGameWorld::ENTTYPE_CHARACTER);
-		vec2 Positions[5] = {vec2(0.0f, 0.0f), vec2(-32.0f, 0.0f), vec2(0.0f, -32.0f), vec2(32.0f, 0.0f), vec2(0.0f, 32.0f)}; // start, left, up, right, down
+		vec2 Positions[13] = {
+			vec2(0.0f, 0.0f), vec2(-32.0f, 0.0f), vec2(32.0f, 0.0f), vec2(0.0f, -32.0f), vec2(0.0f, 32.0f),
+			vec2(-64.0f, 0.0f), vec2(64.0f, 0.0f), vec2(-32.0f, -32.0f), vec2(32.0f, -32.0f),
+			vec2(-32.0f, 32.0f), vec2(32.0f, 32.0f), vec2(-96.0f, 0.0f), vec2(96.0f, 0.0f)};
 		int Result = -1;
-		for(int Index = 0; Index < 5 && Result == -1; ++Index)
+		for(int Index = 0; Index < 13 && Result == -1; ++Index)
 		{
 			Result = Index;
 			for(int c = 0; c < Num; ++c)
@@ -690,9 +886,12 @@ void CGameController::DoTeamChange(CPlayer *pPlayer, int Team, bool DoChatMsg)
 	Msg.m_CooldownTick = pPlayer->m_TeamChangeTick;
 	Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, -1);
 
-	char aBuf[128];
-	str_format(aBuf, sizeof(aBuf), "team_join player='%d:%s' team=%d->%d", ClientID, Server()->ClientName(ClientID), OldTeam, Team);
-	GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
+	if(!IsZombiePlayer(pPlayer))
+	{
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "team_join player='%d:%s' team=%d->%d", ClientID, Server()->ClientName(ClientID), OldTeam, Team);
+		GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
+	}
 
 	// update effected game settings
 	if(OldTeam != TEAM_SPECTATORS)
@@ -721,27 +920,33 @@ void CGameController::Com_About(IConsole::IResult *pResult, void *pContext)
 	CCommandManager::SCommandContext *pCmdContext = static_cast<CCommandManager::SCommandContext *>(pContext);
 	CGameController *pSelf = static_cast<CGameController *>(pCmdContext->m_pContext);
 	int ClientID = pCmdContext->m_ClientID;
-	pSelf->SendSystemChat(ClientID, MOD_NAME " v" MOD_VERSION " by CometOnOrbit");
+	char aBuf[128];
+	pSelf->GameServer()->LocFormat(aBuf, sizeof(aBuf), ClientID, "cmd.about.message", "%s v%s by CometOnOrbit", MOD_NAME, MOD_VERSION);
+	pSelf->GameServer()->SendChatTo(ClientID, aBuf);
 }
 
 void CGameController::RegisterChatCommands(CCommandManager *pManager)
 {
-	pManager->AddCommand("about", "About the mod", "", Com_About, this);
-	pManager->AddCommand("info", "About the mod", "", Com_About, this);
+	pManager->AddCommand("about", "cmd.about.help", "", Com_About, this);
+	pManager->AddCommand("info", "cmd.info.help", "", Com_About, this);
 
-	GameServer()->Accounts()->RegisterChatCommands(pManager, GameServer());
-	RegisterCraftingChatCommands(pManager, GameServer());
-	RegisterVoteMenuCommands(pManager, GameServer());
+	if(TWorldController *pCore = GameServer()->Core())
+	{
+		if(pCore->AccountManager())
+			pCore->AccountManager()->RegisterChatCommands(pManager);
+		if(pCore->VoteMenuManager())
+			pCore->VoteMenuManager()->RegisterChatCommands(pManager);
+		if(pCore->CraftManager())
+		{
+			pCore->CraftManager()->RegisterChatCommands(pManager);
+			pCore->CraftManager()->RegisterVoteCommands(pManager);
+		}
+	}
 }
 
 bool CGameController::CanCharacterWeaponFullAuto(CCharacter *pChr, int Weapon)
 {
 	return Weapon == WEAPON_GRENADE || Weapon == WEAPON_SHOTGUN || Weapon == WEAPON_LASER;
-}
-
-void CGameController::SendSystemChat(int TargetID, const char *pMsg)
-{
-	GameServer()->SendChat(-1, CHAT_ALL, TargetID, pMsg);
 }
 
 int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int Weapon)
@@ -756,10 +961,10 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 	CPlayer *pPl = pChr->GetPlayer();
 	CItemHelper *pH = GameServer()->ItemHelper();
 	const char *pSx = (pPl && pH) ? pPl->GetExtraForItem(pPl->GetHolding(ITYPE_SWORD)) : nullptr;
-	const int DmgMul = (pH && pSx) ? maximum(1, pH->GetCard(pSx, ITEM_CARD_DAMAGE_ID)) : 1;
-	const bool ExpCard = (pH && pSx) && pH->GetCard(pSx, ITEM_CARD_EXPLOSION_ID) > 0;
-	const float ProjForce = (pH && pSx) ? (float)(pH->GetCard(pSx, ITEM_CARD_FORCE_ID)) * 2.5f : 0.0f;
+	const int ExtraDmg = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_DAMAGE_ID) * 2 : 0;
+	const float MoreForce = (pH && pSx) ? 1.f + (float)pH->GetCard(pSx, ITEM_CARD_FORCE_ID) * 2.f : 1.f;
 	const int Electron = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_ELECTRON_ID) : 0;
+	const int ExplosionStacks = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_EXPLOSION_ID) : 0;
 
 	int ReloadTimer = 0;
 	switch(Weapon)
@@ -767,6 +972,17 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 		case WEAPON_HAMMER:
 		{
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_HAMMER_FIRE);
+
+			if(Electron > 0)
+			{
+				for(int i = 0; i < 5; i++)
+				{
+					const float Spreading[] = {-0.185f, -0.130f, -0.050f, 0.050f, 0.130f, 0.185f};
+					float a = angle(Direction);
+					a += Spreading[i + 1];
+					new CLightning(&GameServer()->m_World, ChrPos, vec2(cosf(a), sinf(a)), 200.f, 100.f, ClientID, ExtraDmg);
+				}
+			}
 
 			array<CEntity *> lpEnts;
 			lpEnts.hint_size(8);
@@ -796,7 +1012,8 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 					else
 						Dir = vec2(0.f, -1.f);
 
-					pTower->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f, Dir * -1, g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage,
+					const int HamVanilla = g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage;
+					pTower->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f * MoreForce, Dir * -1, HamVanilla + ExtraDmg,
 						pChr, Weapon);
 					Hits++;
 					continue;
@@ -820,10 +1037,16 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 					Dir = vec2(0.f, -1.f);
 
 				const int HamVanilla = g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage;
-				const int HamPvp = (pPl && pH && !pPl->IsDummy()) ? maximum(1, HamVanilla * DmgMul) : HamVanilla;
+				const int HamPvp = HamVanilla + ExtraDmg;
 
-				pTarget->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f, Dir * -1, HamPvp,
+				pTarget->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f * MoreForce, Dir * -1, HamPvp,
 					pChr, Weapon);
+				for(int e = 0; e < ExplosionStacks; e++)
+				{
+					const int OffX = (random_int() % 401) - 200;
+					const int OffY = (random_int() % 401) - 200;
+					GameServer()->m_World.CreateExplosion(vec2(ChrPos.x + OffX, ChrPos.y + OffY), pChr, WEAPON_HAMMER, maximum(1, ExtraDmg));
+				}
 				Hits++;
 			}
 
@@ -835,14 +1058,12 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 
 		case WEAPON_GUN:
 		{
-			const int Base = g_pData->m_Weapons.m_Gun.m_pBase->m_Damage;
-			const int GDmg = maximum(1, Base * DmgMul);
 			new CProjectile(&GameServer()->m_World, WEAPON_GUN,
 				ClientID,
 				ProjStartPos,
 				Direction,
 				(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_GunLifetime),
-				GDmg, ExpCard, ProjForce, -1, WEAPON_GUN);
+				ExtraDmg, false, MoreForce, -1, WEAPON_GUN);
 
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_GUN_FIRE);
 		}
@@ -859,14 +1080,12 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 				a += Spreading[i + 2];
 				float v = 1 - (absolute(i) / (float) ShotSpread);
 				float Speed = mix((float) GameServer()->Tuning()->m_ShotgunSpeeddiff, 1.0f, v);
-				const int Base = g_pData->m_Weapons.m_Shotgun.m_pBase->m_Damage;
-				const int SDmg = maximum(1, Base * DmgMul);
 				new CProjectile(&GameServer()->m_World, WEAPON_SHOTGUN,
 					ClientID,
 					ProjStartPos,
 					vec2(cosf(a), sinf(a)) * Speed,
 					(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_ShotgunLifetime),
-					SDmg, ExpCard, ProjForce, -1, WEAPON_SHOTGUN);
+					ExtraDmg, false, MoreForce, -1, WEAPON_SHOTGUN);
 			}
 
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_SHOTGUN_FIRE);
@@ -875,15 +1094,12 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 
 		case WEAPON_GRENADE:
 		{
-			const int Base = g_pData->m_Weapons.m_Grenade.m_pBase->m_Damage;
-			const int Bonus = (ExpCard ? 8 : 0);
-			const int GrDmg = maximum(1, Base * DmgMul + Bonus);
 			new CProjectile(&GameServer()->m_World, WEAPON_GRENADE,
 				ClientID,
 				ProjStartPos,
 				Direction,
 				(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_GrenadeLifetime),
-				GrDmg, true, ProjForce, SOUND_GRENADE_EXPLODE, WEAPON_GRENADE);
+				ExtraDmg, true, MoreForce, SOUND_GRENADE_EXPLODE, WEAPON_GRENADE);
 
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_GRENADE_FIRE);
 		}
@@ -891,14 +1107,25 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 
 		case WEAPON_LASER:
 		{
-			const int Base = g_pData->m_Weapons.m_aId[WEAPON_LASER].m_Damage;
-			const int LDmg = maximum(1, Base * DmgMul);
-			int LEl = Electron;
-			const int LFrc = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_FORCE_ID) : 0;
-			if(LEl > 0 && LFrc > 0)
-				LEl += minimum(LEl, LFrc);
+			if(Electron > 0)
+			{
+				vec2 Start = ChrPos + Direction * 50.f;
+				float a = angle(Direction);
+				vec2 To = ChrPos + vec2(cosf(a), sinf(a)) * 400.f;
+				GameServer()->Collision()->IntersectLine(Start, To, 0x0, &To);
+				vec2 At;
+				CCharacter *pHit = GameServer()->m_World.IntersectCharacter(Start, To, 70.f, At, pChr);
+				if(pHit)
+				{
+					To = pHit->GetPos();
+					pHit->TakeHit(Direction, Direction * -1, 1 + ExtraDmg, pChr, WEAPON_LASER);
+				}
+				int Segments = distance(Start, To) / 100;
+				Segments = clamp(Segments, 2, 4);
+				new CElectro(&GameServer()->m_World, Start, To, vec2(cosf(a * 1.2f), sinf(a * 1.2f)) * 40.f, Segments);
+			}
 			const int HostLaser = pPl ? pPl->GetHolding(ITYPE_SWORD) : -1;
-			new CLaser(&GameServer()->m_World, ChrPos, Direction, GameServer()->Tuning()->m_LaserReach, ClientID, LDmg, ExpCard, ProjForce, LEl, HostLaser);
+			new CLaser(&GameServer()->m_World, ChrPos, Direction, GameServer()->Tuning()->m_LaserReach, ClientID, ExtraDmg, false, MoreForce, 0, HostLaser);
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_LASER_FIRE);
 		}
 		break;
@@ -910,18 +1137,9 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 		}
 		break;
 	}
+	const int LessReload = (pH && pSx) ? 10 * pH->GetCard(pSx, ITEM_CARD_QUICKLY_FIRE_ID) : 0;
 	if(!ReloadTimer)
-		ReloadTimer = g_pData->m_Weapons.m_aId[Weapon].m_Firedelay * Server()->TickSpeed() / 1000;
-
-	if(pH && pSx)
-	{
-		const int QF = pH->GetCard(pSx, ITEM_CARD_QUICKLY_FIRE_ID);
-		const int QL = pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID);
-		if(QF > 0)
-			ReloadTimer = maximum(1, ReloadTimer - (QF * Server()->TickSpeed()) / 25);
-		if(QF > 0 && QL > 0)
-			ReloadTimer = maximum(1, ReloadTimer - Server()->TickSpeed() / 35);
-	}
+		ReloadTimer = maximum(0, g_pData->m_Weapons.m_aId[Weapon].m_Firedelay * Server()->TickSpeed() / 1000 - LessReload);
 
 	return ReloadTimer;
 }
@@ -947,7 +1165,7 @@ void CGameController::TdStartRound()
 {
 	m_TdGameOverTick = -1;
 
-	const int Zombie0 = maximum(1, Config()->m_SvTdZombieFirstSlot);
+	const int Zombie0 = TdZombieFirstSlot(Config());
 	for(int i = Zombie0; i < MAX_CLIENTS; i++)
 	{
 		if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->IsDummy())
@@ -964,14 +1182,14 @@ void CGameController::TdEndRound()
 	m_TdWave = 0;
 	mem_zero(m_TdZombie, sizeof(m_TdZombie));
 
-	const int Zombie0 = maximum(1, Config()->m_SvTdZombieFirstSlot);
+	const int Zombie0 = TdZombieFirstSlot(Config());
 	for(int i = Zombie0; i < MAX_CLIENTS; i++)
 	{
 		if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->IsDummy())
 			Server()->DummyRemove(i);
 	}
 
-	GameServer()->SendChat(-1, CHAT_ALL, -1, "The tower was destroyed! Game over — map will reload.");
+	GameServer()->SendChatAllLoc("game.tower_destroyed", "The tower was destroyed! Game over — map will reload.");
 	TdBroadcastGameInfo();
 }
 
@@ -991,6 +1209,8 @@ void CGameController::TdStartWave(int Wave)
 {
 	if(!Wave)
 		return;
+
+	mem_zero(m_TdZombie, sizeof(m_TdZombie));
 	if(Wave == 1)
 		m_TdZombie[0] = 10;
 	else if(Wave == 2)
@@ -1008,10 +1228,20 @@ void CGameController::TdStartWave(int Wave)
 
 void CGameController::TdCheckZombie()
 {
-	if(m_TdWarmup || !m_TdWave || TdEndWave() || m_TdGameOverTick != -1)
+	if(m_TdWarmup || !m_TdWave || m_TdGameOverTick != -1)
 		return;
 
-	const int Zombie0 = maximum(1, Config()->m_SvTdZombieFirstSlot);
+	if(TdEndWave())
+		return;
+
+	if(TdCountZombiePopulation() >= m_TdZombStart)
+		return;
+
+	vec2 SpawnPos;
+	if(!CanSpawn(GetDummyTeam(), &SpawnPos))
+		return;
+
+	const int Zombie0 = TdZombieFirstSlot(Config());
 
 	for(int i = Zombie0; i < MAX_CLIENTS; i++)
 	{
@@ -1029,8 +1259,20 @@ void CGameController::TdCheckZombie()
 		char aName[16];
 		str_format(aName, sizeof(aName), "z%d", i);
 		Server()->DummyJoin(i, aName);
-		m_TdZombie[Random]--;
+		break;
 	}
+}
+
+int CGameController::TdCountZombiePopulation() const
+{
+	int Count = 0;
+	const int Zombie0 = TdZombieFirstSlot(Config());
+	for(int i = Zombie0; i < MAX_CLIENTS; i++)
+	{
+		if(IsZombiePlayer(GameServer()->m_apPlayers[i]))
+			Count++;
+	}
+	return Count;
 }
 
 int CGameController::TdRandZomb()
@@ -1048,11 +1290,47 @@ int CGameController::TdRandZomb()
 	return Rand;
 }
 
-bool CGameController::TdEndWave()
+bool CGameController::TdIsWaveCleared() const
 {
 	int PlayerCount = 0;
-	const int HumanMax = maximum(1, Config()->m_SvTdZombieFirstSlot);
-	for(int k = 0; k < HumanMax; k++)
+	for(int k = 0; k < MAX_HUMAN_CLIENTS; k++)
+	{
+		if(GameServer()->m_apPlayers[k])
+		{
+			PlayerCount++;
+			break;
+		}
+	}
+
+	if(!PlayerCount)
+		return true;
+
+	for(unsigned j = 0; j < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); j++)
+	{
+		if(m_TdZombie[j])
+			return false;
+	}
+
+	const int Zombie0 = TdZombieFirstSlot(Config());
+	for(int i = Zombie0; i < MAX_CLIENTS; i++)
+	{
+		CPlayer *pP = GameServer()->m_apPlayers[i];
+		if(!IsZombiePlayer(pP))
+			continue;
+		if(!pP->IsEliminated())
+			return false;
+	}
+
+	return true;
+}
+
+bool CGameController::TdEndWave()
+{
+	if(!TdIsWaveCleared())
+		return false;
+
+	int PlayerCount = 0;
+	for(int k = 0; k < MAX_HUMAN_CLIENTS; k++)
 	{
 		if(GameServer()->m_apPlayers[k])
 		{
@@ -1063,7 +1341,7 @@ bool CGameController::TdEndWave()
 
 	if(!PlayerCount)
 	{
-		const int Zombie0 = maximum(1, Config()->m_SvTdZombieFirstSlot);
+		const int Zombie0 = TdZombieFirstSlot(Config());
 		for(int i = Zombie0; i < MAX_CLIENTS; i++)
 		{
 			if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->IsDummy())
@@ -1073,36 +1351,19 @@ bool CGameController::TdEndWave()
 		return true;
 	}
 
-	for(unsigned j = 0; j < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); j++)
-	{
-		if(m_TdZombie[j])
-			return false;
-	}
-
-	const int Zombie0 = maximum(1, Config()->m_SvTdZombieFirstSlot);
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->GetCharacter() && GameServer()->m_apPlayers[i]->GetCharacter()->IsAlive())
-			return false;
-	}
-
-	char aClear[256];
 	const int NextBreak = Config()->m_SvZombWarmup + 5 * m_TdWave;
-	str_format(aClear, sizeof(aClear), "Wave %d cleared! Break: %d s — prepare for wave %d.", m_TdWave, NextBreak, m_TdWave + 1);
-	GameServer()->SendChat(-1, CHAT_ALL, -1, aClear);
+	GameServer()->SendChatAllLocF("game.wave_cleared", "Wave %d cleared! Break: %d s — prepare for wave %d.", m_TdWave, NextBreak, m_TdWave + 1);
 
 	if(Config()->m_SvTdWaveScoreBonus)
 	{
-		for(int i = 0; i < HumanMax; i++)
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
 		{
 			CPlayer *pP = GameServer()->m_apPlayers[i];
 			if(!pP || pP->GetTeam() != TEAM_RED || pP->IsDummy())
 				continue;
 			pP->m_Score += m_TdWave;
 		}
-		char aScore[128];
-		str_format(aScore, sizeof(aScore), "Defenders gain %d score for clearing the wave.", m_TdWave);
-		GameServer()->SendChat(-1, CHAT_ALL, -1, aScore);
+		GameServer()->SendChatAllLocF("game.wave_score_bonus", "Defenders gain %d score for clearing the wave.", m_TdWave);
 	}
 
 	TdDoWarmup(NextBreak);
@@ -1112,26 +1373,18 @@ bool CGameController::TdEndWave()
 
 void CGameController::TdDoZombMessage(int Which)
 {
-	char aBuf[256];
 	if(!Which)
 	{
 		m_TdZombStart = m_TdZombLeft;
-		str_format(aBuf, sizeof(aBuf), "Wave %d started — %d zombies!", m_TdWave, m_TdZombLeft);
-		GameServer()->SendChat(-1, CHAT_ALL, -1, aBuf);
+		GameServer()->SendChatAllLocF("game.wave_start", "Wave %d started — %d zombies!", m_TdWave, m_TdZombLeft);
 		return;
 	}
 
 	const int Left = Which;
 	if(Left > 1 && (Left <= 5 || !(Left % 10)))
-	{
-		str_format(aBuf, sizeof(aBuf), "Wave %d: %d zombies left", m_TdWave, Left);
-		GameServer()->SendChat(-1, CHAT_ALL, -1, aBuf);
-	}
+		GameServer()->SendChatAllLocF("game.wave_left", "Wave %d: %d zombies left", m_TdWave, Left);
 	else if(Left == 1)
-	{
-		str_format(aBuf, sizeof(aBuf), "Wave %d: 1 zombie left", m_TdWave);
-		GameServer()->SendChat(-1, CHAT_ALL, -1, aBuf);
-	}
+		GameServer()->SendChatAllLocF("game.wave_one_left", "Wave %d: 1 zombie left", m_TdWave);
 }
 
 void CGameController::TdSetWaveAlg(int Modulus, int WaveThird)
@@ -1160,11 +1413,7 @@ void CGameController::TdSetWaveAlg(int Modulus, int WaveThird)
 
 int CGameController::TdGetZombieOrder(int WaveThird)
 {
-	if(!WaveThird)
-		return 0;
-	if(WaveThird < NUM_TD_ZOMB)
-		return WaveThird + 1;
-	return 1;
+	return WaveThird % NUM_TD_ZOMB;
 }
 
 void CGameController::TdSetWave(int Wave)

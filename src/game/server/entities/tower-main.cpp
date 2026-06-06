@@ -60,16 +60,15 @@ void CTowerMain::Tick()
 			{
 				if(GameWorld()->Config()->m_SvTdTowerTouchDamage > 0)
 					TakeDamage(GameWorld()->Config()->m_SvTdTowerTouchDamage);
-				pChr->Die(ClientID, WEAPON_GAME);
+				if(pChr->IsAlive())
+					pChr->Die(ClientID, WEAPON_GAME);
 				continue;
 			}
 
 			if(Server()->Tick() % Server()->TickSpeed() == 0)
 			{
 				pChr->IncreaseHealth(3);
-				char aBuf[128];
-				str_format(aBuf, sizeof(aBuf), "\n\n\n\n\n\n\nTower: %d / %d", m_Health, GameWorld()->Config()->m_SvMaxTowerHealth);
-				GameServer()->SendBroadcast(ClientID, aBuf);
+				GameServer()->SendBroadcastLocF(ClientID, "tower.heal_broadcast", "Tower: %d / %d", m_Health, GameWorld()->Config()->m_SvMaxTowerHealth);
 			}
 		}
 	}
@@ -148,14 +147,7 @@ bool CTowerMain::TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, int W
 	(void)Source;
 	(void)Weapon;
 
-	int Owner = -100;
-	if(pFrom)
-	{
-		if(pFrom->ObjType() == CGameWorld::ENTTYPE_CHARACTER)
-			Owner = static_cast<CCharacter *>(pFrom)->GetCID();
-		else if(pFrom->ObjFlag() & CGameWorld::ENTFLAG_CHILD)
-			Owner = static_cast<CChildEntity *>(pFrom)->GetOwner();
-	}
+	const int Owner = GameWorld()->DamageOwnerFromEntity(pFrom);
 
 	if(!IsZombieDamageSource(GameServer(), Owner, pFrom))
 		return false;

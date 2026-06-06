@@ -1,9 +1,14 @@
 /* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
+#include <base/math.h>
+
 #include <game/server/gamecontext.h>
+#include <game/server/item_system.h>
 #include <game/server/player.h>
 
 #include "character.h"
+#include "growingexplosion.h"
+#include "lightning.h"
 #include "projectile.h"
 
 CProjectile::CProjectile(CGameWorld *pGameWorld, int Type, int Owner, vec2 Pos, vec2 Dir, int Span,
@@ -74,6 +79,33 @@ void CProjectile::Tick()
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
 	CHitableEntity *pTargetEnt = (CHitableEntity *) GameWorld()->IntersectFlagEntity(PrevPos, CurPos, 6.0f, CurPos, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
 
+	if(pOwnerChar && pOwnerChar->GetPlayer() && ((Server()->Tick() - m_StartTick) % 25 == 0 || Server()->Tick() - m_StartTick < 3))
+	{
+		CItemHelper *pH = GameServer()->ItemHelper();
+		const char *pEx = pOwnerChar->GetPlayer()->GetExtraForItem(pOwnerChar->GetPlayer()->GetHolding(ITYPE_SWORD));
+		if(pH && pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID) > 0)
+		{
+			const int LightningDmg = maximum(1, m_Damage / 2);
+			vec2 FlyDir = CurPos - PrevPos;
+			if(length(FlyDir) < 0.001f)
+				FlyDir = m_Direction;
+			float a = angle(normalize(FlyDir));
+			if(m_Type == WEAPON_SHOTGUN)
+			{
+				new CLightning(GameWorld(), CurPos, vec2(cosf(a), sinf(a)), 100.f, 50.f, m_Owner, LightningDmg);
+			}
+			else
+			{
+				const float Spreading[] = {-0.185f, -0.130f, -0.050f, 0.050f, 0.130f, 0.185f};
+				for(int i = 0; i < 3; i++)
+				{
+					float SpreadA = a + Spreading[i + 3];
+					new CLightning(GameWorld(), CurPos, vec2(cosf(SpreadA), sinf(SpreadA)), 200.f, 100.f, m_Owner, LightningDmg);
+				}
+			}
+		}
+	}
+
 	m_LifeSpan--;
 
 	if(pTargetEnt || Collide || m_LifeSpan < 0 || GameLayerClipped(CurPos))
@@ -81,9 +113,34 @@ void CProjectile::Tick()
 		if(m_LifeSpan >= 0 || m_Weapon == WEAPON_GRENADE)
 			GameWorld()->CreateSound(CurPos, m_SoundImpact);
 
-		if(m_Explosive)
-			GameWorld()->CreateExplosion(CurPos, this, m_Weapon, m_Damage);
+		int FusionStacks = 0;
+		bool ExplosionCard = false;
+		int ElectronStacks = 0;
+		if(pOwnerChar && pOwnerChar->GetPlayer())
+		{
+			if(CItemHelper *pH = GameServer()->ItemHelper())
+			{
+				const char *pEx = pOwnerChar->GetPlayer()->GetExtraForItem(pOwnerChar->GetPlayer()->GetHolding(ITYPE_SWORD));
+				FusionStacks = pH->GetCard(pEx, ITEM_CARD_FUSION_ID);
+				ExplosionCard = pH->GetCard(pEx, ITEM_CARD_EXPLOSION_ID) > 0;
+				ElectronStacks = pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID);
+			}
+		}
 
+		if(FusionStacks > 0 && m_Type != WEAPON_SHOTGUN)
+			new CGrowingExplosion(GameWorld(), CurPos, vec2(0.f, 0.f), m_Owner, 24 * FusionStacks, GROWINGEXPLOSIONEFFECT_BOOM, true);
+
+		if(m_Explosive || ExplosionCard)
+		{
+			if(ElectronStacks > 0)
+			{
+				float ElRadius = (float)ElectronStacks;
+				if(FusionStacks > 0)
+					ElRadius = 0.5f;
+				new CGrowingExplosion(GameWorld(), CurPos, vec2(0.f, 0.f), m_Owner, maximum(1, (int)(5.f * ElRadius)), GROWINGEXPLOSIONEFFECT_ELECTRIC, FusionStacks > 0);
+			}
+			GameWorld()->CreateExplosion(CurPos, this, m_Weapon, maximum(1, m_Damage));
+		}
 		else if(pTargetEnt)
 			pTargetEnt->TakeHit(m_Direction * maximum(0.001f, m_Force), m_Direction * -1, m_Damage, this, m_Weapon);
 

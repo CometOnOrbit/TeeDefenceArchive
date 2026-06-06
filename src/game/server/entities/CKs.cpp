@@ -1,6 +1,7 @@
 /* (c) TeeDefenceArchive - 2026 */
 #include <base/math.h>
 
+#include <game/server/account.h>
 #include <game/server/gamecontext.h>
 #include <game/server/gameworld.h>
 #include <generated/protocol.h>
@@ -83,9 +84,7 @@ void CKs::RewardIfDestroyed(CPlayer *pPlayer)
 
 	const int CID = pPlayer->GetCID();
 	pPlayer->m_AccData.m_aItems[m_Type].m_Num++;
-	char aBuf[128];
-	str_format(aBuf, sizeof(aBuf), "You picked up a %s", GameServer()->ItemHelper()->GetItemName(m_Type));
-	GameServer()->SendChat(CID, CHAT_ALL, -1, aBuf);
+	GameServer()->SendChatLocF(CID, "mine.pickup", "You picked up %s", GameServer()->LocItemName(CID, m_Type));
 	const int Cap = GetMaxHealth();
 	m_Health = Cap > 0 ? Cap : 1;
 
@@ -102,10 +101,10 @@ void CKs::Picking(int Time, CPlayer *Player)
 	const char *pHoldingExtra = Player->GetExtraForItem(Player->GetHolding(HoldKind));
 	CItemHelper *pH = GameServer()->ItemHelper();
 
-	const int CardDmg = pH ? maximum(1, pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID)) : 1;
+	const int CardDmg = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID) : 0;
 
-	int DmgPart = Time * CardDmg;
-	if(HoldKind == ITYPE_AXE)
+	int DmgPart = Time * (1 + CardDmg);
+	if(HoldKind == ITYPE_AXE && CardDmg == 0)
 		DmgPart = Time * 2;
 
 	m_Health -= DmgPart;
@@ -137,21 +136,11 @@ void CKs::Picking(int Time, CPlayer *Player)
 		}
 	}
 
-	char aMine[192];
-	str_format(aMine, sizeof(aMine), "%s — %d / %d HP (hammer)", GameServer()->ItemHelper()->GetItemName(m_Type), m_Health, GetMaxHealth());
-	GameServer()->SendBroadcast(Player->GetCID(), aMine);
+	GameServer()->SendBroadcastLocF(Player->GetCID(), "mine.progress", "%s — %d / %d HP (hammer)",
+		GameServer()->LocItemName(Player->GetCID(), m_Type), m_Health, GetMaxHealth());
 
-	int QFire = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_QUICKLY_FIRE_ID) : 0;
-	int QLoad = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_QUICKLY_LOADING_ID) : 0;
-	if(pH)
-	{
-		const char *pSx = Player->GetExtraForItem(Player->GetHolding(ITYPE_SWORD));
-		QLoad += (pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID) + 1) / 2;
-	}
-	int MineCd = 25 - QFire - QLoad;
-	if(QFire > 0 && QLoad > 0)
-		MineCd -= 3;
-	MineCd = maximum(1, MineCd);
+	const int QFire = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_QUICKLY_FIRE_ID) : 0;
+	const int MineCd = maximum(1, 25 - QFire);
 	if(Player->GetCharacter())
 		Player->GetCharacter()->m_MiningTick = MineCd;
 }

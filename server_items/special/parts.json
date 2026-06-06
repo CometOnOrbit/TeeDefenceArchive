@@ -4,27 +4,21 @@
         "multiple": [
             {
                 "id": 35,
-                "name": "",
-                "desc": "",
+                "name": "Barrel",
+                "desc": "Basic turret barrel (placeholder part)",
                 "capacity": 0,
                 "placeable": [3],
                 "max": 0,
                 "max_place": 0,
                 "formula": {
-                    "Log": 0,
-                    "Coal": 0,
-                    "Copper": 0,
-                    "Iron": 0,
-                    "Golden": 0,
-                    "Diamond": 0,
-                    "Enegry": 0,
-                    "Zombie's Heart": 0
+                    "Log": 200,
+                    "Iron": 10
                 }
             },
             {
                 "id": 36,
-                "name": "",
-                "desc": "",
+                "name": "Cooling",
+                "desc": "Reduces turret fire cooldown when mounted",
                 "capacity": 40,
                 "placeable": [3],
                 "max": 3,

@@ -1,0 +1,12 @@
+sv_name "TeeDefense Archive"
+sv_map "TDef-City"
+sv_mysql_enable 1
+sv_mysql_host "127.0.0.1"
+sv_mysql_database "teedefense"
+sv_mysql_user "teedefense"
+sv_mysql_password ""
+sv_turret_fire_range 800
+sv_turret_ammo_per_shot 5
+sv_zomb_warmup 10
+sv_max_clients 64
+sv_td_zombie_first_slot 64

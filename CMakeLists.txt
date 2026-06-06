@@ -679,7 +679,15 @@ set(EXPECTED_DATA
   mapres/winter_mountains.png
   mapres/winter_mountains2.png
   mapres/winter_mountains3.png
+  maps/Mine-Craft.map
+  maps/TDef-City.map
+  maps/TDef-Deeply.map
   maps/TDef-Shwar.map
+  maps/TDef-Zero.map
+  maps/TDef1.map
+  maps/worlds.json
+  maps/yours_minecraft.map
+  autoexec.cfg.example
 )
 
 set_glob(DATA GLOB_RECURSE "json;map;png;rules;ttc;ttf;txt;opus" datasrc ${EXPECTED_DATA})
@@ -917,18 +925,37 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   account.cpp
   account.h
   alloc.h
+  ai/defence.cpp
+  ai/defence.h
+  ai/genetics.cpp
+  ai/genetics.h
+  ai/strategy.cpp
+  ai/strategy.h
   botengine.cpp
   botengine.h
-  crafting.cpp
-  crafting.h
+  core/components/accounts/account_manager.cpp
+  core/components/accounts/account_manager.h
+  core/components/craft/craft_manager.cpp
+  core/components/craft/craft_manager.h
+  core/components/vote/vote_menu_manager.cpp
+  core/components/vote/vote_menu_manager.h
+  core/components/vote/vote_menu_types.h
   entities/CKs.cpp
   entities/CKs.h
   entities/character.cpp
   entities/character.h
+  entities/electro.cpp
+  entities/electro.h
+  entities/growingexplosion.cpp
+  entities/growingexplosion.h
   entities/laser.cpp
   entities/laser.h
+  entities/lightning.cpp
+  entities/lightning.h
   entities/pickup.cpp
   entities/pickup.h
+  entities/plasma.cpp
+  entities/plasma.h
   entities/projectile.cpp
   entities/projectile.h
   entities/tower-main.cpp
@@ -939,6 +966,15 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entity.h
   eventhandler.cpp
   eventhandler.h
+  core/components/bots/defence_bot_manager.cpp
+  core/components/bots/defence_bot_manager.h
+  core/components/localization/localization_manager.cpp
+  core/components/localization/localization_manager.h
+  core/components/travel/travel_manager.cpp
+  core/components/travel/travel_manager.h
+  core/tworld_component.h
+  core/tworld_controller.cpp
+  core/tworld_controller.h
   gamecontext.cpp
   gamecontext.h
   gamecontroller.cpp
@@ -953,10 +989,10 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   player.h
   sql_pool.cpp
   sql_pool.h
-  vote_menu.cpp
-  zombie_ai.cpp
-  zombie_nav.cpp
-  zombie_nav.h
+  turret_ammo.cpp
+  turret_ammo.h
+  zombie_bot.cpp
+  zombie_bot.h
 )
 set(GAME_GENERATED_SERVER
   src/generated/server_data.cpp
