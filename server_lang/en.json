@@ -186,6 +186,7 @@
     "cmd.inv.help": "List inventory",
     "cmd.language.help": "Switch language: zh-cn / en",
     "vote.no_reason": "No reason given",
+    "vote.target_zombie": "You cannot start a vote against zombies.",
     "vote.kick.reason": "Kicked by vote",
     "vote.ban.reason": "Banned by vote",
     "menu.sep.short": "---",

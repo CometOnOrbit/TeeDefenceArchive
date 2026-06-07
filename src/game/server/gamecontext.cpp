@@ -39,6 +39,11 @@ static int ZombieFirstSlot(const CConfig *pCfg)
 	return minimum((int)MAX_HUMAN_CLIENTS, pCfg->m_SvMaxClients);
 }
 
+static bool IsZombieVoteTarget(const CPlayer *pPlayer)
+{
+	return pPlayer && pPlayer->IsDummy() && pPlayer->GetZomb() != ZOMB_NONE;
+}
+
 enum
 {
 	RESET,
@@ -1156,6 +1161,12 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 				int KickID = str_toint(pMsg->m_Value);
 				if(KickID < 0 || KickID >= MAX_CLIENTS || !m_apPlayers[KickID] || KickID == ClientID || Server()->IsAuthed(KickID))
 					return;
+				if(IsZombieVoteTarget(m_apPlayers[KickID]))
+				{
+					if(!pMsg->m_Force)
+						SendChatLoc(ClientID, "vote.target_zombie", u8"不能对僵尸发起投票。");
+					return;
+				}
 
 				str_format(aDesc, sizeof(aDesc), "%2d: %s", KickID, Server()->ClientName(KickID));
 				if(!Config()->m_SvVoteKickBantime)
@@ -1194,6 +1205,12 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 				int SpectateID = str_toint(pMsg->m_Value);
 				if(SpectateID < 0 || SpectateID >= MAX_CLIENTS || !m_apPlayers[SpectateID] || m_apPlayers[SpectateID]->GetTeam() == TEAM_SPECTATORS || SpectateID == ClientID)
 					return;
+				if(IsZombieVoteTarget(m_apPlayers[SpectateID]))
+				{
+					if(!pMsg->m_Force)
+						SendChatLoc(ClientID, "vote.target_zombie", u8"不能对僵尸发起投票。");
+					return;
+				}
 
 				str_format(aDesc, sizeof(aDesc), "%2d: %s", SpectateID, Server()->ClientName(SpectateID));
 				str_format(aCmd, sizeof(aCmd), "set_team %d -1 %d", SpectateID, Config()->m_SvVoteSpectateRejoindelay);

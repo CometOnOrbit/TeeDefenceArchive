@@ -186,6 +186,7 @@
     "cmd.inv.help": "背包列表",
     "cmd.language.help": "切换语言 zh-cn / en",
     "vote.no_reason": "未填写理由",
+    "vote.target_zombie": "不能对僵尸发起投票。",
     "vote.kick.reason": "投票踢出",
     "vote.ban.reason": "投票封禁",
     "menu.sep.short": "---",
