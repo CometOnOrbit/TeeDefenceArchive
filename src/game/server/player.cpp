@@ -29,6 +29,7 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_TurretPlaceFailMsgTick = 0;
 	m_TurretPlacePos = vec2(0.0f, 0.0f);
 	TurretAmmo_DefaultMix(&m_TurretAmmoMix);
+	mem_zero(m_aTurretAmmoDebt, sizeof(m_aTurretAmmoDebt));
 	str_copy(m_aLanguage, "zh-cn", sizeof(m_aLanguage));
 	m_ClientID = ClientID;
 	m_Team = AsSpec ? TEAM_SPECTATORS : (Dummy ? GameServer()->m_pController->GetDummyTeam() : GameServer()->m_pController->GetStartTeam());
@@ -45,6 +46,7 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_Zomb = ZOMB_NONE;
 	mem_zero(m_aZombSub, sizeof(m_aZombSub));
 	m_ZombVisible = true;
+	m_ZamerDetonating = false;
 	m_ZombAiLowSpeedTicks = 0;
 	m_ZombAiJumpCooldown = 0;
 	m_ZombAiLastMoveDir = 1;
@@ -185,6 +187,7 @@ void CPlayer::SetTurretAmmoMatPct(int MatSlot, int Pct)
 		return;
 	m_TurretAmmoMix.m_aPct[MatSlot] = clamp(Pct, 0, 100);
 	TurretAmmo_NormalizeMix(&m_TurretAmmoMix);
+	TurretAmmo_ClearDebt(this);
 }
 
 void CPlayer::SetLanguage(const char *pLang)
@@ -671,8 +674,46 @@ bool CPlayer::CreateTurret(vec2 Pos)
 void CPlayer::DestroyTurret()
 {
 	CancelTurretPlace();
+	TurretAmmo_ClearDebt(this);
 	delete m_pTurret;
 	m_pTurret = nullptr;
+}
+
+bool CPlayer::RepairDeployedTurret()
+{
+	if(!m_pTurret || !m_pTurret->IsBroken())
+		return false;
+
+	CCharacter *pChr = GetCharacter();
+	if(!pChr || !pChr->IsAlive())
+		return false;
+
+	if(distance(pChr->GetPos(), m_pTurret->GetPos()) > 520.0f)
+		return false;
+
+	if(!TurretRepair_Consume(m_pGameServer, this, m_pTurret->GetItemDefId()))
+		return false;
+
+	m_pTurret->Repair();
+	return true;
+}
+
+bool CPlayer::RecallTurret()
+{
+	if(m_TurretPlacing)
+		CancelTurretPlace();
+	if(!m_pTurret)
+		return false;
+
+	CCharacter *pChr = GetCharacter();
+	if(!pChr || !pChr->IsAlive())
+		return false;
+
+	if(distance(pChr->GetPos(), m_pTurret->GetPos()) > 520.0f)
+		return false;
+
+	DestroyTurret();
+	return true;
 }
 
 void CPlayer::KillCharacter(int Weapon)

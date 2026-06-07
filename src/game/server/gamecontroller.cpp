@@ -267,6 +267,9 @@ void CGameController::TdRunZombieBrain(CPlayer *pP)
 		return;
 
 	pBot->Tick();
+	if(!m_apZombieBots[CID])
+		return;
+
 	CNetObj_PlayerInput Inp = pBot->Input();
 	pP->OnPredictedInput(&Inp);
 	pP->OnDirectInput(&Inp);

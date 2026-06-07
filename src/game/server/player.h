@@ -110,6 +110,7 @@ public:
 	const char *GetExtraForItem(int ItemID) const;
 
 	SAccSyncData m_AccData;
+	int m_aTurretAmmoDebt[NUM_TURRET_AMMO_MATS];
 
 	void Tick();
 	void PostTick();
@@ -123,6 +124,10 @@ public:
 	CCharacter *GetCharacter();
 	bool CreateTurret(vec2 Pos = vec2(0.0f, 0.0f));
 	void DestroyTurret();
+	bool HasDeployedTurret() const { return m_pTurret != nullptr; }
+	CTurret *GetDeployedTurret() const { return m_pTurret; }
+	bool RecallTurret();
+	bool RepairDeployedTurret();
 	bool BeginTurretPlace();
 	void CancelTurretPlace();
 	void UpdateTurretPlaceFromAim();
@@ -184,6 +189,7 @@ public:
 	int m_Zomb;
 	int m_aZombSub[NUM_ZOMB_SUB];
 	bool m_ZombVisible;
+	bool m_ZamerDetonating;
 	int m_ZombAiLowSpeedTicks;
 	int m_ZombAiJumpCooldown;
 	int m_ZombAiLastMoveDir;

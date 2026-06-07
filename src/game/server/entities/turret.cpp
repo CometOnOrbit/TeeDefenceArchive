@@ -23,6 +23,11 @@ CTurret::CTurret(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId)
 	m_ItemDefId = ItemDefId;
 	m_LastShotTick = 0;
 	m_LastAmmoWarnTick = 0;
+	m_LastBrokenWarnTick = 0;
+	m_MaxHealth = 100;
+	if(CItemHelper *pH = GameServer()->ItemHelper())
+		m_MaxHealth = maximum(1, pH->GetMaxCapacity(ItemDefId));
+	m_Health = m_MaxHealth;
 	m_aCenterId = Server()->SnapNewID();
 	for(int i = 0; i < NUM_RING_LASERS; i++)
 		m_aRingIds[i] = Server()->SnapNewID();
@@ -43,6 +48,18 @@ int CTurret::GetVisualLevel() const
 	return m_ItemDefId - ITEM_TURRET_BEGINNER;
 }
 
+void CTurret::TakeDamage(int Dmg)
+{
+	if(m_Health <= 0 || Dmg <= 0)
+		return;
+	m_Health -= Dmg;
+}
+
+void CTurret::Repair()
+{
+	m_Health = m_MaxHealth;
+}
+
 void CTurret::Tick()
 {
 	if(!GameServer()->m_apPlayers[m_Owner])
@@ -55,6 +72,36 @@ void CTurret::Tick()
 	CCharacter *pOwnChr = pOwner->GetCharacter();
 	if(!pOwnChr)
 		return;
+
+	const float BaseRadius = (float)Config()->m_SvTurretRadius;
+	const float HitRadius = BaseRadius + (float)(GetVisualLevel() * Config()->m_SvTurretRadius) + 16.0f;
+	const int TouchDmg = Config()->m_SvTurretTouchDamage;
+	if(TouchDmg > 0 && m_Health > 0)
+	{
+		for(CGameWorld::TypeRange r = GameWorld()->DoTypeRange(CGameWorld::ENTTYPE_CHARACTER); !r.empty(); r.pop_front())
+		{
+			CCharacter *pChr = static_cast<CCharacter *>(r.front());
+			if(!pChr || !pChr->IsAlive() || !pChr->GetPlayer() || !pChr->GetPlayer()->IsDummy())
+				continue;
+			const float Len = distance(pChr->GetPos(), m_Pos);
+			if(Len < pChr->GetProximityRadius() + HitRadius)
+			{
+				TakeDamage(TouchDmg);
+				if(pChr->IsAlive())
+					pChr->Die(pChr->GetPlayer()->GetCID(), WEAPON_GAME);
+			}
+		}
+	}
+
+	if(IsBroken())
+	{
+		if(Server()->Tick() - m_LastBrokenWarnTick >= Server()->TickSpeed() * 3)
+		{
+			GameServer()->SendChatLoc(m_Owner, "turret.broken", u8"炮塔已损坏，请在菜单中修复。");
+			m_LastBrokenWarnTick = Server()->Tick();
+		}
+		return;
+	}
 
 	CItemHelper *pH = GameServer()->ItemHelper();
 	const char *pExtra = pOwner->GetExtraForItem(m_ItemDefId);

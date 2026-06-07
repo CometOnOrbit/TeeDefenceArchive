@@ -622,9 +622,13 @@ bool CZombieBot::TryZamerDetonate(float DistTower, float DistHuman, bool InSight
 	const int Wave = maximum(1, m_pCtrl->GetTdWave());
 	const int Dmg = maximum(2, 3 + Wave / 2);
 	const vec2 Offsets[4] = {vec2(5.0f, 5.0f), vec2(-5.0f, 5.0f), vec2(-5.0f, -5.0f), vec2(5.0f, -5.0f)};
+	CGameContext *pGS = m_pGameServer;
+	m_pPlayer->m_ZamerDetonating = true;
 	for(int i = 0; i < 4; i++)
-		m_pGameServer->m_World.CreateExplosion(Pos + Offsets[i], pChr, WEAPON_GRENADE, Dmg);
-	pChr->Die(m_pPlayer->GetCID(), WEAPON_SELF);
+		pGS->m_World.CreateExplosion(Pos + Offsets[i], pChr, WEAPON_GRENADE, Dmg);
+	m_pPlayer->m_ZamerDetonating = false;
+	if(pChr->IsAlive())
+		pChr->Die(m_pPlayer->GetCID(), WEAPON_SELF);
 	return true;
 }
 

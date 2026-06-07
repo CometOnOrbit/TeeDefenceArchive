@@ -767,6 +767,9 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	if(!m_Alive)
 		return false;
 
+	if(m_pPlayer->m_ZamerDetonating)
+		return false;
+
 	m_Core.m_Vel += Force;
 
 	if(From >= 0)

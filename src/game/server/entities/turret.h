@@ -14,6 +14,9 @@ class CTurret : public CEntity
 	int m_aRingIds[NUM_RING_LASERS];
 	int m_LastShotTick;
 	int m_LastAmmoWarnTick;
+	int m_LastBrokenWarnTick;
+	int m_Health;
+	int m_MaxHealth;
 
 public:
 	CTurret(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId);
@@ -25,6 +28,11 @@ public:
 	int GetOwner() const { return m_Owner; }
 	int GetItemDefId() const { return m_ItemDefId; }
 	int GetVisualLevel() const;
+	int GetHealth() const { return m_Health; }
+	int GetMaxHealth() const { return m_MaxHealth; }
+	bool IsBroken() const { return m_Health <= 0; }
+	void TakeDamage(int Dmg);
+	void Repair();
 };
 
 /** Ghost ring shown while the owner picks a deploy spot (vote menu placement page). */

@@ -65,37 +65,113 @@ int TurretAmmo_ItemIdToMat(int ItemId)
 	return -1;
 }
 
+void TurretAmmo_ClearDebt(CPlayer *pP)
+{
+	if(!pP)
+		return;
+	mem_zero(pP->m_aTurretAmmoDebt, sizeof(pP->m_aTurretAmmoDebt));
+}
+
+static int TurretAmmo_DebtIncrement(int TotalUnits, int Pct)
+{
+	return TotalUnits * Pct * TURRET_AMMO_DEBT_SCALE / 100;
+}
+
+static bool TurretAmmo_PreviewShot(const CPlayer *pP, const STurretAmmoMix &Norm, int TotalUnits, int aDebt[NUM_TURRET_AMMO_MATS])
+{
+	for(int i = 0; i < NUM_TURRET_AMMO_MATS; i++)
+	{
+		if(Norm.m_aPct[i] <= 0)
+			continue;
+		const int ItemId = s_aMatItemIds[i];
+		int Debt = aDebt[i] + TurretAmmo_DebtIncrement(TotalUnits, Norm.m_aPct[i]);
+		const int Deduct = Debt / TURRET_AMMO_DEBT_SCALE;
+		if(pP->m_AccData.m_aItems[ItemId].m_Num < Deduct)
+			return false;
+	}
+	return true;
+}
+
 bool TurretAmmo_CanAfford(const CPlayer *pP, const STurretAmmoMix *pMix, int TotalUnits)
 {
 	if(!pP || !pMix || TotalUnits <= 0)
 		return false;
 	STurretAmmoMix Norm = *pMix;
 	TurretAmmo_NormalizeMix(&Norm);
+	int aDebt[NUM_TURRET_AMMO_MATS];
+	mem_copy(aDebt, pP->m_aTurretAmmoDebt, sizeof(aDebt));
+	return TurretAmmo_PreviewShot(pP, Norm, TotalUnits, aDebt);
+}
+
+bool TurretAmmo_Consume(CPlayer *pP, const STurretAmmoMix *pMix, int TotalUnits)
+{
+	if(!pP || !pMix || TotalUnits <= 0)
+		return false;
+	STurretAmmoMix Norm = *pMix;
+	TurretAmmo_NormalizeMix(&Norm);
+	int aDebt[NUM_TURRET_AMMO_MATS];
+	mem_copy(aDebt, pP->m_aTurretAmmoDebt, sizeof(aDebt));
+	if(!TurretAmmo_PreviewShot(pP, Norm, TotalUnits, aDebt))
+		return false;
+
 	for(int i = 0; i < NUM_TURRET_AMMO_MATS; i++)
 	{
 		if(Norm.m_aPct[i] <= 0)
 			continue;
 		const int ItemId = s_aMatItemIds[i];
-		const int Need = maximum(1, (TotalUnits * Norm.m_aPct[i] + 99) / 100);
-		if(pP->m_AccData.m_aItems[ItemId].m_Num < Need)
+		pP->m_aTurretAmmoDebt[i] += TurretAmmo_DebtIncrement(TotalUnits, Norm.m_aPct[i]);
+		const int Deduct = pP->m_aTurretAmmoDebt[i] / TURRET_AMMO_DEBT_SCALE;
+		pP->m_aTurretAmmoDebt[i] %= TURRET_AMMO_DEBT_SCALE;
+		pP->m_AccData.m_aItems[ItemId].m_Num -= Deduct;
+	}
+	return true;
+}
+
+int TurretRepair_MaterialCost(CItemHelper *pH, int TurretItemId, int MatId)
+{
+	if(!pH || !pH->HasFormula(TurretItemId) || !pH->CheckItemValid(MatId))
+		return 0;
+	if(pH->GetType(MatId) == ITYPE_TURRET)
+		return 0;
+	const int Need = pH->GetFormulaNeed(TurretItemId, MatId);
+	if(Need <= 0)
+		return 0;
+	return Need / 2;
+}
+
+bool TurretRepair_CanAfford(CGameContext *pGame, const CPlayer *pP, int TurretItemId)
+{
+	if(!pGame || !pP || !pGame->ItemHelper() || TurretItemId <= 0)
+		return false;
+	CItemHelper *pH = pGame->ItemHelper();
+	if(!pH->HasFormula(TurretItemId))
+		return false;
+
+	for(int i = 0; i < NUM_ITEM; i++)
+	{
+		const int Need = TurretRepair_MaterialCost(pH, TurretItemId, i);
+		if(Need <= 0)
+			continue;
+		if(pH->ItemExtraBlocksCraftConsume(pP->m_AccData.m_aItems[i].m_aExtra))
+			return false;
+		if(pP->m_AccData.m_aItems[i].m_Num < Need)
 			return false;
 	}
 	return true;
 }
 
-bool TurretAmmo_Consume(CPlayer *pP, const STurretAmmoMix *pMix, int TotalUnits)
+bool TurretRepair_Consume(CGameContext *pGame, CPlayer *pP, int TurretItemId)
 {
-	if(!TurretAmmo_CanAfford(pP, pMix, TotalUnits))
+	if(!TurretRepair_CanAfford(pGame, pP, TurretItemId))
 		return false;
-	STurretAmmoMix Norm = *pMix;
-	TurretAmmo_NormalizeMix(&Norm);
-	for(int i = 0; i < NUM_TURRET_AMMO_MATS; i++)
+	CItemHelper *pH = pGame->ItemHelper();
+
+	for(int i = 0; i < NUM_ITEM; i++)
 	{
-		if(Norm.m_aPct[i] <= 0)
+		const int Need = TurretRepair_MaterialCost(pH, TurretItemId, i);
+		if(Need <= 0)
 			continue;
-		const int ItemId = s_aMatItemIds[i];
-		const int Need = maximum(1, (TotalUnits * Norm.m_aPct[i] + 99) / 100);
-		pP->m_AccData.m_aItems[ItemId].m_Num -= Need;
+		pP->m_AccData.m_aItems[i].m_Num -= Need;
 	}
 	return true;
 }

@@ -26,6 +26,7 @@ MACRO_CONFIG_INT(SvAllowSpecVoting, sv_allow_spec_voting, 1, 0, 1, CFGFLAG_SAVE 
 
 MACRO_CONFIG_INT(SvGESnapTime, sv_ge_snap_time, 1, 1, 60, CFGFLAG_SERVER, "Growing-explosion / lightning snap divisor (1 = every tick)")
 MACRO_CONFIG_INT(SvTurretAmmoPerShot, sv_turret_ammo_per_shot, 5, 1, 100, CFGFLAG_SERVER, "Material units consumed per turret shot (split by mix %)")
+MACRO_CONFIG_INT(SvTurretTouchDamage, sv_turret_touch_damage, 1, 0, 50, CFGFLAG_SERVER, "Turret HP lost when a zombie reaches it (suicide rush)")
 
 // debug
 

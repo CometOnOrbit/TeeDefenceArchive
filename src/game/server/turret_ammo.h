@@ -13,6 +13,7 @@ class CItemHelper;
 
 enum
 {
+	TURRET_AMMO_DEBT_SCALE = 1000,
 	NUM_TURRET_AMMO_MATS = 8,
 	TURRET_AMMO_LOG = 0,
 	TURRET_AMMO_COAL,
@@ -45,8 +46,14 @@ bool TurretAmmo_NormalizeMix(STurretAmmoMix *pMix);
 int TurretAmmo_MatToItemId(int MatSlot);
 int TurretAmmo_ItemIdToMat(int ItemId);
 
+void TurretAmmo_ClearDebt(CPlayer *pP);
+
 bool TurretAmmo_Consume(CPlayer *pP, const STurretAmmoMix *pMix, int TotalUnits);
 bool TurretAmmo_CanAfford(const CPlayer *pP, const STurretAmmoMix *pMix, int TotalUnits);
+
+int TurretRepair_MaterialCost(CItemHelper *pH, int TurretItemId, int MatId);
+bool TurretRepair_CanAfford(CGameContext *pGame, const CPlayer *pP, int TurretItemId);
+bool TurretRepair_Consume(CGameContext *pGame, CPlayer *pP, int TurretItemId);
 void TurretAmmo_BuildShotParams(const STurretAmmoMix *pMix, CItemHelper *pH, const char *pExtra, STurretShotParams *pOut);
 
 void TurretAmmo_Fire(CGameContext *pGame, CGameWorld *pWorld, CTurret *pTurret, CPlayer *pOwner, vec2 From, vec2 Dir, CCharacter *pTarget,

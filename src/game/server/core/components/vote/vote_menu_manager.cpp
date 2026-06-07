@@ -15,6 +15,7 @@
 #include <game/server/gamecontext.h>
 #include <game/server/gamecontroller.h>
 #include <game/server/item_system.h>
+#include <game/server/entities/turret.h>
 #include <game/server/player.h>
 #include <game/server/turret_ammo.h>
 
@@ -395,6 +396,7 @@ void CVoteMenuManager::InitVotes(int ClientID)
 		}
 		AddVote_TextLine(VL(GS(), pP, "community.thanks", u8"感谢支持 — 用于服务器与模式开发"));
 		AddVote_TextLine(VL(GS(), pP, "menu.sep.long", "---------------------"));
+		AddVote_Back();
 	}
 	break;
 
@@ -618,6 +620,42 @@ void CVoteMenuManager::InitVotes(int ClientID)
 		{
 			AddVote_TextLine(VL(GS(), pP, "turret.place.aiming", u8"◎ 瞄准中 — 左键部署"));
 			AddVote(VL(GS(), pP, "turret.place.cancel", u8"✗ 取消部署"), "ccv_menuturretcancel", ClientID);
+			AddVote_Space();
+		}
+		if(pP->HasDeployedTurret() && !pP->IsTurretPlacing())
+		{
+			CTurret *pT = pP->GetDeployedTurret();
+			if(pT)
+			{
+				char aHp[VOTE_DESC_LENGTH];
+				if(pT->IsBroken())
+					str_copy(aHp, VL(GS(), pP, "turret.health.broken", u8"炮塔状态: 已损坏"), sizeof(aHp));
+				else
+					str_format(aHp, sizeof(aHp), VL(GS(), pP, "turret.health", u8"炮塔生命: %d / %d"), pT->GetHealth(), pT->GetMaxHealth());
+				AddVote_TextLine(aHp);
+			}
+			AddVote(VL(GS(), pP, "turret.recall", u8"↩ 收回炮塔"), "ccv_menurecallturret", ClientID);
+			if(pT && pT->IsBroken())
+			{
+				AddVote(VL(GS(), pP, "turret.repair", u8"🔧 修复炮塔"), "ccv_menurepairturret", ClientID);
+				CItemHelper *pIH = GS()->ItemHelper();
+				if(pIH && pT)
+				{
+					bool AnyCost = false;
+					for(int i = 0; i < NUM_ITEM; i++)
+					{
+						const int Need = TurretRepair_MaterialCost(pIH, pT->GetItemDefId(), i);
+						if(Need <= 0)
+							continue;
+						char aLine[VOTE_DESC_LENGTH];
+						str_format(aLine, sizeof(aLine), VL(GS(), pP, "turret.repair.cost", u8"  · %s × %d"), GS()->LocItemName(ClientID, i), Need);
+						AddVote_TextLine(aLine);
+						AnyCost = true;
+					}
+					if(!AnyCost)
+						AddVote_TextLine(VL(GS(), pP, "turret.repair.no_cost", u8"  （无材料修复需求）"));
+				}
+			}
 			AddVote_Space();
 		}
 		AddVote(VL(GS(), pP, "turret.deploy", u8"⚙ 部署炮塔（瞄准放置）"), "ccv_menusetupturret", ClientID);

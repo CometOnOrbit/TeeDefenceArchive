@@ -6,6 +6,8 @@
 #include <game/voting.h>
 #include <game/server/account.h>
 #include <game/server/core/components/craft/craft_manager.h>
+#include <game/server/entities/turret.h>
+#include <game/server/turret_ammo.h>
 #include <game/server/core/components/localization/localization_manager.h>
 #include <game/server/core/components/travel/travel_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
@@ -349,6 +351,68 @@ static void ComVoteTurretPlaceCancel(IConsole::IResult *pResult, void *pUser)
 	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
 }
 
+static void ComVoteRecallTurret(IConsole::IResult *pResult, void *pUser)
+{
+	(void)pResult;
+	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
+	SPlayerVote *pV = pGame->Core()->VoteMenuManager()->GetPlayerVote(pCtx->m_ClientID);
+	CAccountSystem *pAcc = pGame->Accounts();
+	if(!pAcc->IsEnabled() || !pP || pP->GetAccountId() < 0)
+		return;
+
+	if(!pP->HasDeployedTurret())
+		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.recall.none", u8"场上没有已部署的炮塔。"), sizeof(pV->m_aExtraText));
+	else if(!pP->GetCharacter() || !pP->GetCharacter()->IsAlive())
+		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.recall.fail", u8"收回失败：需要存活角色。"), sizeof(pV->m_aExtraText));
+	else if(!pP->RecallTurret())
+		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.recall.too_far", u8"距离太远，请靠近炮塔后再收回。"), sizeof(pV->m_aExtraText));
+	else
+	{
+		pGame->SendChatLoc(pCtx->m_ClientID, "vote.turret.recall.ok", u8"炮塔已收回。");
+		pGame->m_World.CreateSound(pP->GetCharacter()->GetPos(), SOUND_PICKUP_ARMOR, CmaskOne(pCtx->m_ClientID));
+		pV->m_aExtraText[0] = 0;
+	}
+
+	pV->m_Page = PAGE_TURRET;
+	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
+}
+
+static void ComVoteRepairTurret(IConsole::IResult *pResult, void *pUser)
+{
+	(void)pResult;
+	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
+	SPlayerVote *pV = pGame->Core()->VoteMenuManager()->GetPlayerVote(pCtx->m_ClientID);
+	CAccountSystem *pAcc = pGame->Accounts();
+	if(!pAcc->IsEnabled() || !pP || pP->GetAccountId() < 0)
+		return;
+
+	CTurret *pT = pP->GetDeployedTurret();
+	if(!pT || !pT->IsBroken())
+		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.repair.not_broken", u8"炮塔未损坏，无需修复。"), sizeof(pV->m_aExtraText));
+	else if(!pP->GetCharacter() || !pP->GetCharacter()->IsAlive())
+		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.repair.fail", u8"修复失败：需要存活角色。"), sizeof(pV->m_aExtraText));
+	else if(distance(pP->GetCharacter()->GetPos(), pT->GetPos()) > 520.0f)
+		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.repair.too_far", u8"距离太远，请靠近炮塔后再修复。"), sizeof(pV->m_aExtraText));
+	else if(!TurretRepair_CanAfford(pGame, pP, pT->GetItemDefId()))
+		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.repair.no_materials", u8"修复材料不足。"), sizeof(pV->m_aExtraText));
+	else if(!pP->RepairDeployedTurret())
+		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.repair.fail", u8"修复失败：需要存活角色。"), sizeof(pV->m_aExtraText));
+	else
+	{
+		pAcc->RequestSaveAccount(pCtx->m_ClientID);
+		pGame->SendChatLoc(pCtx->m_ClientID, "vote.turret.repair.ok", u8"炮塔已修复。");
+		pGame->m_World.CreateSound(pP->GetCharacter()->GetPos(), SOUND_PICKUP_ARMOR, CmaskOne(pCtx->m_ClientID));
+		pV->m_aExtraText[0] = 0;
+	}
+
+	pV->m_Page = PAGE_TURRET;
+	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
+}
+
 static void ComVotePlaceCard(IConsole::IResult *pResult, void *pUser)
 {
 	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
@@ -491,7 +555,9 @@ static void ComVoteResetAmmo(IConsole::IResult *pResult, void *pUser)
 	const int CID = pCtx->m_ClientID;
 	if(CID < 0 || !pGame->m_apPlayers[CID])
 		return;
-	TurretAmmo_DefaultMix(&pGame->m_apPlayers[CID]->GetTurretAmmoMix());
+	CPlayer *pP = pGame->m_apPlayers[CID];
+	TurretAmmo_DefaultMix(&pP->GetTurretAmmoMix());
+	TurretAmmo_ClearDebt(pP);
 	pGame->Core()->VoteMenuManager()->ClearVotes(CID);
 	pGame->Core()->VoteMenuManager()->GetPlayerVote(CID)->m_Page = PAGE_TURRET_AMMO;
 	pGame->Core()->VoteMenuManager()->InitVotes(CID);
@@ -508,6 +574,8 @@ void CCraftManager::RegisterVoteCommands(CCommandManager *pMgr)
 	pMgr->AddCommand("menuequip", "", "i", ComVoteEquip, pGame);
 	pMgr->AddCommand("menusetupturret", "", "", ComVoteSetupTurret, pGame);
 	pMgr->AddCommand("menuturretcancel", "", "", ComVoteTurretPlaceCancel, pGame);
+	pMgr->AddCommand("menurecallturret", "", "", ComVoteRecallTurret, pGame);
+	pMgr->AddCommand("menurepairturret", "", "", ComVoteRepairTurret, pGame);
 	pMgr->AddCommand("menuplace", "", "isi", ComVotePlaceCard, pGame);
 	pMgr->AddCommand("menuseparate", "", "isi", ComVoteSeparateCard, pGame);
 	pMgr->AddCommand("menubumpammo", "", "ii", ComVoteBumpAmmo, pGame);
