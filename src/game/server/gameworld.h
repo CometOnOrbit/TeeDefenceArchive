@@ -178,6 +178,7 @@ public:
 	void Tick();
 
 	// helper functions
+	bool IsHumanDefenderOwner(int OwnerCid);
 	int DamageOwnerFromEntity(class CEntity *pFrom) const;
 	void CreateDamage(vec2 Pos, int Id, vec2 Source, int HealthAmount, int ArmorAmount, bool Self);
 	void CreateExplosion(vec2 Pos, class CEntity *pOwner, int Weapon, int MaxDamage);

@@ -30,6 +30,8 @@ bool CLaser::HitCharacter(vec2 From, vec2 To)
 	CHitableEntity *pHit = (CHitableEntity *) GameWorld()->IntersectFlagEntity(m_Pos, To, 0.f, At, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
 	if(!pHit)
 		return false;
+	if(pHit->ObjType() == CGameWorld::ENTTYPE_TURRET && GameWorld()->IsHumanDefenderOwner(m_Owner))
+		return false;
 
 	m_From = From;
 	m_Pos = At;

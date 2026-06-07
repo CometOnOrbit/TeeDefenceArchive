@@ -78,6 +78,8 @@ void CProjectile::Tick()
 	int Collide = GameServer()->Collision()->IntersectLine(PrevPos, CurPos, &CurPos, 0);
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
 	CHitableEntity *pTargetEnt = (CHitableEntity *) GameWorld()->IntersectFlagEntity(PrevPos, CurPos, 6.0f, CurPos, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
+	if(pTargetEnt && pTargetEnt->ObjType() == CGameWorld::ENTTYPE_TURRET && GameWorld()->IsHumanDefenderOwner(m_Owner))
+		pTargetEnt = nullptr;
 
 	if(pOwnerChar && pOwnerChar->GetPlayer() && ((Server()->Tick() - m_StartTick) % 25 == 0 || Server()->Tick() - m_StartTick < 3))
 	{

@@ -10,6 +10,7 @@
 #include "gamecontext.h"
 #include "gamecontroller.h"
 #include "gameworld.h"
+#include "player.h"
 
 #include <algorithm>
 
@@ -308,6 +309,14 @@ void CGameWorld::CreateHammerHit(vec2 Pos)
 		pEvent->m_X = (int) Pos.x;
 		pEvent->m_Y = (int) Pos.y;
 	}
+}
+
+bool CGameWorld::IsHumanDefenderOwner(int OwnerCid)
+{
+	if(OwnerCid < 0 || OwnerCid >= MAX_CLIENTS || !GameServer())
+		return false;
+	CPlayer *pP = GameServer()->m_apPlayers[OwnerCid];
+	return pP && !pP->IsDummy() && pP->GetTeam() != TEAM_BLUE;
 }
 
 int CGameWorld::DamageOwnerFromEntity(CEntity *pFrom) const
