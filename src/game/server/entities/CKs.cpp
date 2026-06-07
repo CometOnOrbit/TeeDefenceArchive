@@ -112,8 +112,6 @@ void CKs::Picking(int BaseDmg, CPlayer *Player)
 	{
 		const int CardDmg = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID) : 0;
 		DmgPart = BaseDmg * (1 + CardDmg);
-		if(HoldKind == ITYPE_AXE && CardDmg == 0)
-			DmgPart = BaseDmg * 2;
 	}
 
 	m_Health -= DmgPart;
