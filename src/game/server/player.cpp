@@ -171,6 +171,9 @@ void CPlayer::InitZombie(int Zomb)
 	case ZOMB_ZEATER:
 		Server()->SetClientName(GetCID(), "Zeater");
 		break;
+	case ZOMB_SPIDER_BOSS:
+		Server()->SetClientName(GetCID(), "Spider");
+		break;
 	default:
 		break;
 	}

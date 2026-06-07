@@ -3,6 +3,7 @@
 #include <engine/shared/config.h>
 #include <engine/shared/protocol.h>
 
+#include <game/extra_hud.h>
 #include <game/mapitems.h>
 #include <game/version.h>
 #include <generated/server_data.h>
@@ -21,6 +22,8 @@
 #include "core/components/craft/craft_manager.h"
 #include "core/components/vote/vote_menu_manager.h"
 #include "core/tworld_controller.h"
+#include "entities/spider_boss.h"
+#include "zombie_nav.h"
 #include "entities/tower-main.h"
 #include "entities/CKs.h"
 #include "item_system.h"
@@ -56,6 +59,9 @@ CGameController::CGameController(CGameContext *pGameServer)
 	m_TdZombLeft = 0;
 	m_pTower = nullptr;
 	mem_zero(m_apZombieBots, sizeof(m_apZombieBots));
+	m_pSpiderBoss = nullptr;
+	m_TdBossWave = false;
+	m_TdSpiderBossPending = false;
 	m_TdDummyRemoveLen = 0;
 	mem_zero(m_aTdDummyRemove, sizeof(m_aTdDummyRemove));
 	m_TdPendingZomb = ZOMB_ZABY;
@@ -132,6 +138,7 @@ void CGameController::TdApplyDifficultyToZombieCounts()
 
 CGameController::~CGameController()
 {
+	TdDestroySpiderBoss();
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
 		delete m_apZombieBots[i];
@@ -146,6 +153,8 @@ void CGameController::PreTick()
 		CPlayer *pP = GameServer()->m_apPlayers[i];
 		if(!pP || !pP->IsDummy() || !pP->GetCharacter() || !pP->GetCharacter()->IsAlive())
 			continue;
+		if(pP->GetZomb() == ZOMB_SPIDER_BOSS)
+			continue;
 		if(pP->GetZomb() != ZOMB_NONE)
 			TdRunZombieBrain(pP);
 		else if(TWorldController *pCore = GameServer()->Core())
@@ -156,6 +165,7 @@ void CGameController::PreTick()
 vec2 CGameController::TdGetZombieMarchGoal() const
 {
 	vec2 Goal = m_pTower ? m_pTower->GetPos() : TdGetZombieRallyPos();
+	Goal = ZombieNavResolveGoal(GameServer(), Goal);
 	CBotEngine *pBE = GameServer()->BotEngine();
 	if(pBE)
 	{
@@ -246,12 +256,23 @@ void CGameController::OnBotPlayerCreated(CPlayer *pPlayer)
 	case ZOMB_ZEATER:
 		pBodySkin = "warpaint";
 		break;
+	case ZOMB_SPIDER_BOSS:
+		pBodySkin = "pinky";
+		break;
 	case ZOMB_ZABY:
 	default:
 		pBodySkin = "saddo";
 		break;
 	}
 	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[1], pBodySkin, MAX_SKIN_ARRAY_SIZE);
+
+	if(pPlayer->GetZomb() == ZOMB_SPIDER_BOSS)
+	{
+		pPlayer->TryRespawn();
+		if(!pPlayer->GetCharacter())
+			m_TdSpiderBossPending = false;
+		return;
+	}
 
 	if(pPlayer->GetZomb() != ZOMB_NONE && GameServer()->BotEngine())
 		m_apZombieBots[CID] = new CZombieBot(GameServer()->BotEngine(), pPlayer, this);
@@ -380,6 +401,37 @@ void CGameController::TdClearZombieBot(int ClientID)
 	m_apZombieBots[ClientID] = nullptr;
 }
 
+void CGameController::TdDestroySpiderBoss()
+{
+	if(m_pSpiderBoss)
+	{
+		delete m_pSpiderBoss;
+		m_pSpiderBoss = nullptr;
+	}
+	m_TdSpiderBossPending = false;
+	m_TdBossWave = false;
+}
+
+bool CGameController::TdHasSpiderBossPlayer() const
+{
+	const int Zombie0 = TdZombieFirstSlot(Config());
+	for(int i = Zombie0; i < MAX_CLIENTS; i++)
+	{
+		const CPlayer *pP = GameServer()->m_apPlayers[i];
+		if(pP && pP->IsDummy() && pP->GetZomb() == ZOMB_SPIDER_BOSS)
+			return true;
+	}
+	return false;
+}
+
+bool CGameController::IsSpiderBossCore(CCharacter *pChr) const
+{
+	const CPlayer *pPlayer = pChr ? pChr->GetPlayer() : nullptr;
+	if(!pPlayer || pPlayer->GetZomb() != ZOMB_SPIDER_BOSS)
+		return false;
+	return m_pSpiderBoss && m_pSpiderBoss->GetOwnerCid() == pPlayer->GetCID();
+}
+
 // event
 int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int Weapon)
 {
@@ -409,6 +461,9 @@ int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int
 			if(GameServer()->Accounts()->IsEnabled() && pKiller->GetAccountId() >= 0)
 				GameServer()->Accounts()->RequestSaveItems(pKiller->GetCID());
 		}
+
+		if(pVictimPlayer->GetZomb() == ZOMB_SPIDER_BOSS)
+			TdDestroySpiderBoss();
 
 		pVictimPlayer->ForbidRespawn();
 		TdClearZombieBot(pVictimPlayer->GetCID());
@@ -453,9 +508,14 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 		int Health = maximum(1, m_TdWave);
 		if(Z == ZOMB_ZASTER)
 			Health = maximum(40, m_TdWave * 10);
+		if(Z == ZOMB_SPIDER_BOSS)
+			Health = maximum(100, m_TdWave * 20);
 		Health = maximum(1, (int)(Health * TdDifficultyHealthMul() + 0.5f));
 
-		pChr->SetHealthDirect(Health);
+		if(Z == ZOMB_SPIDER_BOSS)
+			pChr->SetBossHealth(Health);
+		else
+			pChr->SetHealthDirect(Health);
 		pChr->GiveWeapon(WEAPON_HAMMER, -1);
 		pChr->GiveWeapon(WEAPON_GUN, -1);
 		pChr->GiveWeapon(WEAPON_SHOTGUN, -1);
@@ -487,15 +547,35 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 		case ZOMB_ZELE:
 		case ZOMB_ZINVIS:
 		case ZOMB_ZEATER:
+			pChr->SetWeapon(WEAPON_HAMMER);
+			break;
+		case ZOMB_SPIDER_BOSS:
+			pChr->SetWeapon(WEAPON_GRENADE);
+			pChr->SetHitRadius(112.0f);
+			pChr->SyncSpiderBody(TdSnapSpawnToGround(pChr->GetPos(), 112.0f));
+			break;
 		default:
 			pChr->SetWeapon(WEAPON_HAMMER);
 			break;
+		}
+
+		if(Z == ZOMB_SPIDER_BOSS)
+		{
+			m_TdSpiderBossPending = false;
+			if(m_pSpiderBoss)
+			{
+				if(m_TdDummyRemoveLen < TD_REMOVE_QUEUE)
+					m_aTdDummyRemove[m_TdDummyRemoveLen++] = pChr->GetPlayer()->GetCID();
+				return;
+			}
+			m_pSpiderBoss = new CSpiderBoss(&GameServer()->m_World, pChr, this, m_TdWave);
+			TdBroadcastBossHealth();
 		}
 	}
 	else
 		pChr->SetHealthDirect(Config()->m_SvPlayerMaxHealth);
 
-	if(IsZombiePlayer(pChr->GetPlayer()))
+	if(IsZombiePlayer(pChr->GetPlayer()) && pChr->GetPlayer()->GetZomb() != ZOMB_SPIDER_BOSS)
 	{
 		const int Idx = pChr->GetPlayer()->GetZomb() - ZOMB_ZABY;
 		if(Idx >= 0 && Idx < NUM_TD_ZOMB && m_TdZombie[Idx] > 0)
@@ -705,6 +785,14 @@ void CGameController::Snap(int SnappingClient)
 		return;
 
 	pGameDataPrediction->m_PredictionFlags = GAMEPREDICTIONFLAG_EVENT | GAMEPREDICTIONFLAG_INPUT;
+
+	if(m_pSpiderBoss && m_pSpiderBoss->IsCoreAlive())
+	{
+		ExtraHudSnapProgress(Server(), EXTRAHUD_SLOT_PRIMARY,
+			m_pSpiderBoss->GetCoreHealth(), m_pSpiderBoss->GetCoreMaxHealth(),
+			m_pSpiderBoss->GetLegsAlive());
+	}
+
 	// demo recording
 	if(SnappingClient == -1)
 	{
@@ -802,6 +890,9 @@ void CGameController::Tick()
 		return;
 	}
 
+	if(m_pSpiderBoss && m_pSpiderBoss->IsCoreAlive() && Server()->Tick() % Server()->TickSpeed() == 0)
+		TdBroadcastBossHealth();
+
 	TdCheckZombie();
 	TdDoWincheck();
 }
@@ -879,6 +970,15 @@ void CGameController::TdBroadcastGameInfo()
 	}
 }
 
+void CGameController::TdBroadcastBossHealth()
+{
+	if(!m_pSpiderBoss || !m_pSpiderBoss->IsCoreAlive())
+		return;
+
+	GameServer()->SendBroadcastLocF(-1, "boss.spider.health_broadcast", u8"Boss 核心: %d / %d  腿: %d / 4",
+		m_pSpiderBoss->GetCoreHealth(), m_pSpiderBoss->GetCoreMaxHealth(), m_pSpiderBoss->GetLegsAlive());
+}
+
 // spawn
 bool CGameController::CanSpawn(int Team, vec2 *pOutPos) const
 {
@@ -948,7 +1048,7 @@ void CGameController::EvaluateSpawnType(CSpawnEval *pEval, int Type) const
 		if(Result == -1)
 			continue; // try next spawn point
 
-		vec2 P = m_alSpawnPoints[Type][i] + Positions[Result];
+		vec2 P = TdSnapSpawnToGround(m_alSpawnPoints[Type][i] + Positions[Result], CCharacterCore::PHYS_SIZE);
 		float S = pEval->m_RandomSpawn ? (Result + random_float()) : EvaluateSpawnPos(pEval, P);
 		if(!pEval->m_Got || pEval->m_Score > S)
 		{
@@ -957,6 +1057,50 @@ void CGameController::EvaluateSpawnType(CSpawnEval *pEval, int Type) const
 			pEval->m_Pos = P;
 		}
 	}
+}
+
+vec2 CGameController::TdSnapSpawnToGround(vec2 Pos, float PhysSize) const
+{
+	CCollision *pCol = GameServer()->Collision();
+	if(!pCol)
+		return Pos;
+
+	const float Half = PhysSize * 0.5f;
+	auto MakeStandPos = [&](vec2 Before) {
+		return vec2(Pos.x, Before.y - Half - 2.0f);
+	};
+	auto IsValidStand = [&](vec2 Stand) {
+		return !pCol->CheckPoint(Stand) && !pCol->CheckPoint(Stand.x, Stand.y + Half + 2.0f);
+	};
+
+	vec2 Col, Before;
+	if(pCol->IntersectLine(Pos, Pos + vec2(0.0f, 2048.0f), &Col, &Before))
+	{
+		const vec2 Stand = MakeStandPos(Before);
+		if(!pCol->CheckPoint(Stand) && pCol->CheckPoint(Stand.x, Stand.y + Half + 2.0f))
+			return Stand;
+	}
+
+	if(pCol->IntersectLine(Pos, Pos + vec2(0.0f, -512.0f), &Col, &Before))
+	{
+		const vec2 Stand = MakeStandPos(Before);
+		if(IsValidStand(Stand) && pCol->CheckPoint(Stand.x, Stand.y + Half + 2.0f))
+			return Stand;
+	}
+
+	const float Offsets[3] = {0.0f, -16.0f, 16.0f};
+	for(int o = 0; o < 3; o++)
+	{
+		vec2 Probe = Pos;
+		for(int Step = 0; Step < 256; Step++)
+		{
+			Probe.y += 8.0f;
+			if(pCol->CheckPoint(Probe.x + Offsets[o], Probe.y + Half + 2.0f) && !pCol->CheckPoint(Probe))
+				return Probe;
+		}
+	}
+
+	return Pos;
 }
 
 bool CGameController::GetStartRespawnState() const
@@ -1299,9 +1443,22 @@ void CGameController::TdDoWarmup(int Seconds)
 	m_TdWarmup = Seconds * Server()->TickSpeed();
 }
 
+bool CGameController::TdSkipWarmup()
+{
+	if(m_TdWarmup <= 0)
+		return false;
+
+	m_TdWarmup = 0;
+	if(m_TdWave > 0 && m_TdGameOverTick == -1)
+		TdStartRound();
+	TdBroadcastGameInfo();
+	return true;
+}
+
 void CGameController::TdStartRound()
 {
 	m_TdGameOverTick = -1;
+	TdDestroySpiderBoss();
 
 	const int Zombie0 = TdZombieFirstSlot(Config());
 	for(int i = Zombie0; i < MAX_CLIENTS; i++)
@@ -1319,6 +1476,7 @@ void CGameController::TdEndRound()
 	m_TdGameOverTick = Server()->Tick();
 	m_TdWave = 0;
 	mem_zero(m_TdZombie, sizeof(m_TdZombie));
+	TdDestroySpiderBoss();
 
 	const int Zombie0 = TdZombieFirstSlot(Config());
 	for(int i = Zombie0; i < MAX_CLIENTS; i++)
@@ -1349,21 +1507,58 @@ void CGameController::TdStartWave(int Wave)
 		return;
 
 	mem_zero(m_TdZombie, sizeof(m_TdZombie));
-	if(Wave == 1)
+	m_TdBossWave = false;
+	if(Wave % 10 == 0)
+	{
+		m_TdBossWave = true;
+		m_TdZombLeft = 1;
+		GameServer()->SendChatAllLocF("boss.spider.wave", u8"⚠ 第 %d 波 — 蜘蛛机器人 Boss 来袭！", Wave);
+		GameServer()->SendBroadcastLocF(-1, "boss.spider.broadcast", u8"Boss 战：摧毁核心（巨额伤害）或打断四条腿！");
+	}
+	else if(Wave == 1)
 		m_TdZombie[0] = 10;
 	else if(Wave == 2)
 		m_TdZombie[0] = 25;
 	else
 		TdSetWaveAlg(Wave % 3, Wave / 3);
 
-	TdApplyDifficultyToZombieCounts();
-
-	m_TdZombLeft = 0;
-	for(unsigned i = 0; i < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); i++)
-		m_TdZombLeft += m_TdZombie[i];
+	if(!m_TdBossWave)
+	{
+		TdApplyDifficultyToZombieCounts();
+		m_TdZombLeft = 0;
+		for(unsigned i = 0; i < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); i++)
+			m_TdZombLeft += m_TdZombie[i];
+	}
 
 	TdDoZombMessage(0);
 	TdBroadcastGameInfo();
+
+	if(m_TdBossWave)
+		TdTrySpawnSpiderBoss();
+}
+
+void CGameController::TdTrySpawnSpiderBoss()
+{
+	if(!m_TdBossWave || m_pSpiderBoss || m_TdSpiderBossPending || TdHasSpiderBossPlayer())
+		return;
+
+	vec2 SpawnPos;
+	if(!CanSpawn(GetDummyTeam(), &SpawnPos))
+		return;
+
+	const int Zombie0 = TdZombieFirstSlot(Config());
+	for(int i = Zombie0; i < MAX_CLIENTS; i++)
+	{
+		if(GameServer()->m_apPlayers[i])
+			continue;
+		if(!Server()->IsClientSlotEmpty(i))
+			continue;
+
+		m_TdPendingZomb = ZOMB_SPIDER_BOSS;
+		m_TdSpiderBossPending = true;
+		Server()->DummyJoin(i, "Spider");
+		return;
+	}
 }
 
 void CGameController::TdCheckZombie()
@@ -1371,7 +1566,13 @@ void CGameController::TdCheckZombie()
 	if(m_TdWarmup || !m_TdWave || m_TdGameOverTick != -1)
 		return;
 
+	if(m_TdBossWave)
+		TdTrySpawnSpiderBoss();
+
 	if(TdEndWave())
+		return;
+
+	if(m_TdBossWave)
 		return;
 
 	const int ConcurrentCap = minimum((int)TD_MAX_ACTIVE_ZOMBIES, m_TdZombStart);
@@ -1445,6 +1646,9 @@ bool CGameController::TdIsWaveCleared() const
 
 	if(!PlayerCount)
 		return true;
+
+	if(m_TdBossWave && m_TdZombLeft > 0)
+		return false;
 
 	for(unsigned j = 0; j < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); j++)
 	{
@@ -1596,9 +1800,21 @@ void CGameController::ConTdSetTowerHealth(IConsole::IResult *pResult, void *pUse
 	static_cast<CGameController *>(pGameServer->m_pController)->TdSetTowerHealth(pResult->GetInteger(0));
 }
 
+void CGameController::ConTdSkipWarmup(IConsole::IResult *pResult, void *pUser)
+{
+	(void)pResult;
+	CGameContext *pGameServer = static_cast<CGameContext *>(pUser);
+	CGameController *pCtrl = static_cast<CGameController *>(pGameServer->m_pController);
+	if(!pCtrl->TdSkipWarmup())
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "td", "no warmup in progress");
+	else
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "td", "warmup skipped — next wave started");
+}
+
 void CGameController::RegisterTeeDefenseConsoleCommands(CGameContext *pCtx)
 {
 	pCtx->Console()->Register("td_set_wave", "i[wave]", CFGFLAG_SERVER, ConTdSetWave, pCtx, "Set next TeeDefense wave number");
 	pCtx->Console()->Register("td_set_tower_health", "i[health]", CFGFLAG_SERVER, ConTdSetTowerHealth, pCtx, "Set main tower current health");
 	pCtx->Console()->Register("td_set_difficulty", "i[0-2]", CFGFLAG_SERVER, ConTdSetDifficulty, pCtx, "Set difficulty: 0=easy 1=normal 2=hard (before wave 1)");
+	pCtx->Console()->Register("td_skip_warmup", "", CFGFLAG_SERVER, ConTdSkipWarmup, pCtx, "Skip inter-wave warmup and start the next wave immediately");
 }

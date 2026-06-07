@@ -74,6 +74,7 @@ public:
 
 	/* Setters */
 	void MarkForDestroy() { m_MarkedForDestroy = true; }
+	void SetProximityRadius(float Radius) { m_ProximityRadius = Radius; }
 
 	/* Other functions */
 

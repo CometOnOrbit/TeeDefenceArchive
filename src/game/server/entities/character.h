@@ -57,6 +57,9 @@ public:
 	bool IncreaseHealth(int Amount);
 	bool IncreaseArmor(int Amount);
 	void SetHealthDirect(int Amount);
+	void SetBossHealth(int Amount);
+	void SetHitRadius(float Radius);
+	void SyncSpiderBody(vec2 Pos);
 
 	bool GiveWeapon(int Weapon, int Ammo);
 	void GiveNinja();
@@ -64,6 +67,7 @@ public:
 	void SetEmote(int Emote, int Tick);
 
 	bool IsAlive() const { return m_Alive; }
+	int GetHealth() const { return m_Health; }
 	class CPlayer *GetPlayer() { return m_pPlayer; }
 	int GetCID();
 	vec2 GetVelocity() const { return m_Core.m_Vel; }

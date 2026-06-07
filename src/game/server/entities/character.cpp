@@ -523,6 +523,15 @@ void CCharacter::Tick()
 	m_Core.m_Input = m_Input;
 	m_Core.Tick(true);
 
+	if(GameServer()->m_pController->IsSpiderBossCore(this))
+	{
+		m_Input.m_Direction = 0;
+		m_Input.m_Jump = 0;
+		m_Input.m_Hook = 0;
+		m_Core.m_HookState = HOOK_IDLE;
+		m_Core.m_Vel = vec2(0.0f, 0.0f);
+	}
+
 	if(m_CardElectronTicks > 0)
 	{
 		m_Core.m_Vel *= 0.86f;
@@ -575,7 +584,8 @@ void CCharacter::TickDefered()
 	vec2 StartVel = m_Core.m_Vel;
 	bool StuckBefore = GameServer()->Collision()->TestBox(m_Core.m_Pos, ColBox);
 
-	m_Core.Move();
+	if(!GameServer()->m_pController->IsSpiderBossCore(this))
+		m_Core.Move();
 
 	bool StuckAfterMove = GameServer()->Collision()->TestBox(m_Core.m_Pos, ColBox);
 	m_Core.Quantize();
@@ -679,6 +689,23 @@ void CCharacter::SetHealthDirect(int Amount)
 	m_Health = clamp(Amount, 0, Max);
 }
 
+void CCharacter::SetBossHealth(int Amount)
+{
+	m_Health = maximum(1, Amount);
+}
+
+void CCharacter::SetHitRadius(float Radius)
+{
+	SetProximityRadius(Radius);
+}
+
+void CCharacter::SyncSpiderBody(vec2 Pos)
+{
+	m_Core.m_Pos = Pos;
+	m_Pos = Pos;
+	m_Core.m_Vel = vec2(0.0f, 0.0f);
+}
+
 bool CCharacter::IncreaseArmor(int Amount)
 {
 	if(m_Armor >= 10)
@@ -770,6 +797,9 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	if(m_pPlayer->m_ZamerDetonating)
 		return false;
 
+	if(GameServer()->m_pController->IsSpiderBossCore(this) && From == m_pPlayer->GetCID())
+		return false;
+
 	m_Core.m_Vel += Force;
 
 	if(From >= 0)
@@ -803,6 +833,10 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	// m_pPlayer only inflicts half damage on self
 	if(From == m_pPlayer->GetCID())
 		Dmg = maximum(1, Dmg / 2);
+
+	if(m_pPlayer->GetZomb() == ZOMB_SPIDER_BOSS && From >= 0 && From < MAX_CLIENTS &&
+		GameServer()->m_apPlayers[From] && !GameServer()->m_apPlayers[From]->IsDummy())
+		Dmg *= 4;
 
 	int OldHealth = m_Health, OldArmor = m_Armor;
 	if(Dmg)

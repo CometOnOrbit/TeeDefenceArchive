@@ -14,6 +14,7 @@
 #include "gameworld.h"
 #include "player.h"
 #include "zombie_bot.h"
+#include "zombie_nav.h"
 
 namespace
 {
@@ -33,12 +34,9 @@ CZombieBot::CZombieBot(CBotEngine *pBotEngine, CPlayer *pPlayer, CGameController
 	m_pGameServer = pBotEngine->GameServer();
 	m_pPlayer = pPlayer;
 	m_pCtrl = pCtrl;
-	m_pPath = &pBotEngine->m_aPaths[pPlayer->GetCID()];
 	m_Flags = 0;
 	m_Target = vec2(0.0f, 0.0f);
 	m_RealTarget = vec2(0.0f, 0.0f);
-	m_LastGoal = vec2(1.0e9f, 1.0e9f);
-	m_LastPathTick = 0;
 	m_LowSpeedTicks = 0;
 	m_McJumpTried = false;
 	m_StuckFlipCooldown = 0;
@@ -50,10 +48,7 @@ CZombieBot::CZombieBot(CBotEngine *pBotEngine, CPlayer *pPlayer, CGameController
 	m_ComputeTarget.m_NeedUpdate = true;
 }
 
-CZombieBot::~CZombieBot()
-{
-	m_pPath->m_Size = 0;
-}
+CZombieBot::~CZombieBot() = default;
 
 CCollision *CZombieBot::Collision() const
 {
@@ -82,6 +77,9 @@ bool CZombieBot::IsGrounded()
 
 vec2 CZombieBot::GetPersonalMarchGoal() const
 {
+	if(m_pPlayer->GetZomb() == ZOMB_SPIDER_BOSS)
+		return m_pCtrl->TdGetZombieMarchGoal();
+
 	const vec2 Tower = m_pCtrl->TdGetZombieMarchGoal();
 	const int CID = m_pPlayer->GetCID();
 	const float Slot = (float)(CID % 24);
@@ -232,7 +230,7 @@ void CZombieBot::UpdateZombieTarget()
 	}
 	if(m_LowSpeedTicks > 30)
 	{
-		m_pPath->m_Size = 0;
+		ZombieNavClear(m_pPlayer);
 		m_ComputeTarget.m_NeedUpdate = true;
 		m_LowSpeedTicks = 0;
 	}
@@ -249,46 +247,17 @@ void CZombieBot::UpdateMarchNavigation()
 	if(m_ComputeTarget.m_Type == TARGET_MARCH)
 		Goal = GetPersonalMarchGoal();
 
-	m_Target = Goal - Pos;
-	const int NearZ = CountNearbyZombies(Pos, ZOMB_CROWD_RADIUS);
-	const bool Crowded = NearZ >= 1;
+	vec2 NavFollow = Goal;
+	vec2 NavAim = Goal;
+	ZombieNavFollow(m_pGameServer, m_pPlayer, Pos, Goal, m_pGameServer->Server()->Tick(), m_pGameServer->Server()->TickSpeed(), &NavFollow, &NavAim);
+	m_ComputeTarget.m_NeedUpdate = false;
+
+	m_Target = NavFollow - Pos;
 
 	if(length(m_Target) <= 48.0f)
 	{
 		ApplyCrowdSteering(Pos, &m_Target);
 		return;
-	}
-
-	if(!Crowded)
-	{
-		const int Now = m_pGameServer->Server()->Tick();
-		const int TickSpeed = m_pGameServer->Server()->TickSpeed();
-		const bool NeedPath = m_pPath->m_Size <= 0 || distance(m_LastGoal, Goal) > 48.0f ||
-			Now - m_LastPathTick > TickSpeed * 2 || m_ComputeTarget.m_NeedUpdate;
-
-		if(NeedPath && m_pBotEngine->GetGraph()->m_NumVertices > 0)
-		{
-			m_pBotEngine->GetPath(Pos, Goal, m_pPath);
-			m_LastGoal = Goal;
-			m_LastPathTick = Now;
-			m_ComputeTarget.m_NeedUpdate = false;
-		}
-
-		if(m_pPath->m_Size > 0)
-		{
-			vec2 Way;
-			const int EdgeDist = m_pBotEngine->FarestPointOnEdge(m_pPath, Pos, &Way);
-			if(EdgeDist >= 0 && distance(Pos, Way) > 48.0f)
-				m_Target = Way - Pos;
-			else
-			{
-				const vec2 Next = m_pBotEngine->NextPoint(Pos, Goal);
-				if(distance(Pos, Next) > 32.0f)
-					m_Target = Next - Pos;
-				if(EdgeDist >= 0 && distance(Pos, Way) <= 48.0f)
-					m_pPath->m_Size = 0;
-			}
-		}
 	}
 
 	ApplyCrowdSteering(Pos, &m_Target);
@@ -556,6 +525,8 @@ void CZombieBot::HandleHook(bool SeeTarget, int MoveDir, float DistMarch)
 float CZombieBot::GetAiScale() const
 {
 	const int Wave = maximum(1, m_pCtrl->GetTdWave());
+	if(m_pPlayer->GetZomb() == ZOMB_SPIDER_BOSS)
+		return minimum(1.0f, 0.70f + (Wave - 1) * 0.04f) * m_pCtrl->TdDifficultyAiMul();
 	return minimum(1.0f, 0.30f + (Wave - 1) * 0.078f) * m_pCtrl->TdDifficultyAiMul();
 }
 
@@ -592,6 +563,8 @@ float CZombieBot::GetTypeAttackRange(int ZombType) const
 		return 4000.0f;
 	case ZOMB_ZENADE:
 		return 800.0f;
+	case ZOMB_SPIDER_BOSS:
+		return 900.0f;
 	case ZOMB_ZOOMER:
 		return Tuning()->m_LaserReach;
 	case ZOMB_ZOOKER:
@@ -767,6 +740,13 @@ void CZombieBot::HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAg
 		else
 			pChr->SetWeapon(WEAPON_HAMMER);
 		break;
+	case ZOMB_SPIDER_BOSS:
+		if(InSight && (DistHuman > 80.0f || DistTower > 80.0f) &&
+			(HumanCombat || HumanAggro || (HasTower && DistTower < AttackRange)))
+			pChr->SetWeapon(WEAPON_GRENADE);
+		else
+			pChr->SetWeapon(WEAPON_HAMMER);
+		break;
 	case ZOMB_ZOOMER:
 		if(InSight && (HumanAggro || (HasTower && DistTower < AttackRange)))
 			pChr->SetWeapon(WEAPON_LASER);
@@ -813,6 +793,9 @@ void CZombieBot::HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAg
 		break;
 	case ZOMB_ZENADE:
 		FireDiv = 6;
+		break;
+	case ZOMB_SPIDER_BOSS:
+		FireDiv = 4;
 		break;
 	case ZOMB_ZOOMER:
 		FireDiv = 4;

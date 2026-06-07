@@ -142,7 +142,14 @@ void CProjectile::Tick()
 			GameWorld()->CreateExplosion(CurPos, this, m_Weapon, maximum(1, m_Damage));
 		}
 		else if(pTargetEnt)
+		{
 			pTargetEnt->TakeHit(m_Direction * maximum(0.001f, m_Force), m_Direction * -1, m_Damage, this, m_Weapon);
+			if(pTargetEnt->ObjType() == CGameWorld::ENTTYPE_CHARACTER && pOwnerChar && pOwnerChar->GetPlayer() &&
+				pOwnerChar->GetPlayer()->GetZomb() == ZOMB_SPIDER_BOSS && m_Weapon == WEAPON_SHOTGUN)
+			{
+				static_cast<CCharacter *>(pTargetEnt)->ApplyElectronSlow(4);
+			}
+		}
 
 		GameWorld()->DestroyEntity(this);
 	}

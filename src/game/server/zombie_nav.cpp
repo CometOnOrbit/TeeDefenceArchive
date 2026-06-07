@@ -1,5 +1,6 @@
 // Comet: AI wrote this AI
 #include <base/math.h>
+#include <base/system.h>
 
 #include <game/collision.h>
 #include <game/gamecore.h>
@@ -10,7 +11,9 @@
 
 namespace
 {
-constexpr int ZOMB_ASTAR_MAX_NODES = 8192;
+constexpr int ZOMB_ASTAR_MAX_NODES = 4096;
+constexpr int ZOMB_NAV_MAX_REBUILDS_PER_TICK = 3;
+constexpr int ZOMB_NAV_REBUILD_INTERVAL = 3;
 
 static int WorldToTileX(float Wx, int MapW)
 {
@@ -39,12 +42,11 @@ static bool ZombieNavTileWalkable(CCollision *pCol, int Tx, int Ty, int MapW, in
 	if(pCol->CheckPoint(Cx, Cy))
 		return false;
 
-	for(int dy = 8; dy <= 40; dy += 4)
-	{
-		if(pCol->CheckPoint(Cx, Cy + (float)dy))
-			return true;
-	}
-	return false;
+	if(pCol->CheckPoint(Cx, Cy + 16.0f))
+		return true;
+	if(pCol->CheckPoint(Cx, Cy + 28.0f))
+		return true;
+	return pCol->CheckPoint(Cx, Cy + 40.0f);
 }
 
 static int ZombieNavHeuristic(int X0, int Y0, int X1, int Y1)
@@ -126,6 +128,37 @@ bool ZombieNavLineBlocked(CCollision *pCol, vec2 From, vec2 To)
 	return false;
 }
 
+vec2 ZombieNavResolveGoal(CGameContext *pGame, vec2 GoalWorld)
+{
+	static vec2 s_LastInput = vec2(0.0f, 0.0f);
+	static vec2 s_LastOutput = vec2(0.0f, 0.0f);
+	static bool s_HasCache = false;
+
+	if(s_HasCache && distance(s_LastInput, GoalWorld) < 8.0f)
+		return s_LastOutput;
+
+	if(!pGame)
+		return GoalWorld;
+	CCollision *pCol = pGame->Collision();
+	if(!pCol)
+		return GoalWorld;
+
+	const int MapW = pCol->GetWidth();
+	const int MapH = pCol->GetHeight();
+	if(MapW <= 0 || MapH <= 0)
+		return GoalWorld;
+
+	int Gx = WorldToTileX(GoalWorld.x, MapW);
+	int Gy = WorldToTileY(GoalWorld.y, MapH);
+	if(ZombieNavFindNearestWalkable(pCol, Gx, Gy, MapW, MapH, 16, &Gx, &Gy) < 0)
+		return GoalWorld;
+
+	s_LastInput = GoalWorld;
+	s_LastOutput = TileCenter(Gx, Gy);
+	s_HasCache = true;
+	return s_LastOutput;
+}
+
 void ZombieNavClear(CPlayer *pP)
 {
 	pP->m_ZombNavLen = 0;
@@ -155,7 +188,7 @@ bool ZombieNavRebuild(CGameContext *pGame, CPlayer *pP, vec2 ZombPos, vec2 GoalW
 
 	if(ZombieNavFindNearestWalkable(pCol, Sx, Sy, MapW, MapH, 6, &Sx, &Sy) < 0)
 		return false;
-	if(ZombieNavFindNearestWalkable(pCol, Gx, Gy, MapW, MapH, 10, &Gx, &Gy) < 0)
+	if(ZombieNavFindNearestWalkable(pCol, Gx, Gy, MapW, MapH, 16, &Gx, &Gy) < 0)
 		return false;
 
 	if(Sx == Gx && Sy == Gy)
@@ -173,7 +206,21 @@ bool ZombieNavRebuild(CGameContext *pGame, CPlayer *pP, vec2 ZombPos, vec2 GoalW
 	mem_zero(aNodes, sizeof(aNodes));
 	int NodeCount = 0;
 
+	const int TileCount = MapW * MapH;
+	short *pTileIdx = nullptr;
+	if(TileCount > 0 && TileCount <= 128 * 128)
+	{
+		pTileIdx = (short *)mem_alloc((unsigned)TileCount * sizeof(short));
+		if(pTileIdx)
+		{
+			for(int i = 0; i < TileCount; i++)
+				pTileIdx[i] = -1;
+		}
+	}
+
 	auto NodeIdx = [&](int X, int Y) -> int {
+		if(pTileIdx)
+			return pTileIdx[Y * MapW + X];
 		for(int i = 0; i < NodeCount; i++)
 			if(aNodes[i].m_X == X && aNodes[i].m_Y == Y)
 				return i;
@@ -190,12 +237,18 @@ bool ZombieNavRebuild(CGameContext *pGame, CPlayer *pP, vec2 ZombPos, vec2 GoalW
 		aNodes[Idx].m_F = F;
 		aNodes[Idx].m_Parent = (short)Parent;
 		aNodes[Idx].m_Open = true;
+		if(pTileIdx)
+			pTileIdx[Y * MapW + X] = (short)Idx;
 		return Idx;
 	};
 
 	const int StartIdx = PushNode(Sx, Sy, 0, ZombieNavHeuristic(Sx, Sy, Gx, Gy), -1);
 	if(StartIdx < 0)
+	{
+		if(pTileIdx)
+			mem_free(pTileIdx);
 		return false;
+	}
 
 	static const int aDX[] = {1, -1, 0, 0};
 	static const int aDY[] = {0, 0, 1, -1};
@@ -252,13 +305,21 @@ bool ZombieNavRebuild(CGameContext *pGame, CPlayer *pP, vec2 ZombPos, vec2 GoalW
 			else
 			{
 				if(PushNode(Nx, Ny, Ng, Nf, Best) < 0)
+				{
+					if(pTileIdx)
+						mem_free(pTileIdx);
 					return false;
+				}
 			}
 		}
 	}
 
 	if(GoalNode < 0)
+	{
+		if(pTileIdx)
+			mem_free(pTileIdx);
 		return false;
+	}
 
 	short aRevX[ZOMB_NAV_PATH_CAP];
 	short aRevY[ZOMB_NAV_PATH_CAP];
@@ -289,6 +350,8 @@ bool ZombieNavRebuild(CGameContext *pGame, CPlayer *pP, vec2 ZombPos, vec2 GoalW
 
 	pP->m_ZombNavCachedGoalTX = (short)Gx;
 	pP->m_ZombNavCachedGoalTY = (short)Gy;
+	if(pTileIdx)
+		mem_free(pTileIdx);
 	return pP->m_ZombNavLen > 0;
 }
 
@@ -321,11 +384,18 @@ static bool ZombieNavPathStale(CPlayer *pP, vec2 ZombPos, vec2 GoalWorld)
 	return BestDist > 192.0f;
 }
 
-void ZombieNavUpdateWaypoint(CGameContext *pGame, CCollision *pCol, vec2 ZombPos, vec2 GoalWorld, int CurTick, int TickSpeed, CPlayer *pP, vec2 *pFollowWorld, vec2 *pAimHintWorld)
+static void ZombieNavUpdateWaypoint(CGameContext *pGame, CCollision *pCol, vec2 ZombPos, vec2 GoalWorld, int CurTick, int TickSpeed, CPlayer *pP, vec2 *pFollowWorld, vec2 *pAimHintWorld)
 {
-	(void)pCol;
 	if(!pP || !pFollowWorld || !pAimHintWorld)
 		return;
+
+	if(pCol && distance(ZombPos, GoalWorld) > 48.0f && !ZombieNavLineBlocked(pCol, ZombPos, GoalWorld))
+	{
+		ZombieNavClear(pP);
+		*pFollowWorld = GoalWorld;
+		*pAimHintWorld = GoalWorld;
+		return;
+	}
 
 	const int GoalTx = WorldToTileX(GoalWorld.x, pGame->Collision()->GetWidth());
 	const int GoalTy = WorldToTileY(GoalWorld.y, pGame->Collision()->GetHeight());
@@ -336,9 +406,22 @@ void ZombieNavUpdateWaypoint(CGameContext *pGame, CCollision *pCol, vec2 ZombPos
 
 	if(NeedRebuild && pGame)
 	{
-		if(!ZombieNavRebuild(pGame, pP, ZombPos, GoalWorld))
-			ZombieNavClear(pP);
-		pP->m_ZombNavNextRebuildTick = CurTick + TickSpeed;
+		static int s_RebuildBudgetTick = -1;
+		static int s_RebuildBudget = 0;
+		if(CurTick != s_RebuildBudgetTick)
+		{
+			s_RebuildBudgetTick = CurTick;
+			s_RebuildBudget = ZOMB_NAV_MAX_REBUILDS_PER_TICK;
+		}
+
+		if(s_RebuildBudget > 0)
+		{
+			if(ZombieNavRebuild(pGame, pP, ZombPos, GoalWorld))
+				s_RebuildBudget--;
+			else
+				ZombieNavClear(pP);
+		}
+		pP->m_ZombNavNextRebuildTick = CurTick + TickSpeed * ZOMB_NAV_REBUILD_INTERVAL + (pP->GetCID() % TickSpeed);
 	}
 
 	vec2 Follow = GoalWorld;
@@ -362,4 +445,11 @@ void ZombieNavUpdateWaypoint(CGameContext *pGame, CCollision *pCol, vec2 ZombPos
 
 	*pFollowWorld = Follow;
 	*pAimHintWorld = GoalWorld;
+}
+
+void ZombieNavFollow(CGameContext *pGame, CPlayer *pP, vec2 AgentPos, vec2 GoalWorld, int CurTick, int TickSpeed, vec2 *pFollowWorld, vec2 *pAimHintWorld)
+{
+	if(!pGame || !pP || !pFollowWorld || !pAimHintWorld)
+		return;
+	ZombieNavUpdateWaypoint(pGame, pGame->Collision(), AgentPos, GoalWorld, CurTick, TickSpeed, pP, pFollowWorld, pAimHintWorld);
 }

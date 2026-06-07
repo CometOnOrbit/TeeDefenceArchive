@@ -14,6 +14,7 @@
 
 class CTowerMain;
 class CPlayer;
+class CSpiderBoss;
 
 enum
 {
@@ -55,6 +56,9 @@ class CGameController
 	int m_TdDummyRemoveLen;
 	CTowerMain *m_pTower;
 	class CZombieBot *m_apZombieBots[MAX_CLIENTS];
+	class CSpiderBoss *m_pSpiderBoss;
+	bool m_TdBossWave;
+	bool m_TdSpiderBossPending;
 
 	int m_TdPendingZomb;
 	int m_TdDifficulty;
@@ -67,11 +71,13 @@ class CGameController
 
 	void TdResetPendingRemoves();
 	void TdDoWarmup(int Seconds);
+	bool TdSkipWarmup();
 	void TdStartRound();
 	void TdEndRound();
 	void TdDoWincheck();
 	void TdStartWave(int Wave);
 	void TdCheckZombie();
+	void TdTrySpawnSpiderBoss();
 	int TdRandZomb();
 	int TdCountZombiePopulation() const;
 	bool TdIsWaveCleared() const;
@@ -80,9 +86,12 @@ class CGameController
 	void TdSetWaveAlg(int Modulus, int WaveThird);
 	int TdGetZombieOrder(int WaveThird);
 	void TdBroadcastGameInfo();
+	void TdBroadcastBossHealth();
 	void TdRunZombieBrain(class CPlayer *pP);
 	void TickLoginReminders();
 	void TdClearZombieBot(int ClientID);
+	void TdDestroySpiderBoss();
+	bool TdHasSpiderBossPlayer() const;
 	vec2 TdGetZombieRallyPos() const;
 
 protected:
@@ -127,6 +136,8 @@ public:
 	vec2 TdGetZombieMarchGoal() const;
 	int GetTdWave() const { return m_TdWave; }
 	CTowerMain *GetTower() const { return m_pTower; }
+	CSpiderBoss *GetSpiderBoss() const { return m_pSpiderBoss; }
+	bool IsSpiderBossCore(class CCharacter *pChr) const;
 
 	// event
 	/*
@@ -179,6 +190,7 @@ public:
 	int GetPlayerCheckTeam(class CPlayer *pPlayer) const;
 
 	bool CanSpawn(int Team, vec2 *pPos) const;
+	vec2 TdSnapSpawnToGround(vec2 Pos, float PhysSize = 28.0f) const;
 	bool GetStartRespawnState() const;
 
 	// team
@@ -214,6 +226,7 @@ public:
 	static void ConTdSetWave(IConsole::IResult *pResult, void *pUser);
 	static void ConTdSetTowerHealth(IConsole::IResult *pResult, void *pUser);
 	static void ConTdSetDifficulty(IConsole::IResult *pResult, void *pUser);
+	static void ConTdSkipWarmup(IConsole::IResult *pResult, void *pUser);
 	static void RegisterTeeDefenseConsoleCommands(CGameContext *pCtx);
 };
 

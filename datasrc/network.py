@@ -28,6 +28,9 @@ GamePredictionFlags = Flags("GAMEPREDICTIONFLAG", ["EVENT", "INPUT"])
 # todo 0.8: merge into PlayerFlags
 PlayerFlagsExtra = Flags("PLAYERFLAGEXTRA", ["HIDDEN_IN_BOARD"])
 
+ExtraHudTypes = Enum("EXTRAHUD", ["NONE", "PROGRESS", "NUMERIC", "STACK"])
+ExtraHudFlags = Flags("EXTRAHUDFLAG", ["ACTIVE", "TOP", "TOP_LEFT", "BOTTOM"])
+
 RawHeader = '''
 
 #include <engine/message.h>
@@ -83,6 +86,7 @@ Enums = [
 	Votes,
 	ChatModes,
 	GameMsgIDs,
+	ExtraHudTypes,
 ]
 
 Flags = [
@@ -93,6 +97,7 @@ Flags = [
 	RaceFlags,
     GamePredictionFlags,
     PlayerFlagsExtra,
+	ExtraHudFlags,
 	LaserFlags,
 ]
 
@@ -290,6 +295,12 @@ Objects = [
 	NetObjectEx("PlayerInfoExtra", "player-info-extra@netobj.teeworlds.wiki", [
 		NetIntRange("m_RealClientID", 0, 'max_int'),
         NetIntAny("m_PlayerFlagsExtra"),
+	]),
+
+	NetObjectEx("ExtraHud", "extra-hud@netobj.teeworlds.wiki", [
+		NetEnum("m_Type", ExtraHudTypes),
+		NetFlag("m_Flags", ExtraHudFlags),
+		NetArray(NetIntAny("m_aData"), 8),
 	]),
 
 	NetObjectEx("DDNetLaser", "laser@netobj.ddnet.tw", [

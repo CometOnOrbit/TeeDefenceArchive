@@ -26,7 +26,6 @@ class CZombieBot
 	CGameContext *m_pGameServer;
 	CPlayer *m_pPlayer;
 	CGameController *m_pCtrl;
-	CBotEngine::CPath *m_pPath;
 
 	struct CComputeTarget
 	{
@@ -39,8 +38,6 @@ class CZombieBot
 	int m_Flags;
 	vec2 m_Target;
 	vec2 m_RealTarget;
-	vec2 m_LastGoal;
-	int m_LastPathTick;
 	int m_LowSpeedTicks;
 	bool m_McJumpTried;
 	int m_StuckFlipCooldown;

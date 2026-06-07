@@ -344,14 +344,21 @@ void CGameWorld::CreateExplosion(vec2 Pos, CEntity *pOwner, int Weapon, int MaxD
 	const int Num = FindFlagEntities(Pos, Radius, lpEnts, CGameWorld::ENTFLAG_HITABLE);
 	for(int i = 0; i < Num; i++)
 	{
-		vec2 Diff = lpEnts[i]->GetPos() - Pos;
+		CEntity *pEnt = lpEnts[i];
+		if(!pEnt || pEnt->IsMarkedForDestroy())
+			continue;
+		const int Type = pEnt->ObjType();
+		if(Type != ENTTYPE_CHARACTER && Type != ENTTYPE_TOWERMAIN && Type != ENTTYPE_SPIDERLEG)
+			continue;
+
+		vec2 Diff = pEnt->GetPos() - Pos;
 		vec2 Force(0, MaxForce);
 		float l = length(Diff);
 		if(l)
 			Force = normalize(Diff) * MaxForce;
 		float Factor = 1 - clamp((l - InnerRadius) / (Radius - InnerRadius), 0.0f, 1.0f);
 		if((int) (Factor * MaxDamage))
-			static_cast<CHitableEntity *>(lpEnts[i])->TakeHit(Force * Factor, Diff * -1, (int) (Factor * MaxDamage), pOwner, Weapon);
+			static_cast<CHitableEntity *>(pEnt)->TakeHit(Force * Factor, Diff * -1, (int) (Factor * MaxDamage), pOwner, Weapon);
 	}
 }
 

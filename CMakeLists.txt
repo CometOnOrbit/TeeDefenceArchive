@@ -680,6 +680,8 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entities/tower-main.h
   entities/turret.cpp
   entities/turret.h
+  entities/spider_boss.cpp
+  entities/spider_boss.h
   entity.cpp
   entity.h
   eventhandler.cpp
@@ -711,6 +713,8 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   turret_ammo.h
   zombie_bot.cpp
   zombie_bot.h
+  zombie_nav.cpp
+  zombie_nav.h
 )
 set(GAME_GENERATED_SERVER
   src/generated/server_data.cpp

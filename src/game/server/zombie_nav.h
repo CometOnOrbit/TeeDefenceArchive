@@ -10,14 +10,9 @@ class CCollision;
 class CGameContext;
 class CPlayer;
 
-enum
-{
-	ZOMB_NAV_PATH_CAP = 384,
-};
-
 bool ZombieNavLineBlocked(CCollision *pCol, vec2 From, vec2 To);
+vec2 ZombieNavResolveGoal(CGameContext *pGame, vec2 GoalWorld);
 void ZombieNavClear(CPlayer *pP);
-bool ZombieNavRebuild(CGameContext *pGame, CPlayer *pP, vec2 ZombPos, vec2 GoalWorld);
-void ZombieNavUpdateWaypoint(CGameContext *pGame, CCollision *pCol, vec2 ZombPos, vec2 GoalWorld, int CurTick, int TickSpeed, CPlayer *pP, vec2 *pFollowWorld, vec2 *pAimHintWorld);
+void ZombieNavFollow(CGameContext *pGame, CPlayer *pP, vec2 AgentPos, vec2 GoalWorld, int CurTick, int TickSpeed, vec2 *pFollowWorld, vec2 *pAimHintWorld);
 
 #endif
