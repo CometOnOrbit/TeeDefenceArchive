@@ -360,8 +360,13 @@ static void ComVoteRecallTurret(IConsole::IResult *pResult, void *pUser)
 	SPlayerVote *pV = pGame->Core()->VoteMenuManager()->GetPlayerVote(pCtx->m_ClientID);
 	CAccountSystem *pAcc = pGame->Accounts();
 	if(!pAcc->IsEnabled() || !pP || pP->GetAccountId() < 0)
+	{
+		if(pV)
+			str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "err.account.disabled", u8"未启用账号。"), sizeof(pV->m_aExtraText));
 		return;
+	}
 
+	pP->SyncDeployedTurretRef();
 	if(!pP->HasDeployedTurret())
 		str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "vote.turret.recall.none", u8"场上没有已部署的炮塔。"), sizeof(pV->m_aExtraText));
 	else if(!pP->GetCharacter() || !pP->GetCharacter()->IsAlive())

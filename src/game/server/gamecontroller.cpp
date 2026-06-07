@@ -71,13 +71,13 @@ CGameController::CGameController(CGameContext *pGameServer)
 
 float CGameController::TdDifficultyZombieMul() const
 {
-	static const float s_aMul[NUM_TD_DIFF] = {0.75f, 1.0f, 1.35f};
+	static const float s_aMul[NUM_TD_DIFF] = {0.65f, 0.85f, 1.15f};
 	return s_aMul[m_TdDifficulty];
 }
 
 float CGameController::TdDifficultyHealthMul() const
 {
-	static const float s_aMul[NUM_TD_DIFF] = {0.85f, 1.0f, 1.25f};
+	static const float s_aMul[NUM_TD_DIFF] = {0.75f, 0.88f, 1.10f};
 	return s_aMul[m_TdDifficulty];
 }
 
@@ -505,9 +505,9 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 	if(pChr->GetPlayer()->IsDummy())
 	{
 		const int Z = pChr->GetPlayer()->GetZomb();
-		int Health = maximum(1, m_TdWave);
+		int Health = TdZombieBaseHealth(m_TdWave);
 		if(Z == ZOMB_ZASTER)
-			Health = maximum(40, m_TdWave * 10);
+			Health = maximum(40, Health * 10);
 		if(Z == ZOMB_SPIDER_BOSS)
 			Health = maximum(100, m_TdWave * 20);
 		Health = maximum(1, (int)(Health * TdDifficultyHealthMul() + 0.5f));
@@ -1271,28 +1271,28 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 			for(int i = 0; i < Num; ++i)
 			{
 				CEntity *pHitEnt = lpEnts[i];
-				if(pHitEnt->ObjType() == CGameWorld::ENTTYPE_TOWERMAIN)
+				if(pHitEnt->ObjType() == CGameWorld::ENTTYPE_TOWERMAIN || pHitEnt->ObjType() == CGameWorld::ENTTYPE_TURRET)
 				{
 					if(!pChr->GetPlayer()->IsDummy() && pChr->GetPlayer()->GetTeam() != TEAM_BLUE)
 						continue;
 
-					CTowerMain *pTower = static_cast<CTowerMain *>(pHitEnt);
-					if(GameServer()->Collision()->IntersectLine(ProjStartPos, pTower->GetPos(), NULL, NULL))
+					CHitableEntity *pStructure = static_cast<CHitableEntity *>(pHitEnt);
+					if(GameServer()->Collision()->IntersectLine(ProjStartPos, pStructure->GetPos(), NULL, NULL))
 						continue;
 
-					if(distance(pTower->GetPos(), ProjStartPos) > 0.0f)
-						GameServer()->m_World.CreateHammerHit(pTower->GetPos() - normalize(pTower->GetPos() - ProjStartPos) * pChr->GetProximityRadius() * 0.5f);
+					if(distance(pStructure->GetPos(), ProjStartPos) > 0.0f)
+						GameServer()->m_World.CreateHammerHit(pStructure->GetPos() - normalize(pStructure->GetPos() - ProjStartPos) * pChr->GetProximityRadius() * 0.5f);
 					else
 						GameServer()->m_World.CreateHammerHit(ProjStartPos);
 
 					vec2 Dir;
-					if(length(pTower->GetPos() - ChrPos) > 0.0f)
-						Dir = normalize(pTower->GetPos() - ChrPos);
+					if(length(pStructure->GetPos() - ChrPos) > 0.0f)
+						Dir = normalize(pStructure->GetPos() - ChrPos);
 					else
 						Dir = vec2(0.f, -1.f);
 
 					const int HamVanilla = g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage;
-					pTower->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f * MoreForce, Dir * -1, HamVanilla + ExtraDmg,
+					pStructure->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f * MoreForce, Dir * -1, HamVanilla + ExtraDmg,
 						pChr, Weapon);
 					Hits++;
 					continue;
@@ -1506,6 +1506,7 @@ void CGameController::TdStartWave(int Wave)
 	if(!Wave)
 		return;
 
+	m_TdWave = Wave;
 	mem_zero(m_TdZombie, sizeof(m_TdZombie));
 	m_TdBossWave = false;
 	if(Wave % 10 == 0)
@@ -1520,7 +1521,7 @@ void CGameController::TdStartWave(int Wave)
 	else if(Wave == 2)
 		m_TdZombie[0] = 25;
 	else
-		TdSetWaveAlg(Wave % 3, Wave / 3);
+		TdSetWaveAlg(Wave % 3, Wave / 3, Wave);
 
 	if(!m_TdBossWave)
 	{
@@ -1528,6 +1529,11 @@ void CGameController::TdStartWave(int Wave)
 		m_TdZombLeft = 0;
 		for(unsigned i = 0; i < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); i++)
 			m_TdZombLeft += m_TdZombie[i];
+		if(m_TdZombLeft <= 0)
+		{
+			m_TdZombie[0] = maximum(5, Wave / 2);
+			m_TdZombLeft = m_TdZombie[0];
+		}
 	}
 
 	TdDoZombMessage(0);
@@ -1728,6 +1734,8 @@ void CGameController::TdDoZombMessage(int Which)
 	if(!Which)
 	{
 		m_TdZombStart = m_TdZombLeft;
+		if(m_TdBossWave)
+			return;
 		GameServer()->SendChatAllLocF("game.wave_start", "Wave %d started — %d zombies!", m_TdWave, m_TdZombLeft);
 		return;
 	}
@@ -1739,12 +1747,19 @@ void CGameController::TdDoZombMessage(int Which)
 		GameServer()->SendChatAllLocF("game.wave_one_left", "Wave %d: 1 zombie left", m_TdWave);
 }
 
-void CGameController::TdSetWaveAlg(int Modulus, int WaveThird)
+int CGameController::TdZombieBaseHealth(int Wave)
+{
+	if(Wave <= 0)
+		return 1;
+	return maximum(1, 1 + (Wave - 1) / 5);
+}
+
+void CGameController::TdSetWaveAlg(int Modulus, int WaveThird, int Wave)
 {
 	if(WaveThird > 11)
 	{
 		for(int i = 0; i < NUM_TD_ZOMB; i++)
-			m_TdZombie[i] = m_TdWave + 10;
+			m_TdZombie[i] = Wave + 10;
 		return;
 	}
 
@@ -1759,7 +1774,7 @@ void CGameController::TdSetWaveAlg(int Modulus, int WaveThird)
 	else if(Modulus == 2)
 	{
 		for(int i = 0; i <= WaveThird; i++)
-			m_TdZombie[TdGetZombieOrder(i)] = m_TdWave;
+			m_TdZombie[TdGetZombieOrder(i)] = Wave;
 	}
 }
 

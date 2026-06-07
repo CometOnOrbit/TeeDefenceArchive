@@ -64,8 +64,8 @@ class CZombieBot
 	bool WantSpeedHook(int CurTile, float DistMarch) const;
 	bool ShouldTryTerrainHook(int CurTile, int MoveDir, float DistMarch) const;
 	void HandleHook(bool SeeTarget, int MoveDir, float DistMarch);
-	void HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAggro, bool HasTower, float DistTower,
-		float DistHuman);
+	void HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAggro, bool HasStructure, float DistStructure,
+		vec2 StructurePos, float DistHuman);
 	int GetActiveZombType() const;
 	bool TryZamerDetonate(float DistTower, float DistHuman, bool InSight);
 	void ApplySpecialMovement(bool InSight, float DistHuman);

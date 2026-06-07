@@ -348,7 +348,7 @@ void CGameWorld::CreateExplosion(vec2 Pos, CEntity *pOwner, int Weapon, int MaxD
 		if(!pEnt || pEnt->IsMarkedForDestroy())
 			continue;
 		const int Type = pEnt->ObjType();
-		if(Type != ENTTYPE_CHARACTER && Type != ENTTYPE_TOWERMAIN && Type != ENTTYPE_SPIDERLEG)
+		if(Type != ENTTYPE_CHARACTER && Type != ENTTYPE_TOWERMAIN && Type != ENTTYPE_TURRET && Type != ENTTYPE_SPIDERLEG)
 			continue;
 
 		vec2 Diff = pEnt->GetPos() - Pos;

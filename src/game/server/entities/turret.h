@@ -4,7 +4,7 @@
 
 #include <game/server/entity.h>
 
-class CTurret : public CEntity
+class CTurret : public CHitableEntity
 {
 	static const int NUM_RING_LASERS = 6;
 
@@ -18,12 +18,15 @@ class CTurret : public CEntity
 	int m_Health;
 	int m_MaxHealth;
 
+	float HitRadius();
+
 public:
 	CTurret(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId);
 	~CTurret() override;
 
 	void Tick() override;
 	void Snap(int SnappingClient) override;
+	bool TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, int Weapon) override;
 
 	int GetOwner() const { return m_Owner; }
 	int GetItemDefId() const { return m_ItemDefId; }

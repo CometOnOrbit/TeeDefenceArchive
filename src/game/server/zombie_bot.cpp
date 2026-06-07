@@ -9,6 +9,7 @@
 
 #include "botengine.h"
 #include "entities/character.h"
+#include "entities/turret.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
 #include "gameworld.h"
@@ -26,6 +27,26 @@ constexpr int BOT_HOOK_DIRS = 32;
 constexpr float ZOMB_CROWD_RADIUS = 72.0f;
 constexpr float ZOMB_SEPARATION_RADIUS = 58.0f;
 constexpr float TOWER_SEEK_HOOK_DIST = 180.0f;
+constexpr float TURRET_SEEK_RADIUS = 960.0f;
+
+static CTurret *NearestLivingTurret(CGameWorld *pWorld, vec2 Pos, float MaxDist)
+{
+	CTurret *pBest = nullptr;
+	float BestDist = MaxDist;
+	for(CGameWorld::TypeRange r = pWorld->DoTypeRange(CGameWorld::ENTTYPE_TURRET); !r.empty(); r.pop_front())
+	{
+		CTurret *pT = static_cast<CTurret *>(r.front());
+		if(!pT || pT->IsBroken())
+			continue;
+		const float Dist = distance(Pos, pT->GetPos());
+		if(Dist < BestDist)
+		{
+			BestDist = Dist;
+			pBest = pT;
+		}
+	}
+	return pBest;
+}
 } // namespace
 
 CZombieBot::CZombieBot(CBotEngine *pBotEngine, CPlayer *pPlayer, CGameController *pCtrl)
@@ -212,6 +233,14 @@ void CZombieBot::UpdateZombieTarget()
 	int NewType = TARGET_MARCH;
 	vec2 NewPos = MarchGoal;
 	int NewCid = -1;
+
+	CTurret *pTurret = NearestLivingTurret(&m_pGameServer->m_World, Pos, TURRET_SEEK_RADIUS);
+	if(pTurret)
+	{
+		const float DistTurret = distance(Pos, pTurret->GetPos());
+		if(DistTurret < DistMarch)
+			NewPos = pTurret->GetPos();
+	}
 
 	if(PreferHuman)
 	{
@@ -698,8 +727,8 @@ void CZombieBot::UpdateZinvisState(bool HumanCombat, bool HumanAggro)
 	m_pPlayer->SetZombVisible(HumanCombat || HumanAggro);
 }
 
-void CZombieBot::HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAggro, bool HasTower,
-	float DistTower, float DistHuman)
+void CZombieBot::HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAggro, bool HasStructure,
+	float DistStructure, vec2 StructurePos, float DistHuman)
 {
 	CCharacter *pChr = m_pPlayer->GetCharacter();
 	if(!pChr)
@@ -709,7 +738,6 @@ void CZombieBot::HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAg
 	const float Scale = GetAiScale();
 	const float AttackRange = GetTypeAttackRange(Z);
 	const vec2 Pos = pChr->GetPos();
-	const vec2 TowerPos = m_pCtrl->TdGetZombieMarchGoal();
 	vec2 AimOff = m_Target;
 
 	if(Z == ZOMB_ZINJA && HumanCombat && DistHuman < HAMMER_ATTACK_RANGE && pChr->GetActiveWeapon() == WEAPON_HAMMER)
@@ -728,27 +756,27 @@ void CZombieBot::HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAg
 		pChr->SetWeapon(WEAPON_HAMMER);
 		break;
 	case ZOMB_ZOTTER:
-		if(InSight && (HumanAggro || (HasTower && DistTower < AttackRange)))
+		if(InSight && (HumanAggro || (HasStructure && DistStructure < AttackRange)))
 			pChr->SetWeapon(WEAPON_SHOTGUN);
 		else
 			pChr->SetWeapon(WEAPON_HAMMER);
 		break;
 	case ZOMB_ZENADE:
-		if(InSight && (DistHuman > 100.0f || DistTower > 100.0f) &&
-			(HumanAggro || (HasTower && DistTower < AttackRange)))
+		if(InSight && (DistHuman > 100.0f || DistStructure > 100.0f) &&
+			(HumanAggro || (HasStructure && DistStructure < AttackRange)))
 			pChr->SetWeapon(WEAPON_GRENADE);
 		else
 			pChr->SetWeapon(WEAPON_HAMMER);
 		break;
 	case ZOMB_SPIDER_BOSS:
-		if(InSight && (DistHuman > 80.0f || DistTower > 80.0f) &&
-			(HumanCombat || HumanAggro || (HasTower && DistTower < AttackRange)))
+		if(InSight && (DistHuman > 80.0f || DistStructure > 80.0f) &&
+			(HumanCombat || HumanAggro || (HasStructure && DistStructure < AttackRange)))
 			pChr->SetWeapon(WEAPON_GRENADE);
 		else
 			pChr->SetWeapon(WEAPON_HAMMER);
 		break;
 	case ZOMB_ZOOMER:
-		if(InSight && (HumanAggro || (HasTower && DistTower < AttackRange)))
+		if(InSight && (HumanAggro || (HasStructure && DistStructure < AttackRange)))
 			pChr->SetWeapon(WEAPON_LASER);
 		else
 			pChr->SetWeapon(WEAPON_HAMMER);
@@ -769,8 +797,8 @@ void CZombieBot::HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAg
 
 	if(HumanCombat && InSight)
 		AimOff = m_RealTarget - Pos;
-	else if(HasTower)
-		AimOff = TowerPos - Pos;
+	else if(HasStructure)
+		AimOff = StructurePos - Pos;
 
 	int FireDiv = 3;
 	switch(Z)
@@ -821,15 +849,15 @@ void CZombieBot::HandleZombieWeapon(bool InSight, bool HumanCombat, bool HumanAg
 	if(Ninjaing && HumanCombat && DistHuman < 500.0f)
 		m_InputData.m_Fire = (m_pGameServer->Server()->Tick() % (FirePeriod * 2)) < FirePeriod ? 1 : 0;
 	else if(Hammering &&
-		((HumanCombat && DistHuman < HAMMER_ATTACK_RANGE) || (HasTower && DistTower < HAMMER_ATTACK_RANGE)))
+		((HumanCombat && DistHuman < HAMMER_ATTACK_RANGE) || (HasStructure && DistStructure < HAMMER_ATTACK_RANGE)))
 		m_InputData.m_Fire = (m_pGameServer->Server()->Tick() % (FirePeriod * 2)) < FirePeriod ? 1 : 0;
-	else if(ShootGun && (HumanAggro || (HasTower && DistTower < AttackRange)))
+	else if(ShootGun && (HumanAggro || (HasStructure && DistStructure < AttackRange)))
 		m_InputData.m_Fire = (m_pGameServer->Server()->Tick() % (FirePeriod * 2)) < FirePeriod ? 1 : 0;
-	else if(ShootShotgun && InSight && (HumanAggro || (HasTower && DistTower < AttackRange)))
+	else if(ShootShotgun && InSight && (HumanAggro || (HasStructure && DistStructure < AttackRange)))
 		m_InputData.m_Fire = (m_pGameServer->Server()->Tick() % (FirePeriod * 2)) < FirePeriod ? 1 : 0;
-	else if(ShootGrenade && InSight && (HumanAggro || (HasTower && DistTower < AttackRange)))
+	else if(ShootGrenade && InSight && (HumanAggro || (HasStructure && DistStructure < AttackRange)))
 		m_InputData.m_Fire = (m_pGameServer->Server()->Tick() % (FirePeriod * 3)) < FirePeriod ? 1 : 0;
-	else if(ShootLaser && InSight && (HumanAggro || (HasTower && DistTower < AttackRange)))
+	else if(ShootLaser && InSight && (HumanAggro || (HasStructure && DistStructure < AttackRange)))
 		m_InputData.m_Fire = (m_pGameServer->Server()->Tick() % (FirePeriod * 2)) < FirePeriod ? 1 : 0;
 
 	if(m_InputData.m_Fire)
@@ -861,7 +889,13 @@ void CZombieBot::Tick()
 	const vec2 Pos = pMe->m_Pos;
 	const bool HasTower = m_pCtrl->GetTower() != nullptr;
 	const vec2 TowerPos = m_pCtrl->TdGetZombieMarchGoal();
-	const float DistTower = distance(Pos, TowerPos);
+	const float DistTower = HasTower ? distance(Pos, TowerPos) : 1.0e12f;
+	CTurret *pTurret = NearestLivingTurret(&m_pGameServer->m_World, Pos, TURRET_SEEK_RADIUS);
+	const float DistTurret = pTurret ? distance(Pos, pTurret->GetPos()) : 1.0e12f;
+	const bool AttackTurret = pTurret != nullptr && DistTurret < DistTower;
+	const bool HasStructure = HasTower || AttackTurret;
+	const float DistStructure = AttackTurret ? DistTurret : DistTower;
+	const vec2 StructurePos = AttackTurret ? pTurret->GetPos() : TowerPos;
 
 	bool InSight = false;
 	float DistHuman = 1.0e12f;
@@ -933,7 +967,7 @@ void CZombieBot::Tick()
 	if(TryZamerDetonate(DistTower, DistHuman, InSight))
 		return;
 
-	HandleZombieWeapon(InSight, HumanCombat, HumanAggro, HasTower, DistTower, DistHuman);
+	HandleZombieWeapon(InSight, HumanCombat, HumanAggro, HasStructure, DistStructure, StructurePos, DistHuman);
 	HandleHook(InSight, MoveDir, DistTower);
 
 	if(m_Flags & BFLAG_LEFT)

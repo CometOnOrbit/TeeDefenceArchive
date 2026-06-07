@@ -146,7 +146,7 @@
     "vote.turret.recall.ok": "炮塔已收回。",
     "vote.turret.recall.none": "场上没有已部署的炮塔。",
     "vote.turret.recall.fail": "收回失败：需要存活角色。",
-    "vote.turret.recall.too_far": "距离太远，请靠近炮塔后再收回。",
+    "vote.turret.recall.too_far": "收回失败，请重试。",
     "vote.turret.repair.ok": "炮塔已修复。",
     "vote.turret.repair.not_broken": "炮塔未损坏，无需修复。",
     "vote.turret.repair.fail": "修复失败：需要存活角色。",

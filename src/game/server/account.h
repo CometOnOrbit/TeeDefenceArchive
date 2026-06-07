@@ -5,6 +5,7 @@
 #include <base/system.h>
 
 #include <engine/console.h>
+#include <engine/shared/protocol.h>
 
 #include "item_system.h"
 #include "sql_pool.h"
@@ -21,6 +22,8 @@ class CAccountSystem
 	enum
 	{
 		MAX_ACCOUNT_JOBS = 16,
+		MAX_AUTH_JOBS = 2,
+		FIRST_SAVE_JOB = 2,
 	};
 
 	enum
@@ -52,12 +55,20 @@ class CAccountSystem
 	};
 
 	SJob m_aJobs[MAX_ACCOUNT_JOBS];
+	int m_aNextItemsSaveTick[MAX_CLIENTS];
+	int m_aNextAccountSaveTick[MAX_CLIENTS];
+	bool m_aPendingItemsSave[MAX_CLIENTS];
+	bool m_aPendingAccountSave[MAX_CLIENTS];
 
 	static int JobRunner(void *pData);
 
 	bool StartJob(int Type, int ClientId, const char *pUser, const char *pPass);
 	bool StartSaveJob(int ClientId, int UserId, const SAccSyncData *pSync);
 	bool StartItemsJob(int ClientId, int UserId, const SAccSyncData *pSync);
+	void FlushPendingSaves();
+	void ClearSaveThrottle(int ClientId);
+	bool QueueItemsSave(int ClientId, bool Force);
+	bool QueueAccountSave(int ClientId, bool Force);
 	void PumpCompletedJobs();
 
 	static void ComChatRegister(IConsole::IResult *pResult, void *pUser);

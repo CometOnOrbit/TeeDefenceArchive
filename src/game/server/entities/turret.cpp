@@ -14,10 +14,28 @@
 #include <game/collision.h>
 
 #include "character.h"
+#include "projectile.h"
 #include "turret.h"
 
+static bool IsZombieDamageSource(CGameContext *pGame, int Owner, CEntity *pFrom)
+{
+	(void)pFrom;
+	if(Owner == PLAYER_TEAM_BLUE)
+		return true;
+	if(Owner < 0 || Owner >= MAX_CLIENTS || !pGame->m_apPlayers[Owner])
+		return false;
+	CPlayer *pP = pGame->m_apPlayers[Owner];
+	return pP->IsDummy() || pP->GetTeam() == TEAM_BLUE;
+}
+
+float CTurret::HitRadius()
+{
+	const float BaseRadius = (float)Config()->m_SvTurretRadius;
+	return BaseRadius + (float)(GetVisualLevel() * Config()->m_SvTurretRadius) + 16.0f;
+}
+
 CTurret::CTurret(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId)
-	: CEntity(pGameWorld, CGameWorld::ENTTYPE_TURRET, 0, Pos, 0)
+	: CHitableEntity(pGameWorld, CGameWorld::ENTTYPE_TURRET, 0, Pos, 0)
 {
 	m_Owner = Owner;
 	m_ItemDefId = ItemDefId;
@@ -28,6 +46,7 @@ CTurret::CTurret(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId)
 	if(CItemHelper *pH = GameServer()->ItemHelper())
 		m_MaxHealth = maximum(1, pH->GetMaxCapacity(ItemDefId));
 	m_Health = m_MaxHealth;
+	SetProximityRadius(HitRadius());
 	m_aCenterId = Server()->SnapNewID();
 	for(int i = 0; i < NUM_RING_LASERS; i++)
 		m_aRingIds[i] = Server()->SnapNewID();
@@ -60,6 +79,22 @@ void CTurret::Repair()
 	m_Health = m_MaxHealth;
 }
 
+bool CTurret::TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, int Weapon)
+{
+	(void)Force;
+	(void)Source;
+	(void)Weapon;
+	if(m_Health <= 0 || Dmg <= 0)
+		return false;
+
+	const int Owner = GameWorld()->DamageOwnerFromEntity(pFrom);
+	if(!IsZombieDamageSource(GameServer(), Owner, pFrom))
+		return false;
+
+	TakeDamage(maximum(1, Dmg));
+	return true;
+}
+
 void CTurret::Tick()
 {
 	if(!GameServer()->m_apPlayers[m_Owner])
@@ -72,26 +107,6 @@ void CTurret::Tick()
 	CCharacter *pOwnChr = pOwner->GetCharacter();
 	if(!pOwnChr)
 		return;
-
-	const float BaseRadius = (float)Config()->m_SvTurretRadius;
-	const float HitRadius = BaseRadius + (float)(GetVisualLevel() * Config()->m_SvTurretRadius) + 16.0f;
-	const int TouchDmg = Config()->m_SvTurretTouchDamage;
-	if(TouchDmg > 0 && m_Health > 0)
-	{
-		for(CGameWorld::TypeRange r = GameWorld()->DoTypeRange(CGameWorld::ENTTYPE_CHARACTER); !r.empty(); r.pop_front())
-		{
-			CCharacter *pChr = static_cast<CCharacter *>(r.front());
-			if(!pChr || !pChr->IsAlive() || !pChr->GetPlayer() || !pChr->GetPlayer()->IsDummy())
-				continue;
-			const float Len = distance(pChr->GetPos(), m_Pos);
-			if(Len < pChr->GetProximityRadius() + HitRadius)
-			{
-				TakeDamage(TouchDmg);
-				if(pChr->IsAlive())
-					pChr->Die(pChr->GetPlayer()->GetCID(), WEAPON_GAME);
-			}
-		}
-	}
 
 	if(IsBroken())
 	{

@@ -622,7 +622,7 @@ void CVoteMenuManager::InitVotes(int ClientID)
 			AddVote(VL(GS(), pP, "turret.place.cancel", u8"✗ 取消部署"), "ccv_menuturretcancel", ClientID);
 			AddVote_Space();
 		}
-		if(pP->HasDeployedTurret() && !pP->IsTurretPlacing())
+		if(pP->HasDeployedTurret())
 		{
 			CTurret *pT = pP->GetDeployedTurret();
 			if(pT)

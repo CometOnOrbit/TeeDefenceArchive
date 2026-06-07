@@ -9,6 +9,7 @@
 #include "entities/turret.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
+#include "gameworld.h"
 #include "player.h"
 
 MACRO_ALLOC_POOL_ID_IMPL(CPlayer, MAX_CLIENTS)
@@ -668,23 +669,61 @@ bool CPlayer::CreateTurret(vec2 Pos)
 	if(!TurretPlacementValid(m_pGameServer, Pos, m_ClientID))
 		return false;
 	CancelTurretPlace();
+	SyncDeployedTurretRef();
 	DestroyTurret();
 	m_pTurret = new CTurret(&GameServer()->m_World, Pos, m_ClientID, TurretItem);
 	GameServer()->ClearVotes(GetCID());
 	return m_pTurret != nullptr;
 }
 
+CTurret *CPlayer::SyncDeployedTurretRef()
+{
+	if(m_pTurret)
+	{
+		for(CGameWorld::TypeRange r = GameServer()->m_World.DoTypeRange(CGameWorld::ENTTYPE_TURRET); !r.empty(); r.pop_front())
+		{
+			if(r.front() == m_pTurret)
+				return m_pTurret;
+		}
+		m_pTurret = nullptr;
+	}
+
+	for(CGameWorld::TypeRange r = GameServer()->m_World.DoTypeRange(CGameWorld::ENTTYPE_TURRET); !r.empty(); r.pop_front())
+	{
+		CTurret *pT = static_cast<CTurret *>(r.front());
+		if(pT && pT->GetOwner() == m_ClientID)
+		{
+			m_pTurret = pT;
+			return m_pTurret;
+		}
+	}
+	return nullptr;
+}
+
 void CPlayer::DestroyTurret()
 {
 	CancelTurretPlace();
 	TurretAmmo_ClearDebt(this);
-	delete m_pTurret;
+
+	CTurret *apOwned[8];
+	int NumOwned = 0;
+	for(CGameWorld::TypeRange r = GameServer()->m_World.DoTypeRange(CGameWorld::ENTTYPE_TURRET); !r.empty(); r.pop_front())
+	{
+		CTurret *pT = static_cast<CTurret *>(r.front());
+		if(!pT || pT->GetOwner() != m_ClientID)
+			continue;
+		if(NumOwned < (int)(sizeof(apOwned) / sizeof(apOwned[0])))
+			apOwned[NumOwned++] = pT;
+	}
+
 	m_pTurret = nullptr;
+	for(int i = 0; i < NumOwned; i++)
+		delete apOwned[i];
 }
 
 bool CPlayer::RepairDeployedTurret()
 {
-	if(!m_pTurret || !m_pTurret->IsBroken())
+	if(!SyncDeployedTurretRef() || !m_pTurret->IsBroken())
 		return false;
 
 	CCharacter *pChr = GetCharacter();
@@ -705,14 +744,11 @@ bool CPlayer::RecallTurret()
 {
 	if(m_TurretPlacing)
 		CancelTurretPlace();
-	if(!m_pTurret)
+	if(!SyncDeployedTurretRef())
 		return false;
 
 	CCharacter *pChr = GetCharacter();
 	if(!pChr || !pChr->IsAlive())
-		return false;
-
-	if(distance(pChr->GetPos(), m_pTurret->GetPos()) > 520.0f)
 		return false;
 
 	DestroyTurret();

@@ -125,8 +125,9 @@ public:
 	CCharacter *GetCharacter();
 	bool CreateTurret(vec2 Pos = vec2(0.0f, 0.0f));
 	void DestroyTurret();
-	bool HasDeployedTurret() const { return m_pTurret != nullptr; }
-	CTurret *GetDeployedTurret() const { return m_pTurret; }
+	CTurret *SyncDeployedTurretRef();
+	bool HasDeployedTurret() { return SyncDeployedTurretRef() != nullptr; }
+	CTurret *GetDeployedTurret() { return SyncDeployedTurretRef(); }
 	bool RecallTurret();
 	bool RepairDeployedTurret();
 	bool BeginTurretPlace();

@@ -286,6 +286,10 @@ CAccountSystem::CAccountSystem()
 	m_Enabled = false;
 	for(auto &Slot : m_aJobs)
 		mem_zero(&Slot, sizeof(Slot));
+	mem_zero(m_aNextItemsSaveTick, sizeof(m_aNextItemsSaveTick));
+	mem_zero(m_aNextAccountSaveTick, sizeof(m_aNextAccountSaveTick));
+	mem_zero(m_aPendingItemsSave, sizeof(m_aPendingItemsSave));
+	mem_zero(m_aPendingAccountSave, sizeof(m_aPendingAccountSave));
 }
 
 bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pConsole, CConfig *pConfig)
@@ -370,8 +374,9 @@ bool CAccountSystem::StartJob(int Type, int ClientId, const char *pUser, const c
 	if(!m_Enabled || !m_pEngine)
 		return false;
 
-	for(auto &Slot : m_aJobs)
+	for(int i = 0; i < MAX_AUTH_JOBS; i++)
 	{
+		SJob &Slot = m_aJobs[i];
 		if(Slot.m_Submitted)
 			continue;
 
@@ -400,8 +405,9 @@ bool CAccountSystem::StartSaveJob(int ClientId, int UserId, const SAccSyncData *
 	if(!m_Enabled || !m_pEngine || UserId <= 0 || !pSync)
 		return false;
 
-	for(auto &Slot : m_aJobs)
+	for(int i = FIRST_SAVE_JOB; i < MAX_ACCOUNT_JOBS; i++)
 	{
+		SJob &Slot = m_aJobs[i];
 		if(Slot.m_Submitted)
 			continue;
 
@@ -425,8 +431,9 @@ bool CAccountSystem::StartItemsJob(int ClientId, int UserId, const SAccSyncData 
 	if(!m_Enabled || !m_pEngine || UserId <= 0 || !pSync)
 		return false;
 
-	for(auto &Slot : m_aJobs)
+	for(int i = FIRST_SAVE_JOB; i < MAX_ACCOUNT_JOBS; i++)
 	{
+		SJob &Slot = m_aJobs[i];
 		if(Slot.m_Submitted)
 			continue;
 
@@ -717,9 +724,88 @@ void CAccountSystem::PumpCompletedJobs()
 	}
 }
 
+void CAccountSystem::ClearSaveThrottle(int ClientId)
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return;
+	m_aNextItemsSaveTick[ClientId] = 0;
+	m_aNextAccountSaveTick[ClientId] = 0;
+	m_aPendingItemsSave[ClientId] = false;
+	m_aPendingAccountSave[ClientId] = false;
+}
+
+bool CAccountSystem::QueueItemsSave(int ClientId, bool Force)
+{
+	if(!m_Enabled || !m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return false;
+	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	if(!pP || pP->GetAccountId() < 0)
+		return false;
+
+	const int Now = m_pGame->Server()->Tick();
+	const int Interval = maximum(1, m_pConfig->m_SvAccSaveItemsSec) * m_pGame->Server()->TickSpeed();
+	if(!Force && Now < m_aNextItemsSaveTick[ClientId])
+	{
+		m_aPendingItemsSave[ClientId] = true;
+		return false;
+	}
+	if(!StartItemsJob(ClientId, (int)pP->GetAccountId(), &pP->m_AccData))
+	{
+		m_aPendingItemsSave[ClientId] = true;
+		return false;
+	}
+
+	m_aNextItemsSaveTick[ClientId] = Now + Interval;
+	m_aPendingItemsSave[ClientId] = false;
+	return true;
+}
+
+bool CAccountSystem::QueueAccountSave(int ClientId, bool Force)
+{
+	if(!m_Enabled || !m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return false;
+	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	if(!pP || pP->GetAccountId() < 0)
+		return false;
+
+	const int Now = m_pGame->Server()->Tick();
+	const int Interval = maximum(1, m_pConfig->m_SvAccSaveAccountSec) * m_pGame->Server()->TickSpeed();
+	if(!Force && Now < m_aNextAccountSaveTick[ClientId])
+	{
+		m_aPendingAccountSave[ClientId] = true;
+		return false;
+	}
+	if(!StartSaveJob(ClientId, (int)pP->GetAccountId(), &pP->m_AccData))
+	{
+		m_aPendingAccountSave[ClientId] = true;
+		return false;
+	}
+
+	m_aNextAccountSaveTick[ClientId] = Now + Interval;
+	m_aPendingAccountSave[ClientId] = false;
+	return true;
+}
+
+void CAccountSystem::FlushPendingSaves()
+{
+	if(!m_Enabled || !m_pGame)
+		return;
+
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(!m_pGame->m_apPlayers[i] || m_pGame->m_apPlayers[i]->GetAccountId() < 0)
+			continue;
+		if(m_aPendingAccountSave[i])
+			QueueAccountSave(i, false);
+		if(m_aPendingItemsSave[i])
+			QueueItemsSave(i, false);
+	}
+}
+
 void CAccountSystem::OnGameTick()
 {
 	PumpCompletedJobs();
+	FlushPendingSaves();
 }
 
 void CAccountSystem::OnClientDisconnect(int ClientId)
@@ -728,33 +814,27 @@ void CAccountSystem::OnClientDisconnect(int ClientId)
 		return;
 	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
 	if(!pP || pP->GetAccountId() < 0)
+	{
+		ClearSaveThrottle(ClientId);
 		return;
+	}
 
 	const int UserId = (int)pP->GetAccountId();
 	SAccSyncData Sync;
 	mem_copy(&Sync, &pP->m_AccData, sizeof(Sync));
 	pP->ClearAccount();
 	StartSaveJob(ClientId, UserId, &Sync);
+	ClearSaveThrottle(ClientId);
 }
 
 void CAccountSystem::RequestSaveItems(int ClientId)
 {
-	if(!m_Enabled || !m_pGame)
-		return;
-	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
-	if(!pP || pP->GetAccountId() < 0)
-		return;
-	StartItemsJob(ClientId, (int)pP->GetAccountId(), &pP->m_AccData);
+	QueueItemsSave(ClientId, false);
 }
 
 void CAccountSystem::RequestSaveAccount(int ClientId)
 {
-	if(!m_Enabled || !m_pGame)
-		return;
-	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
-	if(!pP || pP->GetAccountId() < 0)
-		return;
-	StartSaveJob(ClientId, (int)pP->GetAccountId(), &pP->m_AccData);
+	QueueAccountSave(ClientId, false);
 }
 
 void CAccountSystem::ComChatRegister(IConsole::IResult *pResult, void *pUser)
