@@ -243,7 +243,7 @@ void CRegister::SendDeleteIfRegistered(void *pUser)
 	char aSecret[UUID_MAXSTRSIZE];
 	format_uuid(pContext->m_pParent->m_Secret, aSecret, sizeof(aSecret));
 
-	CHttpRequest Request("POST", pContext->m_pParent->Config()->m_SvRegisterUrl, 15, Protocol == PROTOCOL_IPV4 ? HTTP_IPRESOLVE_IPV4ONLY : HTTP_IPRESOLVE_IPV6ONLY);
+	CHttpRequest Request("POST", pContext->m_pParent->Config()->m_SvRegisterUrl, 1, Protocol == PROTOCOL_IPV4 ? HTTP_IPRESOLVE_IPV4ONLY : HTTP_IPRESOLVE_IPV6ONLY);
 	Request.AddHeader("Action: delete");
 
 	char aHeader[256];

@@ -551,6 +551,8 @@ set_src(ENGINE_SHARED GLOB src/engine/shared
   filecollection.h
   http_request.cpp
   http_request.h
+  http_thread.cpp
+  http_thread.h
   huffman.cpp
   huffman.h
   jobs.cpp
@@ -709,6 +711,8 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   player.h
   sql_pool.cpp
   sql_pool.h
+  sql_query.cpp
+  sql_query.h
   turret_ammo.cpp
   turret_ammo.h
   zombie_bot.cpp

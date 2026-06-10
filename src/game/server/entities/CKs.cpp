@@ -12,7 +12,7 @@
 #include "CKs.h"
 #include "character.h"
 
-static const int CK_BARE_HAND_DAMAGE = 10;
+static const int CK_BARE_HAND_DAMAGE = 8;
 
 CKs::CKs(CGameWorld *pGameWorld, int Type, vec2 Pos)
 	: CEntity(pGameWorld, CGameWorld::ENTTYPE_PICKUP, CGameWorld::ENTFLAG_CKS, Pos, ms_PhysSize)
@@ -66,16 +66,30 @@ void CKs::Tick()
 
 		if(pChr->LatestInput().m_Fire & 1 && pChr->GetActiveWeapon() == WEAPON_HAMMER && pChr->m_MiningTick <= 0)
 		{
-			int Tool = ITYPE_PICKAXE;
+			CPlayer *pPlayer = pChr->GetPlayer();
+			CItemHelper *pH = GameServer()->ItemHelper();
+			int Dmg = CK_BARE_HAND_DAMAGE;
+
 			if(m_Type == ITEM_LOG)
-				Tool = ITYPE_AXE;
+			{
+				const int AxeId = pPlayer->GetHolding(ITYPE_AXE);
+				if(AxeId > 0 && pH)
+					Dmg = maximum(1, pH->GetDmg(AxeId));
+			}
+			else
+			{
+				const int PickId = pPlayer->GetHolding(ITYPE_PICKAXE);
+				if(PickId > 0 && pH)
+				{
+					Dmg = maximum(1, pH->GetDmg(PickId));
+					if(m_Type == ITEM_ENEGRY)
+						Dmg = maximum(1, Dmg / 2);
+				}
+			}
 
 			pChr->m_InMining = true;
 			GameServer()->m_World.CreateSound(m_Pos, SOUND_HAMMER_FIRE);
-
-			const int HoldingId = pChr->GetPlayer()->m_AccData.m_Holding[Tool];
-			const int BaseDmg = HoldingId ? GameServer()->ItemHelper()->GetDmg(HoldingId) : CK_BARE_HAND_DAMAGE;
-			Picking(BaseDmg, pChr->GetPlayer());
+			Picking(Dmg, pPlayer);
 		}
 	}
 }
@@ -95,8 +109,11 @@ void CKs::RewardIfDestroyed(CPlayer *pPlayer)
 		GameServer()->Accounts()->RequestSaveItems(CID);
 }
 
-void CKs::Picking(int BaseDmg, CPlayer *Player)
+void CKs::Picking(int Dmg, CPlayer *Player)
 {
+	m_Health -= maximum(1, Dmg);
+	RewardIfDestroyed(Player);
+
 	int HoldKind = ITYPE_PICKAXE;
 	if(m_Type == ITEM_LOG)
 		HoldKind = ITYPE_AXE;
@@ -105,25 +122,13 @@ void CKs::Picking(int BaseDmg, CPlayer *Player)
 	CItemHelper *pH = GameServer()->ItemHelper();
 	const char *pHoldingExtra = HoldingId ? Player->GetExtraForItem(HoldingId) : "";
 
-	int DmgPart;
-	if(!HoldingId)
-		DmgPart = CK_BARE_HAND_DAMAGE;
-	else
-	{
-		const int CardDmg = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID) : 0;
-		DmgPart = BaseDmg * (1 + CardDmg);
-	}
-
-	m_Health -= DmgPart;
-	RewardIfDestroyed(Player);
-
 	if(pH && pHoldingExtra)
 	{
 		const int Exp = pH->GetCard(pHoldingExtra, ITEM_CARD_EXPLOSION_ID);
 		if(Exp > 0)
 		{
-			const int DmgC = maximum(1, pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID));
-			const int Splash = maximum(1, (DmgPart * Exp) / 4 + Exp * DmgC);
+			const int CardDmg = pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID);
+			const int Splash = maximum(1, (Dmg * Exp) / 4 + Exp * maximum(1, CardDmg));
 			const float Radius = 72.f + (float)Exp * 6.f;
 
 			for(CGameWorld::TypeRange r = GameServer()->m_World.DoTypeRange(CGameWorld::ENTTYPE_PICKUP); !r.empty(); r.pop_front())

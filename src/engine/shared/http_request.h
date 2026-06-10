@@ -34,9 +34,13 @@ class CHttpRequest
 	curl_slist *m_pHeaderList;
 
 	bool m_IsChecked;
+	SEMAPHORE m_BlockingSem;
+	bool m_BlockingActive;
+	int m_CurlResult;
 
 	static size_t WriteCallback(char *pData, size_t Size, size_t Number, void *pUser);
 	static int Run(void *pUser);
+	static int RunSync(void *pUser);
 
 public:
 	CHttpRequest(const char *pRequest, const char *pUrl, long TimeoutSeconds, int IPResolve = HTTP_IPRESOLVE_BOTH);
@@ -45,6 +49,11 @@ public:
 	void AddHeader(const char *pHeader);
 	void StartRun(class IEngine *pEngine);
 	void StartRunBlocking();
+
+	bool ConfigureEasy(void *pHandle);
+	void CompleteRequest(int CurlResult, void *pEasyHandle = nullptr);
+	void PrepareBlocking();
+	void WaitBlocking();
 
 	void MarkAsChecked() { m_IsChecked = true; }
 

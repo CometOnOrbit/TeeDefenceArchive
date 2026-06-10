@@ -19,6 +19,7 @@
 #include <engine/shared/econ.h>
 #include <engine/shared/filecollection.h>
 #include <engine/shared/http_request.h>
+#include <engine/shared/http_thread.h>
 #include <engine/shared/jsonwriter.h>
 #include <engine/shared/mapchecker.h>
 #include <engine/shared/netban.h>
@@ -1985,6 +1986,8 @@ int main(int argc, const char **argv)
 	if(Curl.IsFailed())
 		return -1;
 
+	HttpThreadInit();
+
 	signal(SIGINT, HandleSigIntTerm);
 	signal(SIGTERM, HandleSigIntTerm);
 
@@ -2052,9 +2055,10 @@ int main(int argc, const char **argv)
 	dbg_msg("server", "starting...");
 	int Ret = pServer->Run();
 
-	// free
-	delete pEngine;
+	// free (~CRegister may still issue HTTP delete requests)
 	delete pServer;
+	HttpThreadShutdown();
+	delete pEngine;
 	delete pKernel;
 	delete pEngineMap;
 	delete pMapChecker;

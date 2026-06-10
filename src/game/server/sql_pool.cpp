@@ -88,16 +88,22 @@ void *CSqlConnectionPool::Acquire()
 	if(!m_pInner || !m_pInner->m_Initialized)
 		return nullptr;
 
-	lock_wait(m_pInner->m_Lock);
-	MYSQL *pConn = nullptr;
-	if(m_pInner->m_Idle.size() > 0)
+	for(int Attempt = 0; Attempt < 300; Attempt++)
 	{
-		const int Last = m_pInner->m_Idle.size() - 1;
-		pConn = m_pInner->m_Idle[Last];
-		m_pInner->m_Idle.remove_index_fast(Last);
+		lock_wait(m_pInner->m_Lock);
+		MYSQL *pConn = nullptr;
+		if(m_pInner->m_Idle.size() > 0)
+		{
+			const int Last = m_pInner->m_Idle.size() - 1;
+			pConn = m_pInner->m_Idle[Last];
+			m_pInner->m_Idle.remove_index_fast(Last);
+		}
+		lock_unlock(m_pInner->m_Lock);
+		if(pConn)
+			return pConn;
+		thread_sleep(10);
 	}
-	lock_unlock(m_pInner->m_Lock);
-	return pConn;
+	return nullptr;
 }
 
 void CSqlConnectionPool::Release(void *pConn)

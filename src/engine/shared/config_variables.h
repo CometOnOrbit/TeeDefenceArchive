@@ -76,6 +76,8 @@ MACRO_CONFIG_INT(SvMysqlPort, sv_mysql_port, 3306, 0, 65535, CFGFLAG_SAVE | CFGF
 MACRO_CONFIG_STR(SvMysqlUser, sv_mysql_user, 64, "teedefense", CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL user")
 MACRO_CONFIG_STR(SvMysqlPassword, sv_mysql_password, 128, "", CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL password")
 MACRO_CONFIG_STR(SvMysqlDatabase, sv_mysql_database, 64, "teedefense", CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL database name")
-MACRO_CONFIG_INT(SvMysqlPoolSize, sv_mysql_pool_size, 4, 1, 32, CFGFLAG_SERVER, "MySQL connections in pool (job worker threads borrow)")
+MACRO_CONFIG_INT(SvMysqlPoolSize, sv_mysql_pool_size, 8, 1, 32, CFGFLAG_SERVER, "MySQL connections in pool (job worker threads borrow)")
+MACRO_CONFIG_INT(SvSqlDmlMaxRetries, sv_sql_dml_max_retries, 3, 1, 10, CFGFLAG_SERVER, "Retries for failed MySQL DML after transient connection errors")
+MACRO_CONFIG_STR(SvSqlFailedLogFile, sv_sql_failed_log_file, 128, "sql_failed_log.txt", CFGFLAG_SERVER, "Append failed SQL queries to this file (empty = disabled)")
 
 #endif

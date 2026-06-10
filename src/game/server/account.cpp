@@ -207,6 +207,30 @@ static bool EnsureSchema(MYSQL *pSql)
 	return SqlExec(pSql, pItems);
 }
 
+static void DeleteAccountByUserId(MYSQL *pSql, int64 UserId)
+{
+	if(UserId <= 0)
+		return;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery), "DELETE FROM tw_Items WHERE UserID=%lld", (long long)UserId);
+	SqlExec(pSql, aQuery);
+	str_format(aQuery, sizeof(aQuery), "DELETE FROM tw_Accounts WHERE UserID=%lld", (long long)UserId);
+	SqlExec(pSql, aQuery);
+}
+
+static bool VerifyAccountExists(MYSQL *pSql, int64 UserId)
+{
+	char aQuery[128];
+	str_format(aQuery, sizeof(aQuery), "SELECT UserID FROM tw_Accounts WHERE UserID=%lld LIMIT 1", (long long)UserId);
+	if(!SqlExec(pSql, aQuery))
+		return false;
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	const bool Exists = pRes && mysql_num_rows(pRes) > 0;
+	if(pRes)
+		mysql_free_result(pRes);
+	return Exists;
+}
+
 static bool LoadItemsForUser(MYSQL *pSql, int UserId, SAccSyncData *pSync)
 {
 	ClearItemsInSync(pSync);
@@ -278,18 +302,31 @@ static void SaveItems(MYSQL *pSql, int UserId, const SAccSyncData *pSync)
 
 #endif
 
+void CAccountSystem::ClearJobSlot(SJob &Slot)
+{
+	Slot.m_Submitted = false;
+	mem_zero(&Slot.m_Job, sizeof(Slot.m_Job));
+}
+
+bool CAccountSystem::JobSlotIdle(SJob &Slot)
+{
+	return !Slot.m_Submitted || Slot.m_Job.Status() == CJob::STATE_DONE;
+}
+
 CAccountSystem::CAccountSystem()
 {
 	m_pGame = nullptr;
 	m_pEngine = nullptr;
 	m_pConfig = nullptr;
 	m_Enabled = false;
+	m_Pumping = false;
 	for(auto &Slot : m_aJobs)
 		mem_zero(&Slot, sizeof(Slot));
 	mem_zero(m_aNextItemsSaveTick, sizeof(m_aNextItemsSaveTick));
 	mem_zero(m_aNextAccountSaveTick, sizeof(m_aNextAccountSaveTick));
 	mem_zero(m_aPendingItemsSave, sizeof(m_aPendingItemsSave));
 	mem_zero(m_aPendingAccountSave, sizeof(m_aPendingAccountSave));
+	mem_zero(m_aPendingAuthUser, sizeof(m_aPendingAuthUser));
 }
 
 bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pConsole, CConfig *pConfig)
@@ -374,10 +411,12 @@ bool CAccountSystem::StartJob(int Type, int ClientId, const char *pUser, const c
 	if(!m_Enabled || !m_pEngine)
 		return false;
 
+	PumpCompletedJobs();
+
 	for(int i = 0; i < MAX_AUTH_JOBS; i++)
 	{
 		SJob &Slot = m_aJobs[i];
-		if(Slot.m_Submitted)
+		if(!JobSlotIdle(Slot))
 			continue;
 
 		mem_zero(&Slot, sizeof(Slot));
@@ -394,6 +433,36 @@ bool CAccountSystem::StartJob(int Type, int ClientId, const char *pUser, const c
 		ClearItemsInSync(&Slot.m_Sync);
 		Slot.m_Error = -1;
 
+		if(ClientId >= 0 && ClientId < MAX_CLIENTS)
+			str_copy(m_aPendingAuthUser[ClientId], pUser, sizeof(m_aPendingAuthUser[ClientId]));
+
+		m_pEngine->AddJob(&Slot.m_Job, JobRunner, &Slot);
+		return true;
+	}
+	return false;
+}
+
+bool CAccountSystem::StartLoginLoadJob(int ClientId, int64 AccountId, const SAccSyncData *pSync)
+{
+	if(!m_Enabled || !m_pEngine || AccountId <= 0 || !pSync)
+		return false;
+
+	for(int i = 0; i < MAX_AUTH_JOBS; i++)
+	{
+		SJob &Slot = m_aJobs[i];
+		if(!JobSlotIdle(Slot))
+			continue;
+
+		mem_zero(&Slot, sizeof(Slot));
+		Slot.m_pSys = this;
+		Slot.m_Submitted = true;
+		Slot.m_Type = JOB_LOGIN_LOAD;
+		Slot.m_ClientId = ClientId;
+		Slot.m_AccountId = AccountId;
+		mem_copy(&Slot.m_Sync, pSync, sizeof(Slot.m_Sync));
+		Slot.m_Sync.m_aPassword[0] = 0;
+		Slot.m_Error = -1;
+
 		m_pEngine->AddJob(&Slot.m_Job, JobRunner, &Slot);
 		return true;
 	}
@@ -408,7 +477,7 @@ bool CAccountSystem::StartSaveJob(int ClientId, int UserId, const SAccSyncData *
 	for(int i = FIRST_SAVE_JOB; i < MAX_ACCOUNT_JOBS; i++)
 	{
 		SJob &Slot = m_aJobs[i];
-		if(Slot.m_Submitted)
+		if(!JobSlotIdle(Slot))
 			continue;
 
 		mem_zero(&Slot, sizeof(Slot));
@@ -434,7 +503,7 @@ bool CAccountSystem::StartItemsJob(int ClientId, int UserId, const SAccSyncData 
 	for(int i = FIRST_SAVE_JOB; i < MAX_ACCOUNT_JOBS; i++)
 	{
 		SJob &Slot = m_aJobs[i];
-		if(Slot.m_Submitted)
+		if(!JobSlotIdle(Slot))
 			continue;
 
 		mem_zero(&Slot, sizeof(Slot));
@@ -507,6 +576,15 @@ int CAccountSystem::JobRunner(void *pData)
 			return -1;
 		}
 		pSlot->m_AccountId = (int64)mysql_insert_id(pSql);
+		if(pSlot->m_AccountId <= 0 || !VerifyAccountExists(pSql, pSlot->m_AccountId))
+		{
+			if(pSlot->m_AccountId > 0)
+				DeleteAccountByUserId(pSql, pSlot->m_AccountId);
+			pSlot->m_AccountId = 0;
+			pSlot->m_Error = 102;
+			pSys->m_Pool.Release(pSql);
+			return -1;
+		}
 		pSlot->m_Error = 0;
 	}
 	else if(pSlot->m_Type == JOB_LOGIN)
@@ -589,14 +667,14 @@ int CAccountSystem::JobRunner(void *pData)
 		str_format(aQuery, sizeof(aQuery), "UPDATE tw_Accounts SET Holding='%s' WHERE UserID=%lld AND Holding IS NULL", aEscHolding, (long long)pSlot->m_AccountId);
 		SqlExec(pSql, aQuery);
 
-		if(!LoadItemsForUser(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync))
-		{
-			pSlot->m_Error = 104;
-			pSys->m_Pool.Release(pSql);
-			return -1;
-		}
-
 		pSlot->m_Error = 0;
+	}
+	else if(pSlot->m_Type == JOB_LOGIN_LOAD)
+	{
+		if(!LoadItemsForUser(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync))
+			pSlot->m_Error = 104;
+		else
+			pSlot->m_Error = 0;
 	}
 	else if(pSlot->m_Type == JOB_SAVE_ACCOUNT)
 	{
@@ -641,10 +719,56 @@ int CAccountSystem::JobRunner(void *pData)
 
 #endif
 
+void CAccountSystem::ClearPendingAuth(int ClientId)
+{
+	if(ClientId >= 0 && ClientId < MAX_CLIENTS)
+		m_aPendingAuthUser[ClientId][0] = 0;
+}
+
+bool CAccountSystem::AuthClientStillValid(int ClientId, const char *pExpectedUser) const
+{
+	if(!m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return false;
+	if(!m_pGame->Server()->ClientIngame(ClientId))
+		return false;
+	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	if(!pP || pP->IsDummy())
+		return false;
+	if(pP->GetAccountId() >= 0)
+		return false;
+	if(!m_aPendingAuthUser[ClientId][0])
+		return false;
+	if(pExpectedUser && pExpectedUser[0] && str_comp_nocase(m_aPendingAuthUser[ClientId], pExpectedUser) != 0)
+		return false;
+	return true;
+}
+
+void CAccountSystem::ApplyLogin(int ClientId, int64 AccountId, const SAccSyncData *pSync)
+{
+	if(!m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS || !pSync)
+		return;
+	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	if(!pP || pP->IsDummy())
+		return;
+
+	pP->SetAccountId(AccountId);
+	mem_copy(&pP->m_AccData, pSync, sizeof(pP->m_AccData));
+	pP->m_AccData.m_aPassword[0] = 0;
+	pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
+	m_pGame->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
+	m_pGame->SendCommunityInfo(ClientId);
+	m_pGame->EnterGame(ClientId);
+	if(SPlayerVote *pV = m_pGame->GetPlayerVote(ClientId))
+		pV->m_Page = PAGE_MENU;
+	m_pGame->ClearVotes(ClientId);
+}
+
 void CAccountSystem::PumpCompletedJobs()
 {
-	if(!m_Enabled || !m_pGame)
+	if(!m_Enabled || !m_pGame || m_Pumping)
 		return;
+
+	m_Pumping = true;
 
 	for(auto &Slot : m_aJobs)
 	{
@@ -656,17 +780,20 @@ void CAccountSystem::PumpCompletedJobs()
 		const int ClientId = Slot.m_ClientId;
 		CPlayer *pP = (ClientId >= 0 && ClientId < MAX_CLIENTS) ? m_pGame->m_apPlayers[ClientId] : nullptr;
 
+		char aAutoLoginUser[64] = {0};
+		char aAutoLoginPass[128] = {0};
+		bool AutoLogin = false;
+		bool SlotCleared = false;
+
 		if(Slot.m_Type == JOB_REGISTER)
 		{
 			if(Slot.m_Error == 0)
 			{
 				if(pP && !pP->IsDummy())
 					m_pGame->SendChatLoc(ClientId, "account.register.ok", u8"注册成功。");
-				if(!StartJob(JOB_LOGIN, ClientId, Slot.m_Sync.m_aUsername, Slot.m_Sync.m_aPassword))
-				{
-					if(pP && !pP->IsDummy())
-						m_pGame->SendChatLoc(ClientId, "account.register.autologin_fail", u8"自动登录排队失败，请使用 /login。");
-				}
+				str_copy(aAutoLoginUser, Slot.m_Sync.m_aUsername, sizeof(aAutoLoginUser));
+				str_copy(aAutoLoginPass, Slot.m_Sync.m_aPassword, sizeof(aAutoLoginPass));
+				AutoLogin = true;
 			}
 			else if(Slot.m_Error == 1)
 			{
@@ -681,7 +808,59 @@ void CAccountSystem::PumpCompletedJobs()
 		}
 		else if(Slot.m_Type == JOB_LOGIN)
 		{
-			if(Slot.m_Error == 0 && pP && !pP->IsDummy() && m_pGame->Server()->ClientIngame(ClientId))
+			if(Slot.m_Error == 0)
+			{
+				if(AuthClientStillValid(ClientId, Slot.m_Sync.m_aUsername))
+				{
+					if(IsAccountOnline(m_pGame, Slot.m_AccountId, ClientId))
+					{
+						if(pP && !pP->IsDummy())
+							m_pGame->SendChatLoc(ClientId, "account.login.already_online", u8"该账号已在其他客户端登录。");
+						ClearPendingAuth(ClientId);
+					}
+					else
+					{
+						const int64 AccountId = Slot.m_AccountId;
+						SAccSyncData Sync;
+						mem_copy(&Sync, &Slot.m_Sync, sizeof(Sync));
+						ClearJobSlot(Slot);
+						SlotCleared = true;
+						if(!StartLoginLoadJob(ClientId, AccountId, &Sync))
+						{
+							if(pP && !pP->IsDummy())
+								m_pGame->SendChatLoc(ClientId, "account.login.fail", u8"登录失败（服务器）。");
+							ClearPendingAuth(ClientId);
+						}
+					}
+				}
+				else
+				{
+					ClearPendingAuth(ClientId);
+				}
+			}
+			else
+			{
+				if(Slot.m_Error == 2)
+				{
+					if(pP && !pP->IsDummy())
+						m_pGame->SendChatLoc(ClientId, "account.login.not_found", u8"用户不存在。");
+				}
+				else if(Slot.m_Error == 3)
+				{
+					if(pP && !pP->IsDummy())
+						m_pGame->SendChatLoc(ClientId, "account.login.wrong_pass", u8"密码错误。");
+				}
+				else
+				{
+					if(pP && !pP->IsDummy())
+						m_pGame->SendChatLoc(ClientId, "account.login.fail", u8"登录失败（服务器）。");
+				}
+				ClearPendingAuth(ClientId);
+			}
+		}
+		else if(Slot.m_Type == JOB_LOGIN_LOAD)
+		{
+			if(Slot.m_Error == 0 && AuthClientStillValid(ClientId, Slot.m_Sync.m_aUsername))
 			{
 				if(IsAccountOnline(m_pGame, Slot.m_AccountId, ClientId))
 				{
@@ -690,38 +869,27 @@ void CAccountSystem::PumpCompletedJobs()
 				}
 				else
 				{
-					pP->SetAccountId(Slot.m_AccountId);
-					mem_copy(&pP->m_AccData, &Slot.m_Sync, sizeof(pP->m_AccData));
-					pP->m_AccData.m_aPassword[0] = 0;
-					pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
-					m_pGame->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
-					m_pGame->SendCommunityInfo(ClientId);
-					m_pGame->EnterGame(ClientId);
-					if(SPlayerVote *pV = m_pGame->GetPlayerVote(ClientId))
-						pV->m_Page = PAGE_MENU;
-					m_pGame->ClearVotes(ClientId);
+					ApplyLogin(ClientId, Slot.m_AccountId, &Slot.m_Sync);
 				}
 			}
-			else if(Slot.m_Error == 2)
+			else if(Slot.m_Error != 0 && pP && !pP->IsDummy())
 			{
-				if(pP && !pP->IsDummy())
-					m_pGame->SendChatLoc(ClientId, "account.login.not_found", u8"用户不存在。");
+				m_pGame->SendChatLoc(ClientId, "account.login.fail", u8"登录失败（服务器）。");
 			}
-			else if(Slot.m_Error == 3)
-			{
-				if(pP && !pP->IsDummy())
-					m_pGame->SendChatLoc(ClientId, "account.login.wrong_pass", u8"密码错误。");
-			}
-			else
-			{
-				if(pP && !pP->IsDummy())
-					m_pGame->SendChatLoc(ClientId, "account.login.fail", u8"登录失败（服务器）。");
-			}
+			ClearPendingAuth(ClientId);
 		}
 
-		Slot.m_Submitted = false;
-		mem_zero(&Slot.m_Job, sizeof(Slot.m_Job));
+		if(!SlotCleared)
+			ClearJobSlot(Slot);
+
+		if(AutoLogin && !StartJob(JOB_LOGIN, ClientId, aAutoLoginUser, aAutoLoginPass))
+		{
+			if(pP && !pP->IsDummy())
+				m_pGame->SendChatLoc(ClientId, "account.register.autologin_fail", u8"自动登录排队失败，请使用 /login。");
+		}
 	}
+
+	m_Pumping = false;
 }
 
 void CAccountSystem::ClearSaveThrottle(int ClientId)
@@ -810,6 +978,7 @@ void CAccountSystem::OnGameTick()
 
 void CAccountSystem::OnClientDisconnect(int ClientId)
 {
+	ClearPendingAuth(ClientId);
 	if(!m_Enabled || !m_pGame)
 		return;
 	CPlayer *pP = m_pGame->m_apPlayers[ClientId];

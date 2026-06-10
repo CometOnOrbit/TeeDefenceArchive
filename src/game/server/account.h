@@ -22,8 +22,8 @@ class CAccountSystem
 	enum
 	{
 		MAX_ACCOUNT_JOBS = 16,
-		MAX_AUTH_JOBS = 2,
-		FIRST_SAVE_JOB = 2,
+		MAX_AUTH_JOBS = 6,
+		FIRST_SAVE_JOB = 6,
 	};
 
 	enum
@@ -31,6 +31,7 @@ class CAccountSystem
 		JOB_NONE = 0,
 		JOB_REGISTER,
 		JOB_LOGIN,
+		JOB_LOGIN_LOAD,
 		JOB_SAVE_ACCOUNT,
 		JOB_SAVE_ITEMS,
 	};
@@ -41,6 +42,7 @@ class CAccountSystem
 	CConfig *m_pConfig;
 
 	bool m_Enabled;
+	bool m_Pumping;
 
 	struct SJob
 	{
@@ -59,10 +61,14 @@ class CAccountSystem
 	int m_aNextAccountSaveTick[MAX_CLIENTS];
 	bool m_aPendingItemsSave[MAX_CLIENTS];
 	bool m_aPendingAccountSave[MAX_CLIENTS];
+	char m_aPendingAuthUser[MAX_CLIENTS][64];
 
 	static int JobRunner(void *pData);
+	static void ClearJobSlot(SJob &Slot);
+	static bool JobSlotIdle(SJob &Slot);
 
 	bool StartJob(int Type, int ClientId, const char *pUser, const char *pPass);
+	bool StartLoginLoadJob(int ClientId, int64 AccountId, const SAccSyncData *pSync);
 	bool StartSaveJob(int ClientId, int UserId, const SAccSyncData *pSync);
 	bool StartItemsJob(int ClientId, int UserId, const SAccSyncData *pSync);
 	void FlushPendingSaves();
@@ -70,6 +76,9 @@ class CAccountSystem
 	bool QueueItemsSave(int ClientId, bool Force);
 	bool QueueAccountSave(int ClientId, bool Force);
 	void PumpCompletedJobs();
+	void ClearPendingAuth(int ClientId);
+	bool AuthClientStillValid(int ClientId, const char *pExpectedUser) const;
+	void ApplyLogin(int ClientId, int64 AccountId, const SAccSyncData *pSync);
 
 	static void ComChatRegister(IConsole::IResult *pResult, void *pUser);
 	static void ComChatLogin(IConsole::IResult *pResult, void *pUser);
