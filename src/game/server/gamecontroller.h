@@ -39,7 +39,6 @@ class CGameController
 	class IServer *m_pServer;
 
 	// activity
-	void DoActivityCheck();
 	bool GetPlayersReadyState(int WithoutID = -1);
 	void SetPlayersReadyState(bool ReadyState);
 
@@ -89,7 +88,6 @@ class CGameController
 	void TdBroadcastGameInfo();
 	void TdBroadcastBossHealth();
 	void TdRunZombieBrain(class CPlayer *pP);
-	void TickLoginReminders();
 	void TdClearZombieBot(int ClientID);
 	void TdDestroySpiderBoss();
 	bool TdHasSpiderBossPlayer() const;
@@ -121,6 +119,9 @@ protected:
 	CConfig *Config() const { return m_pConfig; }
 	IServer *Server() const { return m_pServer; }
 
+	void DoActivityCheck();
+	void TickLoginReminders();
+
 	// game
 	int m_GameStartTick;
 	int m_RealPlayerNum;
@@ -150,7 +151,7 @@ public:
 			weapon - What weapon that killed it. Can be -1 for undefined
 				weapon when switching team or player suicides.
 	*/
-	int OnCharacterDeath(class CCharacter *pVictim, class CPlayer *pKiller, int Weapon);
+	virtual int OnCharacterDeath(class CCharacter *pVictim, class CPlayer *pKiller, int Weapon);
 	/*
 		Function: on_CCharacter_spawn
 			Called when a CCharacter spawns into the game world.
@@ -158,7 +159,7 @@ public:
 		Arguments:
 			chr - The CCharacter that was spawned.
 	*/
-	void OnCharacterSpawn(class CCharacter *pChr);
+	virtual void OnCharacterSpawn(class CCharacter *pChr);
 
 	/*
 		Function: on_entity
@@ -172,7 +173,7 @@ public:
 		Returns:
 			bool?
 	*/
-	bool OnEntity(int Index, vec2 Pos);
+	virtual bool OnEntity(int Index, vec2 Pos);
 	bool OnExtraTile(int Index, vec2 Pos);
 
 	void OnPlayerConnect(class CPlayer *pPlayer);
@@ -182,11 +183,11 @@ public:
 
 	// general
 	void Snap(int SnappingClient);
-	void Tick();
+	virtual void Tick();
 
 	// info
-	bool IsFriendlyFire(int ClientID1, int ClientID2, int Damage) const;
-	bool IsFriendlyTeamFire(int Team1, int Team2, int Damage) const;
+	virtual bool IsFriendlyFire(int ClientID1, int ClientID2, int Damage) const;
+	virtual bool IsFriendlyTeamFire(int Team1, int Team2, int Damage) const;
 	int GetPlayerCheckTeam(class CPlayer *pPlayer) const;
 
 	bool CanSpawn(int Team, vec2 *pPos) const;

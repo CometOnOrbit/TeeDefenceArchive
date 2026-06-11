@@ -722,6 +722,11 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   zombie_bot.h
   zombie_nav.cpp
   zombie_nav.h
+  worldmodes/defence.h
+  worldmodes/hub.cpp
+  worldmodes/hub.h
+  worldmodes/pvp.cpp
+  worldmodes/pvp.h
 )
 set(GAME_GENERATED_SERVER
   src/generated/server_data.cpp

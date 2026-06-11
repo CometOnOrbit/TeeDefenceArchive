@@ -490,6 +490,38 @@ const char *CServer::GetWorldName(int WorldID) const
 	return m_pMultiWorlds ? m_pMultiWorlds->GetWorldName(WorldID) : "";
 }
 
+const CWorldDetail *CServer::GetWorldDetail(int WorldID) const
+{
+	if(!m_pMultiWorlds || !m_pMultiWorlds->IsValid(WorldID))
+		return nullptr;
+	CWorld *pWorld = m_pMultiWorlds->GetWorld(WorldID);
+	return pWorld ? pWorld->GetDetail() : nullptr;
+}
+
+void CServer::ReleaseClientInAllWorlds(int ClientID)
+{
+	if(!m_pMultiWorlds || ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+	for(int w = 0; w < m_pMultiWorlds->GetWorldCount(); w++)
+	{
+		if(!m_pMultiWorlds->IsValid(w))
+			continue;
+		GameServer(w)->ReleaseClientPlayer(ClientID);
+	}
+}
+
+void CServer::ReleaseClientInOtherWorlds(int ClientID, int KeepWorldID)
+{
+	if(!m_pMultiWorlds || ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+	for(int w = 0; w < m_pMultiWorlds->GetWorldCount(); w++)
+	{
+		if(w == KeepWorldID || !m_pMultiWorlds->IsValid(w))
+			continue;
+		GameServer(w)->ReleaseClientPlayer(ClientID);
+	}
+}
+
 bool CServer::HasHumanInWorld(int WorldID) const
 {
 	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
@@ -500,6 +532,20 @@ bool CServer::HasHumanInWorld(int WorldID) const
 			return true;
 	}
 	return false;
+}
+
+int CServer::GetNumPlayersInWorld(int WorldID) const
+{
+	int Num = 0;
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	{
+		if(m_aClients[i].m_WorldID != WorldID)
+			continue;
+		if(m_aClients[i].m_State != CClient::STATE_INGAME)
+			continue;
+		Num++;
+	}
+	return Num;
 }
 
 void CServer::SyncLegacyMapFromWorld(int WorldID)
@@ -909,12 +955,9 @@ int CServer::DelClientCallback(int ClientID, const char *pReason, void *pUser)
 	str_format(aBuf, sizeof(aBuf), "client dropped. cid=%d addr=%s reason='%s'", ClientID, aAddrStr, pReason);
 	pThis->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
 
-	// notify the mod about the drop
 	if(pThis->m_aClients[ClientID].m_State >= CClient::STATE_READY)
-	{
 		pThis->m_aClients[ClientID].m_Quitting = true;
-		pThis->GameServerPlayer(ClientID)->OnClientDrop(ClientID, pReason);
-	}
+	pThis->ReleaseClientInAllWorlds(ClientID);
 
 	pThis->m_aClients[ClientID].m_State = CClient::STATE_EMPTY;
 	pThis->m_aClients[ClientID].m_aName[0] = 0;

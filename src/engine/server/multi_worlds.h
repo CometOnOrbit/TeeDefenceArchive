@@ -58,6 +58,7 @@ public:
 	const char *GetPath() const { return m_aPath; }
 	int GetID() const { return m_ID; }
 	CWorldDetail *GetDetail() { return &m_Detail; }
+	const CWorldDetail *GetDetail() const { return &m_Detail; }
 };
 
 class CMultiWorlds

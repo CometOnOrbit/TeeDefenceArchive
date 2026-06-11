@@ -8,6 +8,7 @@
 
 #include <engine/console.h>
 #include <engine/server.h>
+#include <engine/shared/world_detail.h>
 
 #include <game/commands.h>
 #include <game/layers.h>
@@ -233,10 +234,13 @@ public:
 	void OnClientTeamChange(int ClientID);
 	virtual void OnClientEnter(int ClientID);
 	virtual void OnClientDrop(int ClientID, const char *pReason);
+	virtual void ReleaseClientPlayer(int ClientID) override;
 	virtual void OnClientPrepareChangeWorld(int ClientID) override;
 	virtual void ExportChangeWorldSession(int ClientID) override;
 	virtual void SetWorldID(int WorldID) override;
 	virtual int GetWorldID() const override;
+	bool IsWorldType(WorldType Type) const;
+	void InitWorld();
 	virtual void OnClientDirectInput(int ClientID, void *pInput);
 	virtual void OnClientPredictedInput(int ClientID, void *pInput);
 

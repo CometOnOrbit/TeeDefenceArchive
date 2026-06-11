@@ -227,7 +227,9 @@ public:
 	virtual int GetClientWorldID(int ClientID) const override;
 	virtual void ChangeWorld(int ClientID, int NewWorldID) override;
 	virtual int GetNumWorlds() const override;
+	virtual int GetNumPlayersInWorld(int WorldID) const override;
 	virtual const char *GetWorldName(int WorldID) const override;
+	virtual const CWorldDetail *GetWorldDetail(int WorldID) const override;
 	virtual class IGameServer *GameServer(int WorldID = 0) const override;
 
 	virtual void SetChangeWorldSession(int ClientID, int64 AccountId, const void *pData, int Size) override;
@@ -237,6 +239,9 @@ public:
 	virtual bool ConsumeChangeWorldEnter(int ClientID) override;
 	virtual void SetChangeWorldWasReady(int ClientID, bool Ready) override;
 	virtual bool GetChangeWorldWasReady(int ClientID) const override;
+
+	void ReleaseClientInAllWorlds(int ClientID) override;
+	void ReleaseClientInOtherWorlds(int ClientID, int KeepWorldID) override;
 
 	bool HasHumanInWorld(int WorldID) const;
 	void SetClientWorldID(int ClientID, int WorldID);

@@ -201,8 +201,12 @@ bool CMultiWorlds::LoadFromJson(IKernel *pKernel, IStorage *pStorage, const char
 		if(!aTitle[0])
 			str_copy(aTitle, aMap, sizeof(aTitle));
 
+		const char *pMode = "defence";
+		if(El["mode"].type == json_string)
+			pMode = El["mode"].u.string.ptr;
+
 		const int WorldID = (int)i;
-		const CWorldDetail Detail(0, 0, 0);
+		const CWorldDetail Detail(WorldTypeFromString(pMode), 0, 0, 0);
 		m_apWorlds[WorldID] = new CWorld(WorldID, aTitle, aMap, Detail);
 		if(!Init(m_apWorlds[WorldID], pKernel))
 		{
@@ -216,7 +220,7 @@ bool CMultiWorlds::LoadFromJson(IKernel *pKernel, IStorage *pStorage, const char
 			Clear(true);
 			return false;
 		}
-		dbg_msg("multiworld", "world %d: %s (maps/%s)", WorldID, aTitle, aMap);
+		dbg_msg("multiworld", "world %d: %s mode=%s (maps/%s)", WorldID, aTitle, WorldTypeName(Detail.GetType()), aMap);
 	}
 
 	m_NextIsReloading = true;

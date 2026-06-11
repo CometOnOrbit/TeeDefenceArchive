@@ -4,6 +4,7 @@
 #define ENGINE_SERVER_H
 #include "kernel.h"
 #include "message.h"
+#include <engine/shared/world_detail.h>
 
 class IServer : public IInterface
 {
@@ -79,7 +80,9 @@ public:
 	virtual int GetClientWorldID(int ClientID) const = 0;
 	virtual void ChangeWorld(int ClientID, int NewWorldID) = 0;
 	virtual int GetNumWorlds() const = 0;
+	virtual int GetNumPlayersInWorld(int WorldID) const = 0;
 	virtual const char *GetWorldName(int WorldID) const = 0;
+	virtual const CWorldDetail *GetWorldDetail(int WorldID) const = 0;
 
 	virtual class IGameServer *GameServer(int WorldID) const = 0;
 
@@ -90,6 +93,9 @@ public:
 	virtual bool ConsumeChangeWorldEnter(int ClientID) = 0;
 	virtual void SetChangeWorldWasReady(int ClientID, bool Ready) = 0;
 	virtual bool GetChangeWorldWasReady(int ClientID) const = 0;
+
+	virtual void ReleaseClientInAllWorlds(int ClientID) = 0;
+	virtual void ReleaseClientInOtherWorlds(int ClientID, int KeepWorldID) = 0;
 };
 
 class IGameServer : public IInterface
@@ -116,6 +122,7 @@ public:
 	virtual void OnBotConnected(int ClientID) = 0;
 	virtual void OnClientEnter(int ClientID) = 0;
 	virtual void OnClientDrop(int ClientID, const char *pReason) = 0;
+	virtual void ReleaseClientPlayer(int ClientID) = 0;
 	virtual void OnClientDirectInput(int ClientID, void *pInput) = 0;
 	virtual void OnClientPredictedInput(int ClientID, void *pInput) = 0;
 

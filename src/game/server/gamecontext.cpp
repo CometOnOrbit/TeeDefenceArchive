@@ -24,6 +24,10 @@
 #include "gamecontext.h"
 #include "core/components/localization/localization_manager.h"
 #include "core/components/vote/vote_menu_manager.h"
+#include "worldmodes/defence.h"
+#include "worldmodes/hub.h"
+#include "worldmodes/pvp.h"
+#include <engine/shared/world_detail.h>
 #include "core/tworld_controller.h"
 #include "gamecontroller.h"
 #include "player.h"
@@ -354,8 +358,16 @@ void CGameContext::EnterGame(int ClientID)
 		m_pController->DoTeamChange(pP, TEAM_RED, false);
 	pP->Respawn();
 
-	SendChatLoc(ClientID, "account.enter_game", u8"已加入防守方，祝你好运！");
-	SendBroadcastLoc(ClientID, "account.enter_game_broadcast", u8"你已加入游戏 — 守护主塔！");
+	if(IsWorldType(WorldType::PvP))
+	{
+		SendChatLoc(ClientID, "account.enter_game_pvp", u8"已加入 PvP 竞技场，祝你好运！");
+		SendBroadcastLoc(ClientID, "account.enter_game_pvp_broadcast", u8"你已加入 PvP — 击败其他玩家！");
+	}
+	else
+	{
+		SendChatLoc(ClientID, "account.enter_game", u8"已加入防守方，祝你好运！");
+		SendBroadcastLoc(ClientID, "account.enter_game_broadcast", u8"你已加入游戏 — 守护主塔！");
+	}
 }
 
 void CGameContext::SendChatAllLoc(const char *pKey, const char *pDefault)
@@ -856,6 +868,35 @@ int CGameContext::GetWorldID() const
 	return m_WorldID;
 }
 
+bool CGameContext::IsWorldType(WorldType Type) const
+{
+	const CWorldDetail *pDetail = Server()->GetWorldDetail(m_WorldID);
+	return pDetail && pDetail->GetType() == Type;
+}
+
+void CGameContext::InitWorld()
+{
+	WorldType Type = WorldType::Defence;
+	if(const CWorldDetail *pDetail = Server()->GetWorldDetail(m_WorldID))
+		Type = pDetail->GetType();
+
+	switch(Type)
+	{
+	case WorldType::Hub:
+		m_pController = new CGameControllerHub(this);
+		dbg_msg("world init", "world %d (%s) mode=hub", m_WorldID, Server()->GetWorldName(m_WorldID));
+		break;
+	case WorldType::PvP:
+		m_pController = new CGameControllerPvP(this);
+		dbg_msg("world init", "world %d (%s) mode=pvp", m_WorldID, Server()->GetWorldName(m_WorldID));
+		break;
+	default:
+		m_pController = new CGameControllerDefence(this);
+		dbg_msg("world init", "world %d (%s) mode=defence", m_WorldID, Server()->GetWorldName(m_WorldID));
+		break;
+	}
+}
+
 void CGameContext::ExportChangeWorldSession(int ClientID)
 {
 	CPlayer *pPlayer = m_apPlayers[ClientID];
@@ -1041,8 +1082,16 @@ void CGameContext::OnClientEnter(int ClientID)
 	SendSettings(ClientID);
 }
 
+void CGameContext::ReleaseClientPlayer(int ClientID)
+{
+	if(!m_apPlayers[ClientID])
+		return;
+	OnClientDrop(ClientID, "released");
+}
+
 void CGameContext::OnClientConnected(int ClientID, bool Dummy, bool AsSpec)
 {
+	Server()->ReleaseClientInOtherWorlds(ClientID, m_WorldID);
 	if(m_apPlayers[ClientID])
 		return;
 
@@ -1879,8 +1928,7 @@ void CGameContext::OnInit()
 	m_Layers.Init(Kernel(), pMap);
 	m_Collision.Init(&m_Layers);
 
-	// select gametype
-	m_pController = new CGameController(this);
+	InitWorld();
 
 	m_pItemHelper = new CItemHelper(this);
 	m_pItemHelper->LoadDefinitions(Storage());

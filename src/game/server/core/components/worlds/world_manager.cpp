@@ -4,6 +4,8 @@
 #include <game/server/core/tworld_controller.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
+#include <engine/shared/world_detail.h>
+#include <game/voting.h>
 
 #include "world_manager.h"
 
@@ -48,9 +50,29 @@ void CWorldManager::AddVotes(int ClientID)
 	{
 		char aCmd[96];
 		char aTitle[128];
+		char aLine[VOTE_DESC_LENGTH];
 		FormatWorldTitle(ClientID, i, aTitle, sizeof(aTitle));
+		const int PlayerNum = Server()->GetNumPlayersInWorld(i);
+		const char *pModeKey = "worlds.mode.defence";
+		const char *pModeFallback = "defence";
+		if(const CWorldDetail *pDetail = Server()->GetWorldDetail(i))
+		{
+			if(pDetail->GetType() == WorldType::Hub)
+			{
+				pModeKey = "worlds.mode.hub";
+				pModeFallback = "hub";
+			}
+			else if(pDetail->GetType() == WorldType::PvP)
+			{
+				pModeKey = "worlds.mode.pvp";
+				pModeFallback = "pvp";
+			}
+		}
+		char aMode[32];
+		GS()->LocFormat(aMode, sizeof(aMode), ClientID, pModeKey, pModeFallback);
+		GS()->LocFormat(aLine, sizeof(aLine), ClientID, "worlds.entry", "%s (%d) [%s]", aTitle, PlayerNum, aMode);
 		str_format(aCmd, sizeof(aCmd), "ccv_menutravel %d", i);
-		GS()->AddVote(aTitle, aCmd, ClientID);
+		GS()->AddVote(aLine, aCmd, ClientID);
 	}
 	if(Num == 0)
 	{
