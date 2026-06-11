@@ -1101,7 +1101,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 				bool ConnectAsSpec = m_aClients[ClientID].m_State == CClient::STATE_CONNECTING_AS_SPEC;
 				m_aClients[ClientID].m_State = CClient::STATE_READY;
 				IGameServer *pGS = GameServerPlayer(ClientID);
-				if(!m_aClients[ClientID].m_ChangeWorld || !pGS || !pGS->IsClientReady(ClientID))
+				if(pGS && (!m_aClients[ClientID].m_ChangeWorld || !pGS->IsClientReady(ClientID)))
 					pGS->OnClientConnected(ClientID, ConnectAsSpec);
 				SendConnectionReady(ClientID);
 			}

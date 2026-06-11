@@ -125,9 +125,8 @@ protected:
 	int m_GameStartTick;
 	int m_RealPlayerNum;
 
-	void SendGameInfo(int ClientID);
-
 public:
+	void SendGameInfo(int ClientID);
 	CGameController(class CGameContext *pGameServer);
 	virtual ~CGameController();
 

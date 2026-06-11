@@ -884,6 +884,64 @@ static void RestoreChangeWorldPlayer(CGameContext *pCtx, int ClientID, CPlayer *
 	pPlayer->m_IsReadyToEnter = WasReady || RestoredSession || pPlayer->GetAccountId() >= 0;
 }
 
+static void ClientDropNotice(CGameContext *pCtx, int ClientID, const char *pReason, bool SkipSelf)
+{
+	CPlayer *pPlayer = pCtx->m_apPlayers[ClientID];
+	if(!pPlayer)
+		return;
+
+	const bool Silent = pCtx->IsClientBot(ClientID) ||
+		(pCtx->Config()->m_SvSilentSpectatorMode && pPlayer->GetTeam() == TEAM_SPECTATORS);
+	const char *pDropReason = pReason && pReason[0] ? pReason : "disconnected";
+
+	pCtx->RebuildLegacySlotMap();
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	{
+		if(SkipSelf && i == ClientID)
+			continue;
+		if(!pCtx->Server()->ClientIngame(i) || !pCtx->m_apPlayers[i])
+			continue;
+
+		const int DisplayID = pCtx->ClientDisplaySlot(i, ClientID);
+		if(DisplayID < 0)
+			continue;
+
+		CNetMsg_Sv_ClientDrop Msg;
+		Msg.m_ClientID = DisplayID;
+		Msg.m_pReason = pDropReason;
+		Msg.m_Silent = Silent;
+		pCtx->Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+	}
+}
+
+static void RemovePlayerFromWorld(CGameContext *pCtx, int ClientID, const char *pDropReason, bool NotifyOthers)
+{
+	CPlayer *pPlayer = pCtx->m_apPlayers[ClientID];
+	if(!pPlayer)
+		return;
+
+	pCtx->AbortVoteOnDisconnect(ClientID);
+	if(pCtx->m_pTWorld)
+		pCtx->m_pTWorld->OnResetClientData(ClientID);
+	pCtx->m_pController->OnPlayerDisconnect(pPlayer);
+
+	if(NotifyOthers && (pCtx->Server()->ClientIngame(ClientID) || pCtx->IsClientBot(ClientID)))
+		ClientDropNotice(pCtx, ClientID, pDropReason, true);
+
+	for(CGameWorld::TypeRange r = pCtx->m_World.DoTypeRange(CGameWorld::ENTTYPE_PROJECTILE); !r.empty(); r.pop_front())
+	{
+		CProjectile *p = static_cast<CProjectile *>(r.front());
+		if(p->GetOwner() == ClientID)
+			p->LoseOwner();
+	}
+
+	pPlayer->KillCharacter(WEAPON_WORLD);
+	delete pPlayer;
+	pCtx->m_apPlayers[ClientID] = nullptr;
+	pCtx->m_VoteUpdate = true;
+	pCtx->Server()->ExpireServerInfo();
+}
+
 void CGameContext::OnClientPrepareChangeWorld(int ClientID)
 {
 	const int DestWorldID = Server()->GetChangeWorldDestID(ClientID);
@@ -891,13 +949,7 @@ void CGameContext::OnClientPrepareChangeWorld(int ClientID)
 	const bool Entering = DestWorldID >= 0 && m_WorldID == DestWorldID;
 
 	if(m_apPlayers[ClientID])
-	{
-		if(m_pTWorld)
-			m_pTWorld->OnResetClientData(ClientID);
-		m_apPlayers[ClientID]->KillCharacter(WEAPON_WORLD);
-		delete m_apPlayers[ClientID];
-		m_apPlayers[ClientID] = nullptr;
-	}
+		RemovePlayerFromWorld(this, ClientID, "changed world", Leaving);
 
 	if(Leaving || !Entering)
 		return;
@@ -915,11 +967,15 @@ void CGameContext::OnClientEnter(int ClientID)
 {
 	CPlayer *pPlayer = m_apPlayers[ClientID];
 	const bool IsDummy = pPlayer->IsDummy();
+	const bool ChangeWorldEnter = Server()->ConsumeChangeWorldEnter(ClientID);
 
 	if(!IsDummy)
 		SendChatCommands(ClientID);
 
-	m_pController->OnPlayerConnect(pPlayer);
+	if(ChangeWorldEnter)
+		m_pController->SendGameInfo(ClientID);
+	else
+		m_pController->OnPlayerConnect(pPlayer);
 
 	m_VoteUpdate = true;
 
@@ -962,7 +1018,7 @@ void CGameContext::OnClientEnter(int ClientID)
 	if(IsDummy)
 		return;
 
-	if(Server()->ConsumeChangeWorldEnter(ClientID))
+	if(ChangeWorldEnter)
 	{
 		if(pPlayer->GetAccountId() >= 0)
 			EnterGame(ClientID);
@@ -987,6 +1043,9 @@ void CGameContext::OnClientEnter(int ClientID)
 
 void CGameContext::OnClientConnected(int ClientID, bool Dummy, bool AsSpec)
 {
+	if(m_apPlayers[ClientID])
+		return;
+
 	bool ForceSpec = !Dummy && Accounts() && Accounts()->IsEnabled();
 	bool RestoredSession = false;
 	int64 AccountId = -1;
@@ -1042,12 +1101,9 @@ void CGameContext::OnClientTeamChange(int ClientID)
 
 void CGameContext::OnClientDrop(int ClientID, const char *pReason)
 {
-	AbortVoteOnDisconnect(ClientID);
-	if(m_pTWorld)
-		m_pTWorld->OnResetClientData(ClientID);
-	m_pController->OnPlayerDisconnect(m_apPlayers[ClientID]);
+	if(!m_apPlayers[ClientID])
+		return;
 
-	// update clients on drop
 	if(Server()->ClientIngame(ClientID) || IsClientBot(ClientID))
 	{
 		if(Server()->DemoRecorder_IsRecording())
@@ -1059,42 +1115,10 @@ void CGameContext::OnClientDrop(int ClientID, const char *pReason)
 			Server()->SendPackMsg(&Msg, MSGFLAG_NOSEND, -1);
 		}
 
-		const bool Silent = IsClientBot(ClientID) ||
-			(Config()->m_SvSilentSpectatorMode && m_apPlayers[ClientID]->GetTeam() == TEAM_SPECTATORS);
-		const char *pDropReason = pReason && pReason[0] ? pReason : "disconnected";
-
-		RebuildLegacySlotMap();
-		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
-		{
-			if(!Server()->ClientIngame(i))
-				continue;
-
-			const int DisplayID = ClientDisplaySlot(i, ClientID);
-			if(DisplayID < 0)
-				continue;
-
-			CNetMsg_Sv_ClientDrop Msg;
-			Msg.m_ClientID = DisplayID;
-			Msg.m_pReason = pDropReason;
-			Msg.m_Silent = Silent;
-			Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
-		}
+		ClientDropNotice(this, ClientID, pReason, false);
 	}
 
-	// mark client's projectile has team projectile
-	for(CGameWorld::TypeRange r = m_World.DoTypeRange(CGameWorld::ENTTYPE_PROJECTILE); !r.empty(); r.pop_front())
-	{
-		CProjectile *p = static_cast<CProjectile *>(r.front());
-		if(p->GetOwner() == ClientID)
-			p->LoseOwner();
-	}
-
-	delete m_apPlayers[ClientID];
-	m_apPlayers[ClientID] = 0;
-
-	m_VoteUpdate = true;
-
-	Server()->ExpireServerInfo();
+	RemovePlayerFromWorld(this, ClientID, nullptr, false);
 }
 
 void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
