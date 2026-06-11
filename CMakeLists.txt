@@ -419,6 +419,7 @@ foreach(datafile ${DATA})
   file(MAKE_DIRECTORY ${DESTINATION})
   file(COPY ${datafile} DESTINATION ${DESTINATION})
 endforeach()
+file(COPY ${PROJECT_SOURCE_DIR}/storage.cfg DESTINATION ${PROJECT_BINARY_DIR})
 
 ########################################################################
 # CODE GENERATION
@@ -635,6 +636,8 @@ list(APPEND TARGETS_OWN engine-shared game-shared)
 
 # Sources
 set_src(ENGINE_SERVER GLOB src/engine/server
+  multi_worlds.cpp
+  multi_worlds.h
   register.cpp
   register.h
   server.cpp
@@ -692,8 +695,8 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   core/components/bots/defence_bot_manager.h
   core/components/localization/localization_manager.cpp
   core/components/localization/localization_manager.h
-  core/components/travel/travel_manager.cpp
-  core/components/travel/travel_manager.h
+  core/components/worlds/world_manager.cpp
+  core/components/worlds/world_manager.h
   core/tworld_component.h
   core/tworld_controller.cpp
   core/tworld_controller.h

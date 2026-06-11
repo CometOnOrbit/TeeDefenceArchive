@@ -138,7 +138,7 @@ CSpiderBoss::CSpiderBoss(CGameWorld *pGameWorld, CCharacter *pCore, CGameControl
 		m_aFootKnock[i] = vec2(0.0f, 0.0f);
 		for(int s = 0; s < NUM_SPIDER_SEGS; s++)
 		{
-			m_aLaserIds[i][s] = Server()->SnapNewID();
+			m_aLaserIds[i][s] = Server()->SnapNewID(GameServer()->GetWorldID());
 			m_apSeg[i][s] = new CSpiderLegPart(pGameWorld, this, i, s);
 		}
 	}
@@ -176,7 +176,7 @@ CSpiderBoss::~CSpiderBoss()
 				GameWorld()->DestroyEntity(m_apSeg[i][s]);
 				m_apSeg[i][s] = nullptr;
 			}
-			Server()->SnapFreeID(m_aLaserIds[i][s]);
+			Server()->SnapFreeID(m_aLaserIds[i][s], GameWorld()->GameServer()->GetWorldID());
 		}
 	}
 }

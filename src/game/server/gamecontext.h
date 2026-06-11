@@ -74,6 +74,7 @@ class CGameContext : public IGameServer
 	void Construct(int Resetting);
 
 	bool m_Resetting;
+	int m_WorldID;
 
 public:
 	IServer *Server() const { return m_pServer; }
@@ -232,6 +233,10 @@ public:
 	void OnClientTeamChange(int ClientID);
 	virtual void OnClientEnter(int ClientID);
 	virtual void OnClientDrop(int ClientID, const char *pReason);
+	virtual void OnClientPrepareChangeWorld(int ClientID) override;
+	virtual void ExportChangeWorldSession(int ClientID) override;
+	virtual void SetWorldID(int WorldID) override;
+	virtual int GetWorldID() const override;
 	virtual void OnClientDirectInput(int ClientID, void *pInput);
 	virtual void OnClientPredictedInput(int ClientID, void *pInput);
 

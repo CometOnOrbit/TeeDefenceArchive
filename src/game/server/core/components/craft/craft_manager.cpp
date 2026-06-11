@@ -9,7 +9,7 @@
 #include <game/server/entities/turret.h>
 #include <game/server/turret_ammo.h>
 #include <game/server/core/components/localization/localization_manager.h>
-#include <game/server/core/components/travel/travel_manager.h>
+#include <game/server/core/components/worlds/world_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/components/vote/vote_menu_types.h>
 #include <game/server/core/tworld_controller.h>
@@ -524,8 +524,8 @@ static void ComVoteTravel(IConsole::IResult *pResult, void *pUser)
 {
 	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
-	if(pGame->Core() && pGame->Core()->TravelManager())
-		pGame->Core()->TravelManager()->Execute(pCtx->m_ClientID, pResult->GetInteger(0));
+	if(pGame->Core() && pGame->Core()->WorldManager())
+		pGame->Core()->WorldManager()->Execute(pCtx->m_ClientID, pResult->GetInteger(0));
 }
 
 static void ComVoteSetDifficulty(IConsole::IResult *pResult, void *pUser)

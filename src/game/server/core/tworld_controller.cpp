@@ -6,7 +6,7 @@
 #include <game/server/core/components/bots/defence_bot_manager.h>
 #include <game/server/core/components/craft/craft_manager.h>
 #include <game/server/core/components/localization/localization_manager.h>
-#include <game/server/core/components/travel/travel_manager.h>
+#include <game/server/core/components/worlds/world_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/gamecontext.h>
 #include <game/server/item_system.h>
@@ -20,14 +20,14 @@ TWorldController::TWorldController(CGameContext *pGameServer)
 	m_pAccountManager(nullptr),
 	m_pVoteMenuManager(nullptr),
 	m_pCraftManager(nullptr),
-	m_pTravelManager(nullptr),
+	m_pWorldManager(nullptr),
 	m_pDefenceBotManager(nullptr)
 {
 	m_System.Add(m_pLocalizationManager = new CLocalizationManager);
 	m_System.Add(m_pAccountManager = new CAccountManager);
 	m_System.Add(m_pVoteMenuManager = new CVoteMenuManager);
 	m_System.Add(m_pCraftManager = new CCraftManager);
-	m_System.Add(m_pTravelManager = new CTravelManager);
+	m_System.Add(m_pWorldManager = new CWorldManager);
 	m_System.Add(m_pDefenceBotManager = new CDefenceBotManager);
 }
 

@@ -8,7 +8,7 @@
 #include <game/voting.h>
 #include <game/server/account.h>
 #include <game/server/core/components/localization/localization_manager.h>
-#include <game/server/core/components/travel/travel_manager.h>
+#include <game/server/core/components/worlds/world_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/entities/character.h>
@@ -344,7 +344,7 @@ void CVoteMenuManager::InitVotes(int ClientID)
 		AddVote_Goto(PAGE_CRAFT, VL(GS(), pP, "menu.goto.craft", u8"☞ 合成"));
 		AddVote_Goto(PAGE_EQUIPMENT, VL(GS(), pP, "menu.goto.equipment", u8"☞ 装备"));
 		AddVote_Goto(PAGE_TURRET, VL(GS(), pP, "menu.goto.turret", u8"☞ 炮塔"));
-		// AddVote_Goto(PAGE_WORLDS, VL(GS(), pP, "menu.goto.worlds", u8"☞ 世界/地图")); // for now
+		AddVote_Goto(PAGE_WORLDS, VL(GS(), pP, "menu.goto.worlds", u8"☞ 世界/地图"));
 		AddVote_Goto(PAGE_COMMUNITY, VL(GS(), pP, "menu.goto.community", u8"☞ 社区与赞助"));
 		//if(GS()->m_pController && static_cast<CGameController *>(GS()->m_pController)->TdCanChangeDifficulty()) // for now
 		//	AddVote_Goto(PAGE_DIFFICULTY, VL(GS(), pP, "menu.goto.difficulty", u8"☞ 难度选择"));
@@ -703,7 +703,7 @@ void CVoteMenuManager::InitVotes(int ClientID)
 	{
 		SetVoteLastPage(PAGE_MENU);
 		AddVote_TextLine(VL(GS(), pP, "worlds.title", u8"☪ 世界传送"));
-		Core()->TravelManager()->AddVotes(ClientID);
+		Core()->WorldManager()->AddVotes(ClientID);
 		AddVote_Space();
 		AddVote_Back();
 	}

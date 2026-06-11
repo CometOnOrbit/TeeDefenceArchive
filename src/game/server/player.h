@@ -117,6 +117,10 @@ public:
 	void PostTick();
 	void Snap(int SnappingClient);
 
+	bool PendingChangeWorld();
+	void ChangeWorld(int WorldID, vec2 *pPos = nullptr);
+	int GetCurrentWorldID() const;
+
 	void OnDirectInput(CNetObj_PlayerInput *NewInput);
 	void OnPredictedInput(CNetObj_PlayerInput *NewInput);
 	void OnDisconnect();
@@ -256,6 +260,10 @@ private:
 	int m_SpecMode;
 	int m_SpectatorID;
 	bool m_ActiveSpecSwitch;
+
+	int m_PendingChangeWorldID;
+	bool m_HasPendingChangeWorldPos;
+	vec2 m_PendingChangeWorldPos;
 };
 
 #endif

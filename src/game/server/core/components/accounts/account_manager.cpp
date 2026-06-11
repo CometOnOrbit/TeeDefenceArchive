@@ -1,11 +1,12 @@
 #include <engine/engine.h>
+#include <engine/shared/protocol.h>
 
 #include <game/server/core/components/accounts/account_manager.h>
 #include <game/server/gamecontext.h>
 
 void CAccountManager::OnPostInit()
 {
-	if(!GS() || !Engine())
+	if(!GS() || !Engine() || GS()->GetWorldID() != INITIALIZER_WORLD_ID)
 		return;
 	if(!m_Accounts.Init(GS(), Engine(), Console(), GS()->Config()))
 		dbg_msg("server", "FATAL: MySQL account subsystem failed (see sv_mysql_* / database)");

@@ -54,20 +54,46 @@ static bool PasswordOk(const char *p)
 	return l >= 6 && l <= 63;
 }
 
+static CGameContext *PlayerGameContext(CGameContext *pGame, int ClientId)
+{
+	if(!pGame || ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return nullptr;
+	IServer *pSrv = pGame->Server();
+	return static_cast<CGameContext *>(pSrv->GameServer(pSrv->GetClientWorldID(ClientId)));
+}
+
+static CPlayer *PlayerAt(CGameContext *pGame, int ClientId)
+{
+	CGameContext *pCtx = PlayerGameContext(pGame, ClientId);
+	if(!pCtx)
+		return nullptr;
+	return pCtx->m_apPlayers[ClientId];
+}
+
 static bool IsAccountOnline(CGameContext *pGame, int64 AccountId, int ExcludeClientId)
 {
 	if(!pGame || AccountId < 0)
 		return false;
 
-	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	IServer *pSrv = pGame->Server();
+	const int NumWorlds = pSrv->GetNumWorlds();
+	for(int w = 0; w < NumWorlds; w++)
 	{
-		if(i == ExcludeClientId)
+		CGameContext *pCtx = static_cast<CGameContext *>(pSrv->GameServer(w));
+		if(!pCtx)
 			continue;
-		CPlayer *pP = pGame->m_apPlayers[i];
-		if(!pP || pP->IsDummy() || !pGame->Server()->ClientIngame(i))
-			continue;
-		if(pP->GetAccountId() == AccountId)
-			return true;
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			if(i == ExcludeClientId)
+				continue;
+			CPlayer *pP = pCtx->m_apPlayers[i];
+			if(!pP || pP->IsDummy() || !pSrv->ClientIngame(i))
+				continue;
+			if(pSrv->GetClientWorldID(i) != w)
+				continue;
+			if(pP->GetAccountId() == AccountId)
+				return true;
+		}
 	}
 	return false;
 }
@@ -77,17 +103,27 @@ static bool IsUsernameLoggedInElsewhere(CGameContext *pGame, const char *pUserna
 	if(!pGame || !pUsername || !pUsername[0])
 		return false;
 
-	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	IServer *pSrv = pGame->Server();
+	const int NumWorlds = pSrv->GetNumWorlds();
+	for(int w = 0; w < NumWorlds; w++)
 	{
-		if(i == ExcludeClientId)
+		CGameContext *pCtx = static_cast<CGameContext *>(pSrv->GameServer(w));
+		if(!pCtx)
 			continue;
-		CPlayer *pP = pGame->m_apPlayers[i];
-		if(!pP || pP->IsDummy() || !pGame->Server()->ClientIngame(i))
-			continue;
-		if(pP->GetAccountId() < 0)
-			continue;
-		if(str_comp_nocase(pP->m_AccData.m_aUsername, pUsername) == 0)
-			return true;
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			if(i == ExcludeClientId)
+				continue;
+			CPlayer *pP = pCtx->m_apPlayers[i];
+			if(!pP || pP->IsDummy() || !pSrv->ClientIngame(i))
+				continue;
+			if(pSrv->GetClientWorldID(i) != w)
+				continue;
+			if(pP->GetAccountId() < 0)
+				continue;
+			if(str_comp_nocase(pP->m_AccData.m_aUsername, pUsername) == 0)
+				return true;
+		}
 	}
 	return false;
 }
@@ -731,7 +767,7 @@ bool CAccountSystem::AuthClientStillValid(int ClientId, const char *pExpectedUse
 		return false;
 	if(!m_pGame->Server()->ClientIngame(ClientId))
 		return false;
-	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	CPlayer *pP = PlayerAt(m_pGame, ClientId);
 	if(!pP || pP->IsDummy())
 		return false;
 	if(pP->GetAccountId() >= 0)
@@ -747,7 +783,8 @@ void CAccountSystem::ApplyLogin(int ClientId, int64 AccountId, const SAccSyncDat
 {
 	if(!m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS || !pSync)
 		return;
-	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	CGameContext *pCtx = PlayerGameContext(m_pGame, ClientId);
+	CPlayer *pP = pCtx ? pCtx->m_apPlayers[ClientId] : nullptr;
 	if(!pP || pP->IsDummy())
 		return;
 
@@ -755,12 +792,12 @@ void CAccountSystem::ApplyLogin(int ClientId, int64 AccountId, const SAccSyncDat
 	mem_copy(&pP->m_AccData, pSync, sizeof(pP->m_AccData));
 	pP->m_AccData.m_aPassword[0] = 0;
 	pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
-	m_pGame->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
-	m_pGame->SendCommunityInfo(ClientId);
-	m_pGame->EnterGame(ClientId);
-	if(SPlayerVote *pV = m_pGame->GetPlayerVote(ClientId))
+	pCtx->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
+	pCtx->SendCommunityInfo(ClientId);
+	pCtx->EnterGame(ClientId);
+	if(SPlayerVote *pV = pCtx->GetPlayerVote(ClientId))
 		pV->m_Page = PAGE_MENU;
-	m_pGame->ClearVotes(ClientId);
+	pCtx->ClearVotes(ClientId);
 }
 
 void CAccountSystem::PumpCompletedJobs()
@@ -778,7 +815,7 @@ void CAccountSystem::PumpCompletedJobs()
 			continue;
 
 		const int ClientId = Slot.m_ClientId;
-		CPlayer *pP = (ClientId >= 0 && ClientId < MAX_CLIENTS) ? m_pGame->m_apPlayers[ClientId] : nullptr;
+		CPlayer *pP = (ClientId >= 0 && ClientId < MAX_CLIENTS) ? PlayerAt(m_pGame, ClientId) : nullptr;
 
 		char aAutoLoginUser[64] = {0};
 		char aAutoLoginPass[128] = {0};
@@ -906,7 +943,7 @@ bool CAccountSystem::QueueItemsSave(int ClientId, bool Force)
 {
 	if(!m_Enabled || !m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS)
 		return false;
-	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	CPlayer *pP = PlayerAt(m_pGame, ClientId);
 	if(!pP || pP->GetAccountId() < 0)
 		return false;
 
@@ -932,7 +969,7 @@ bool CAccountSystem::QueueAccountSave(int ClientId, bool Force)
 {
 	if(!m_Enabled || !m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS)
 		return false;
-	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	CPlayer *pP = PlayerAt(m_pGame, ClientId);
 	if(!pP || pP->GetAccountId() < 0)
 		return false;
 
@@ -961,7 +998,8 @@ void CAccountSystem::FlushPendingSaves()
 
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
-		if(!m_pGame->m_apPlayers[i] || m_pGame->m_apPlayers[i]->GetAccountId() < 0)
+		CPlayer *pSaveP = PlayerAt(m_pGame, i);
+		if(!pSaveP || pSaveP->GetAccountId() < 0)
 			continue;
 		if(m_aPendingAccountSave[i])
 			QueueAccountSave(i, false);
@@ -981,7 +1019,7 @@ void CAccountSystem::OnClientDisconnect(int ClientId)
 	ClearPendingAuth(ClientId);
 	if(!m_Enabled || !m_pGame)
 		return;
-	CPlayer *pP = m_pGame->m_apPlayers[ClientId];
+	CPlayer *pP = PlayerAt(m_pGame, ClientId);
 	if(!pP || pP->GetAccountId() < 0)
 	{
 		ClearSaveThrottle(ClientId);

@@ -137,7 +137,7 @@ void CBotEngine::Free()
 
 	for (int i = 0; i < m_Triangulation.m_Size; i++)
 		for(int k = 0 ; k < 3; k++)
-			GameServer()->Server()->SnapFreeID(m_Triangulation.m_pTriangles[i].m_aSnapID[k]);
+			GameServer()->Server()->SnapFreeID(m_Triangulation.m_pTriangles[i].m_aSnapID[k], GameServer()->GetWorldID());
 	if(m_Triangulation.m_pTriangles)
 		mem_free(m_Triangulation.m_pTriangles);
 	m_Triangulation.m_Size = 0;
@@ -151,7 +151,7 @@ void CBotEngine::Free()
 	for(int k = 0; k < m_SegmentCount; k++)
 	{
 		CSegment *pSegment = m_pSegments + k;
-		GameServer()->Server()->SnapFreeID(pSegment->m_SnapID);
+		GameServer()->Server()->SnapFreeID(pSegment->m_SnapID, GameServer()->GetWorldID());
 	}
 	if(m_pSegments)
 		mem_free(m_pSegments);
@@ -161,7 +161,7 @@ void CBotEngine::Free()
 	for(int k = 0; k < m_Graph.m_NumEdges; k++)
 	{
 		CEdge *pEdge = m_Graph.m_pEdges + k;
-		GameServer()->Server()->SnapFreeID(pEdge->m_SnapID);
+		GameServer()->Server()->SnapFreeID(pEdge->m_SnapID, GameServer()->GetWorldID());
 	}
 	m_Graph.Free();
 
@@ -371,7 +371,7 @@ void CBotEngine::GenerateSegments()
 					up_i = -200;
 				pSegment->m_A = vec2(up_i*32,(j+1)*32);
 				pSegment->m_B = vec2(i*32,(j+1)*32);
-				pSegment->m_SnapID = GameServer()->Server()->SnapNewID();
+				pSegment->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 				pSegment++;
 				up = false;
 			}
@@ -389,7 +389,7 @@ void CBotEngine::GenerateSegments()
 					down_i = -200;
 				pSegment->m_A = vec2(down_i*32,j*32);
 				pSegment->m_B = vec2(i*32,j*32);
-				pSegment->m_SnapID = GameServer()->Server()->SnapNewID();
+				pSegment->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 				pSegment++;
 				down = false;
 			}
@@ -401,7 +401,7 @@ void CBotEngine::GenerateSegments()
 				up_i = -200;
 			pSegment->m_A = vec2(up_i*32,(j+1)*32);
 			pSegment->m_B = vec2((m_Width+200)*32,(j+1)*32);
-			pSegment->m_SnapID = GameServer()->Server()->SnapNewID();
+			pSegment->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 			pSegment++;
 			up = false;
 		}
@@ -412,7 +412,7 @@ void CBotEngine::GenerateSegments()
 				down_i = -200;
 			pSegment->m_A = vec2(down_i*32,j*32);
 			pSegment->m_B = vec2((m_Width+200)*32,j*32);
-			pSegment->m_SnapID = GameServer()->Server()->SnapNewID();
+			pSegment->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 			pSegment++;
 			down = false;
 		}
@@ -438,7 +438,7 @@ void CBotEngine::GenerateSegments()
 					left_j = -200;
 				pSegment->m_A = vec2((i+1)*32,left_j*32);
 				pSegment->m_B = vec2((i+1)*32,j*32);
-				pSegment->m_SnapID = GameServer()->Server()->SnapNewID();
+				pSegment->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 				pSegment++;
 				left = false;
 			}
@@ -455,7 +455,7 @@ void CBotEngine::GenerateSegments()
 					right_j = -200;
 				pSegment->m_A = vec2(i*32,right_j*32);
 				pSegment->m_B = vec2(i*32,j*32);
-				pSegment->m_SnapID = GameServer()->Server()->SnapNewID();
+				pSegment->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 				pSegment++;
 				right = false;
 			}
@@ -467,7 +467,7 @@ void CBotEngine::GenerateSegments()
 				left_j = -200;
 			pSegment->m_A = vec2((i+1)*32,left_j*32);
 			pSegment->m_B = vec2((i+1)*32,(m_Height+200)*32);
-			pSegment->m_SnapID = GameServer()->Server()->SnapNewID();
+			pSegment->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 			pSegment++;
 			left = false;
 		}
@@ -478,7 +478,7 @@ void CBotEngine::GenerateSegments()
 				right_j = -200;
 			pSegment->m_A = vec2(i*32,right_j*32);
 			pSegment->m_B = vec2(i*32,(m_Height+200)*32);
-			pSegment->m_SnapID = GameServer()->Server()->SnapNewID();
+			pSegment->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 			pSegment++;
 			right = false;
 		}
@@ -665,9 +665,9 @@ void CBotEngine::GenerateTriangles()
 
 				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_Triangle = triangle;
 
-				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[0] = GameServer()->Server()->SnapNewID();
-				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[1] = GameServer()->Server()->SnapNewID();
-				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[2] = GameServer()->Server()->SnapNewID();
+				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[0] = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
+				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[1] = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
+				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[2] = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 				m_Triangulation.m_Size++;
 			}
 		}
@@ -712,9 +712,9 @@ void CBotEngine::GenerateTriangles()
 
 				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_Triangle = triangle;
 
-				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[0] = GameServer()->Server()->SnapNewID();
-				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[1] = GameServer()->Server()->SnapNewID();
-				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[2] = GameServer()->Server()->SnapNewID();
+				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[0] = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
+				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[1] = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
+				m_Triangulation.m_pTriangles[m_Triangulation.m_Size].m_aSnapID[2] = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 				m_Triangulation.m_Size++;
 			}
 		}
@@ -762,14 +762,14 @@ void CBotEngine::GenerateGraphFromTriangles()
 				pEdge->m_End = m_Graph.m_pVertices[j].m_Pos;
 				pEdge->m_EndID = j;
 				pEdge->m_Size = 2;
-				pEdge->m_SnapID = GameServer()->Server()->SnapNewID();
+				pEdge->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 				pEdge++;
 				pEdge->m_Start = m_Graph.m_pVertices[j].m_Pos;
 				pEdge->m_StartID = j;
 				pEdge->m_End = m_Graph.m_pVertices[i].m_Pos;
 				pEdge->m_EndID = i;
 				pEdge->m_Size = 2;
-				pEdge->m_SnapID = GameServer()->Server()->SnapNewID();
+				pEdge->m_SnapID = GameServer()->Server()->SnapNewID(GameServer()->GetWorldID());
 				pEdge++;
 			}
 		}

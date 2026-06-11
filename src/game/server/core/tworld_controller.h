@@ -10,7 +10,7 @@ class CCraftManager;
 class CGameContext;
 class CItemHelper;
 class CLocalizationManager;
-class CTravelManager;
+class CWorldManager;
 class CDefenceBotManager;
 class CVoteMenuManager;
 class CPlayer;
@@ -29,7 +29,7 @@ class TWorldController
 	CAccountManager *m_pAccountManager;
 	CVoteMenuManager *m_pVoteMenuManager;
 	CCraftManager *m_pCraftManager;
-	CTravelManager *m_pTravelManager;
+	CWorldManager *m_pWorldManager;
 	CDefenceBotManager *m_pDefenceBotManager;
 
 public:
@@ -53,11 +53,11 @@ public:
 	CAccountManager *AccountManager() const { return m_pAccountManager; }
 	CVoteMenuManager *VoteMenuManager() const { return m_pVoteMenuManager; }
 	CCraftManager *CraftManager() const { return m_pCraftManager; }
-	CTravelManager *TravelManager() const { return m_pTravelManager; }
+	CWorldManager *WorldManager() const { return m_pWorldManager; }
 	CDefenceBotManager *DefenceBotManager() const { return m_pDefenceBotManager; }
 
 	CLocalizationManager &Loc() const { return *m_pLocalizationManager; }
-	CTravelManager &Travel() const { return *m_pTravelManager; }
+	CWorldManager &Worlds() const { return *m_pWorldManager; }
 	CDefenceBotManager &DefenceBots() const { return *m_pDefenceBotManager; }
 };
 

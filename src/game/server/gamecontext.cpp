@@ -53,6 +53,7 @@ enum
 void CGameContext::Construct(int Resetting)
 {
 	m_Resetting = 0;
+	m_WorldID = INITIALIZER_WORLD_ID;
 	m_pServer = 0;
 
 	for(int i = 0; i < MAX_CLIENTS; i++)
@@ -732,11 +733,14 @@ void CGameContext::OnTick()
 
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
-		if(m_apPlayers[i])
-		{
-			m_apPlayers[i]->Tick();
-			m_apPlayers[i]->PostTick();
-		}
+		if(!m_apPlayers[i])
+			continue;
+		if(!m_apPlayers[i]->IsDummy() && Server()->GetClientWorldID(i) != m_WorldID)
+			continue;
+		if(m_apPlayers[i]->PendingChangeWorld())
+			continue;
+		m_apPlayers[i]->Tick();
+		m_apPlayers[i]->PostTick();
 	}
 
 	// update voting
@@ -842,6 +846,71 @@ void CGameContext::OnClientPredictedInput(int ClientID, void *pInput)
 		m_apPlayers[ClientID]->OnPredictedInput((CNetObj_PlayerInput *) pInput);
 }
 
+void CGameContext::SetWorldID(int WorldID)
+{
+	m_WorldID = WorldID;
+}
+
+int CGameContext::GetWorldID() const
+{
+	return m_WorldID;
+}
+
+void CGameContext::ExportChangeWorldSession(int ClientID)
+{
+	CPlayer *pPlayer = m_apPlayers[ClientID];
+	if(!pPlayer || pPlayer->IsDummy())
+		return;
+	Server()->SetChangeWorldSession(ClientID, pPlayer->GetAccountId(), &pPlayer->m_AccData, sizeof(pPlayer->m_AccData));
+	Server()->SetChangeWorldWasReady(ClientID, pPlayer->m_IsReadyToEnter);
+}
+
+static void RestoreChangeWorldPlayer(CGameContext *pCtx, int ClientID, CPlayer *pPlayer)
+{
+	int64 AccountId = -1;
+	SAccSyncData AccData;
+	int AccSize = sizeof(AccData);
+	const bool RestoredSession = pCtx->Server()->PopChangeWorldSession(ClientID, &AccountId, &AccData, &AccSize) && AccountId >= 0;
+	const bool WasReady = pCtx->Server()->GetChangeWorldWasReady(ClientID);
+
+	if(RestoredSession)
+	{
+		pPlayer->SetAccountId(AccountId);
+		mem_copy(&pPlayer->m_AccData, &AccData, sizeof(AccData));
+		pPlayer->m_AccData.m_aPassword[0] = 0;
+		if(pPlayer->m_AccData.m_aLanguage[0])
+			pPlayer->SetLanguage(pPlayer->m_AccData.m_aLanguage);
+	}
+	pPlayer->m_IsReadyToEnter = WasReady || RestoredSession || pPlayer->GetAccountId() >= 0;
+}
+
+void CGameContext::OnClientPrepareChangeWorld(int ClientID)
+{
+	const int DestWorldID = Server()->GetChangeWorldDestID(ClientID);
+	const bool Leaving = DestWorldID >= 0 && m_WorldID != DestWorldID;
+	const bool Entering = DestWorldID >= 0 && m_WorldID == DestWorldID;
+
+	if(m_apPlayers[ClientID])
+	{
+		if(m_pTWorld)
+			m_pTWorld->OnResetClientData(ClientID);
+		m_apPlayers[ClientID]->KillCharacter(WEAPON_WORLD);
+		delete m_apPlayers[ClientID];
+		m_apPlayers[ClientID] = nullptr;
+	}
+
+	if(Leaving || !Entering)
+		return;
+
+	const bool ForceSpec = Accounts() && Accounts()->IsEnabled();
+	m_apPlayers[ClientID] = new(ClientID) CPlayer(this, ClientID, false, ForceSpec);
+	m_apPlayers[ClientID]->m_IsReadyToEnter = false;
+	GetPlayerVote(ClientID)->Reset();
+	RestoreChangeWorldPlayer(this, ClientID, m_apPlayers[ClientID]);
+	if(ForceSpec && m_apPlayers[ClientID]->m_IsReadyToEnter)
+		m_apPlayers[ClientID]->SetTeam(TEAM_SPECTATORS, false);
+}
+
 void CGameContext::OnClientEnter(int ClientID)
 {
 	CPlayer *pPlayer = m_apPlayers[ClientID];
@@ -893,9 +962,21 @@ void CGameContext::OnClientEnter(int ClientID)
 	if(IsDummy)
 		return;
 
-	// send active vote
-	if(m_VoteCloseTime)
-		SendVoteSet(m_VoteType, ClientID);
+	if(Server()->ConsumeChangeWorldEnter(ClientID))
+	{
+		if(pPlayer->GetAccountId() >= 0)
+			EnterGame(ClientID);
+		if(SPlayerVote *pV = GetPlayerVote(ClientID))
+			pV->m_Page = PAGE_MENU;
+		ClearVotes(ClientID);
+		SendChatLocF(ClientID, "travel.to", "Traveling to %s", Server()->GetWorldName(m_WorldID));
+	}
+	else
+	{
+		// send active vote
+		if(m_VoteCloseTime)
+			SendVoteSet(m_VoteType, ClientID);
+	}
 
 	// send motd
 	SendMotd(ClientID);
@@ -906,10 +987,29 @@ void CGameContext::OnClientEnter(int ClientID)
 
 void CGameContext::OnClientConnected(int ClientID, bool Dummy, bool AsSpec)
 {
-	const bool ForceSpec = !Dummy && Accounts() && Accounts()->IsEnabled();
-	m_apPlayers[ClientID] = new(ClientID) CPlayer(this, ClientID, Dummy, AsSpec || ForceSpec);
+	bool ForceSpec = !Dummy && Accounts() && Accounts()->IsEnabled();
+	bool RestoredSession = false;
+	int64 AccountId = -1;
+	SAccSyncData AccData;
+	int AccSize = sizeof(AccData);
+	if(!Dummy && Server()->PopChangeWorldSession(ClientID, &AccountId, &AccData, &AccSize) && AccountId >= 0)
+		RestoredSession = true;
+
+	m_apPlayers[ClientID] = new(ClientID) CPlayer(this, ClientID, Dummy, AsSpec || (ForceSpec && !RestoredSession));
 	m_apPlayers[ClientID]->m_IsReadyToEnter = false;
 	GetPlayerVote(ClientID)->Reset();
+
+	if(RestoredSession)
+	{
+		m_apPlayers[ClientID]->SetAccountId(AccountId);
+		mem_copy(&m_apPlayers[ClientID]->m_AccData, &AccData, sizeof(AccData));
+		m_apPlayers[ClientID]->m_AccData.m_aPassword[0] = 0;
+		if(m_apPlayers[ClientID]->m_AccData.m_aLanguage[0])
+			m_apPlayers[ClientID]->SetLanguage(m_apPlayers[ClientID]->m_AccData.m_aLanguage);
+		m_apPlayers[ClientID]->m_IsReadyToEnter = true;
+	}
+	else if(!Dummy && Server()->IsClientChangingWorld(ClientID))
+		m_apPlayers[ClientID]->m_IsReadyToEnter = true;
 
 	if(!Dummy)
 		m_pController->NotifyPlayerConnected(m_apPlayers[ClientID]);
@@ -1374,9 +1474,6 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 	{
 		if(MsgID == NETMSGTYPE_CL_STARTINFO)
 		{
-			if(pPlayer->m_IsReadyToEnter)
-				return;
-
 			CNetMsg_Cl_StartInfo *pMsg = (CNetMsg_Cl_StartInfo *) pRawMsg;
 			pPlayer->m_LastChangeInfoTick = Server()->Tick();
 
@@ -1754,7 +1851,8 @@ void CGameContext::OnInit()
 	for(int i = 0; i < OLD_NUM_NETOBJTYPES; i++)
 		Server()->SnapSetStaticsize(i, m_NetObjHandler.GetObjSize(i));
 
-	m_Layers.Init(Kernel());
+	IMap *pMap = Kernel()->RequestInterface<IMap>(m_WorldID);
+	m_Layers.Init(Kernel(), pMap);
 	m_Collision.Init(&m_Layers);
 
 	// select gametype
@@ -1776,7 +1874,7 @@ void CGameContext::OnInit()
 
 	// create all entities from the game layer
 	CMapItemLayerTilemap *pTileMap = m_Layers.GameLayer();
-	CTile *pTiles = (CTile *) Kernel()->RequestInterface<IMap>()->GetData(pTileMap->m_Data);
+	CTile *pTiles = (CTile *) pMap->GetData(pTileMap->m_Data);
 	for(int y = 0; y < pTileMap->m_Height; y++)
 	{
 		for(int x = 0; x < pTileMap->m_Width; x++)
@@ -2038,12 +2136,18 @@ void CGameContext::BroadcastClientInfo(int ServerSlot, bool Silent)
 
 CAccountSystem *CGameContext::Accounts()
 {
-	return m_pTWorld ? m_pTWorld->Account() : nullptr;
+	if(m_WorldID == INITIALIZER_WORLD_ID)
+		return m_pTWorld ? m_pTWorld->Account() : nullptr;
+	CGameContext *pBase = static_cast<CGameContext *>(Server()->GameServer(INITIALIZER_WORLD_ID));
+	return pBase && pBase->m_pTWorld ? pBase->m_pTWorld->Account() : nullptr;
 }
 
 const CAccountSystem *CGameContext::Accounts() const
 {
-	return m_pTWorld ? m_pTWorld->Account() : nullptr;
+	if(m_WorldID == INITIALIZER_WORLD_ID)
+		return m_pTWorld ? m_pTWorld->Account() : nullptr;
+	const CGameContext *pBase = static_cast<const CGameContext *>(Server()->GameServer(INITIALIZER_WORLD_ID));
+	return pBase && pBase->m_pTWorld ? pBase->m_pTWorld->Account() : nullptr;
 }
 
 static CVoteMenuManager *VoteMgr(CGameContext *pCtx)

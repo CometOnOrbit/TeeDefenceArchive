@@ -47,17 +47,17 @@ CTurret::CTurret(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId)
 		m_MaxHealth = maximum(1, pH->GetMaxCapacity(ItemDefId));
 	m_Health = m_MaxHealth;
 	SetProximityRadius(HitRadius());
-	m_aCenterId = Server()->SnapNewID();
+	m_aCenterId = Server()->SnapNewID(GameServer()->GetWorldID());
 	for(int i = 0; i < NUM_RING_LASERS; i++)
-		m_aRingIds[i] = Server()->SnapNewID();
+		m_aRingIds[i] = Server()->SnapNewID(GameServer()->GetWorldID());
 	GameWorld()->InsertEntity(this);
 }
 
 CTurret::~CTurret()
 {
-	Server()->SnapFreeID(m_aCenterId);
+	Server()->SnapFreeID(m_aCenterId, GameWorld()->GameServer()->GetWorldID());
 	for(int i = 0; i < NUM_RING_LASERS; i++)
-		Server()->SnapFreeID(m_aRingIds[i]);
+		Server()->SnapFreeID(m_aRingIds[i], GameWorld()->GameServer()->GetWorldID());
 }
 
 int CTurret::GetVisualLevel() const
@@ -257,17 +257,17 @@ CTurretPreview::CTurretPreview(CGameWorld *pGameWorld, vec2 Pos, int Owner, int 
 	m_Owner = Owner;
 	m_ItemDefId = ItemDefId;
 	m_Valid = Valid;
-	m_aCenterId = Server()->SnapNewID();
+	m_aCenterId = Server()->SnapNewID(GameWorld()->GameServer()->GetWorldID());
 	for(int i = 0; i < NUM_RING_LASERS; i++)
-		m_aRingIds[i] = Server()->SnapNewID();
+		m_aRingIds[i] = Server()->SnapNewID(GameWorld()->GameServer()->GetWorldID());
 	GameWorld()->InsertEntity(this);
 }
 
 CTurretPreview::~CTurretPreview()
 {
-	Server()->SnapFreeID(m_aCenterId);
+	Server()->SnapFreeID(m_aCenterId, GameWorld()->GameServer()->GetWorldID());
 	for(int i = 0; i < NUM_RING_LASERS; i++)
-		Server()->SnapFreeID(m_aRingIds[i]);
+		Server()->SnapFreeID(m_aRingIds[i], GameWorld()->GameServer()->GetWorldID());
 }
 
 void CTurretPreview::SetPreviewPos(vec2 Pos)

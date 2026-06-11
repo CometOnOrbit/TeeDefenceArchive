@@ -49,8 +49,8 @@ public:
 	virtual void SetClientCountry(int ClientID, int Country) = 0;
 	virtual void SetClientScore(int ClientID, int Score) = 0;
 
-	virtual int SnapNewID() = 0;
-	virtual void SnapFreeID(int ID) = 0;
+	virtual int SnapNewID(int WorldID = 0) = 0;
+	virtual void SnapFreeID(int ID, int WorldID = 0) = 0;
 	virtual void *SnapNewItem(int Type, int ID, int Size) = 0;
 
 	virtual void SnapSetStaticsize(int ItemType, int Size) = 0;
@@ -75,6 +75,21 @@ public:
 	virtual bool IsClientSlotEmpty(int ClientID) const = 0;
 	virtual void DummyJoin(int ClientID, const char *pName) = 0;
 	virtual void DummyRemove(int ClientID) = 0;
+
+	virtual int GetClientWorldID(int ClientID) const = 0;
+	virtual void ChangeWorld(int ClientID, int NewWorldID) = 0;
+	virtual int GetNumWorlds() const = 0;
+	virtual const char *GetWorldName(int WorldID) const = 0;
+
+	virtual class IGameServer *GameServer(int WorldID) const = 0;
+
+	virtual void SetChangeWorldSession(int ClientID, int64 AccountId, const void *pData, int Size) = 0;
+	virtual bool PopChangeWorldSession(int ClientID, int64 *pAccountId, void *pData, int *pSize) = 0;
+	virtual bool IsClientChangingWorld(int ClientID) const = 0;
+	virtual int GetChangeWorldDestID(int ClientID) const = 0;
+	virtual bool ConsumeChangeWorldEnter(int ClientID) = 0;
+	virtual void SetChangeWorldWasReady(int ClientID, bool Ready) = 0;
+	virtual bool GetChangeWorldWasReady(int ClientID) const = 0;
 };
 
 class IGameServer : public IInterface
@@ -94,6 +109,10 @@ public:
 	virtual void OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID) = 0;
 
 	virtual void OnClientConnected(int ClientID, bool AsSpec) = 0;
+	virtual void OnClientPrepareChangeWorld(int ClientID) = 0;
+	virtual void ExportChangeWorldSession(int ClientID) = 0;
+	virtual void SetWorldID(int WorldID) = 0;
+	virtual int GetWorldID() const = 0;
 	virtual void OnBotConnected(int ClientID) = 0;
 	virtual void OnClientEnter(int ClientID) = 0;
 	virtual void OnClientDrop(int ClientID, const char *pReason) = 0;

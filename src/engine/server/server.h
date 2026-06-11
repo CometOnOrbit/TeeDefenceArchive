@@ -7,12 +7,15 @@
 
 #include <engine/server.h>
 #include <engine/shared/memheap.h>
+#include <engine/shared/protocol.h>
+
+class CMultiWorlds;
 
 class CSnapIDPool
 {
 	enum
 	{
-		MAX_IDS = 16 * 1024,
+		MAX_IDS = 32 * 1024,
 	};
 
 	class CID
@@ -65,9 +68,11 @@ class CServer : public IServer
 	class CConfig *m_pConfig;
 	class IConsole *m_pConsole;
 	class IStorage *m_pStorage;
+	CMultiWorlds *m_pMultiWorlds;
 
 public:
-	class IGameServer *GameServer() { return m_pGameServer; }
+	class IGameServer *GameServerPlayer(int ClientID) const;
+	CMultiWorlds *MultiWorlds() const { return m_pMultiWorlds; }
 	class CConfig *Config() { return m_pConfig; }
 	class IConsole *Console() { return m_pConsole; }
 	class IStorage *Storage() { return m_pStorage; }
@@ -133,6 +138,16 @@ public:
 		int m_AuthTries;
 
 		int m_MapChunk;
+		int m_WorldID;
+		int m_OldWorldID;
+		bool m_ChangeWorld;
+		bool m_ChangeWorldEnter;
+		int m_ChangeWorldDestID;
+		bool m_ChangeWorldWasReady;
+		bool m_HasChangeWorldSession;
+		int64 m_ChangeWorldAccountId;
+		int m_ChangeWorldSessionSize;
+		char m_aChangeWorldSession[CHANGE_WORLD_SESSION_MAX];
 		bool m_NoRconNote;
 		bool m_Quitting;
 		const IConsole::CCommandInfo *m_pRconCmdToSend;
@@ -145,7 +160,7 @@ public:
 
 	CSnapshotDelta m_SnapshotDelta;
 	CSnapshotBuilder m_SnapshotBuilder;
-	CSnapIDPool m_IDPool;
+	CSnapIDPool m_aIDPools[ENGINE_MAX_WORLDS];
 	CNetServer m_NetServer;
 	CEcon m_Econ;
 	CServerBan m_ServerBan;
@@ -209,13 +224,31 @@ public:
 	int ClientCountry(int ClientID) const;
 	bool ClientIngame(int ClientID) const;
 
+	virtual int GetClientWorldID(int ClientID) const override;
+	virtual void ChangeWorld(int ClientID, int NewWorldID) override;
+	virtual int GetNumWorlds() const override;
+	virtual const char *GetWorldName(int WorldID) const override;
+	virtual class IGameServer *GameServer(int WorldID = 0) const override;
+
+	virtual void SetChangeWorldSession(int ClientID, int64 AccountId, const void *pData, int Size) override;
+	virtual bool PopChangeWorldSession(int ClientID, int64 *pAccountId, void *pData, int *pSize) override;
+	virtual bool IsClientChangingWorld(int ClientID) const override;
+	virtual int GetChangeWorldDestID(int ClientID) const override;
+	virtual bool ConsumeChangeWorldEnter(int ClientID) override;
+	virtual void SetChangeWorldWasReady(int ClientID, bool Ready) override;
+	virtual bool GetChangeWorldWasReady(int ClientID) const override;
+
+	bool HasHumanInWorld(int WorldID) const;
+	void SetClientWorldID(int ClientID, int WorldID);
+	void SyncLegacyMapFromWorld(int WorldID);
+
 	bool IsClientSlotEmpty(int ClientID) const;
 	void DummyJoin(int ClientID, const char *pName);
 	void DummyRemove(int ClientID);
 
 	virtual int SendMsg(CMsgPacker *pMsg, int Flags, int ClientID);
 
-	void DoSnapshot();
+	void DoSnapshot(int WorldID);
 
 	static int NewClientCallback(int ClientID, void *pUser);
 	static int DelClientCallback(int ClientID, const char *pReason, void *pUser);
@@ -267,8 +300,8 @@ public:
 
 	void RegisterCommands();
 
-	virtual int SnapNewID();
-	virtual void SnapFreeID(int ID);
+	virtual int SnapNewID(int WorldID = 0) override;
+	virtual void SnapFreeID(int ID, int WorldID = 0) override;
 	virtual void *SnapNewItem(int Type, int ID, int Size);
 	void SnapSetStaticsize(int ItemType, int Size);
 };

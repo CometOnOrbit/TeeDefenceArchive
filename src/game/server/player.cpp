@@ -44,6 +44,9 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_Dummy = Dummy;
 	m_IsReadyToPlay = true;
 	m_AccountId = -1;
+	m_PendingChangeWorldID = -1;
+	m_HasPendingChangeWorldPos = false;
+	m_PendingChangeWorldPos = vec2(0.0f, 0.0f);
 	m_Zomb = ZOMB_NONE;
 	mem_zero(m_aZombSub, sizeof(m_aZombSub));
 	m_ZombVisible = true;
@@ -227,9 +230,46 @@ const char *CPlayer::GetExtraForItem(int ItemID) const
 	return m_AccData.m_aItems[ItemID].m_aExtra;
 }
 
+bool CPlayer::PendingChangeWorld()
+{
+	if(m_PendingChangeWorldID < 0)
+		return false;
+
+	const int WorldID = m_PendingChangeWorldID;
+	m_PendingChangeWorldID = -1;
+	m_HasPendingChangeWorldPos = false;
+
+	Server()->ChangeWorld(m_ClientID, WorldID);
+	return true;
+}
+
+void CPlayer::ChangeWorld(int WorldID, vec2 *pPos)
+{
+	if(WorldID < 0 || WorldID >= Server()->GetNumWorlds())
+		return;
+	m_PendingChangeWorldID = WorldID;
+	if(pPos)
+	{
+		m_HasPendingChangeWorldPos = true;
+		m_PendingChangeWorldPos = *pPos;
+	}
+	else
+	{
+		m_HasPendingChangeWorldPos = false;
+	}
+}
+
+int CPlayer::GetCurrentWorldID() const
+{
+	return Server()->GetClientWorldID(m_ClientID);
+}
+
 void CPlayer::Tick()
 {
 	if(!IsDummy() && !Server()->ClientIngame(m_ClientID))
+		return;
+
+	if(PendingChangeWorld())
 		return;
 
 	Server()->SetClientScore(m_ClientID, m_Score);

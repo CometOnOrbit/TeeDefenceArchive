@@ -1,8 +1,6 @@
 {
     "worlds": [
-        {"title": "Shwar by Wartoz", "map": "TDef-City"},
-        {"title": "Ancient City", "map": "TDef-City"},
-        {"title": "Zero by Ninecloud", "map": "TDef-Zero"},
+        {"title": "Shwar by Wartoz", "map": "TDef-Shwar"},
         {"title": "Deeply", "map": "TDef-Deeply"},
         {"title": "Mine-Craft", "map": "Mine-Craft"},
         {"title": "Yours Minecraft", "map": "yours_minecraft"}

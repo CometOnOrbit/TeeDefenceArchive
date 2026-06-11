@@ -17,12 +17,12 @@ CTowerMain::CTowerMain(CGameWorld *pGameWorld, vec2 StandPos)
 	m_Pos = StandPos;
 
 	for(unsigned i = 0; i < sizeof(m_aIDs) / sizeof(int); i++)
-		m_aIDs[i] = Server()->SnapNewID();
+		m_aIDs[i] = Server()->SnapNewID(GameServer()->GetWorldID());
 
 	for(int i = 0; i < s_TowerNumSide; i++)
-		m_alIDs[i] = Server()->SnapNewID();
+		m_alIDs[i] = Server()->SnapNewID(GameServer()->GetWorldID());
 
-	m_FlagID = Server()->SnapNewID();
+	m_FlagID = Server()->SnapNewID(GameServer()->GetWorldID());
 
 	GameWorld()->InsertEntity(this);
 
@@ -43,14 +43,14 @@ CTowerMain::~CTowerMain()
 	{
 		if(m_aIDs[i] >= 0)
 		{
-			Server()->SnapFreeID(m_aIDs[i]);
+			Server()->SnapFreeID(m_aIDs[i], GameWorld()->GameServer()->GetWorldID());
 			m_aIDs[i] = -1;
 		}
 	}
-	Server()->SnapFreeID(m_FlagID);
+	Server()->SnapFreeID(m_FlagID, GameWorld()->GameServer()->GetWorldID());
 
 	for(int i = 0; i < s_TowerNumSide; i++)
-		Server()->SnapFreeID(m_alIDs[i]);
+		Server()->SnapFreeID(m_alIDs[i], GameWorld()->GameServer()->GetWorldID());
 }
 
 void CTowerMain::Tick()

@@ -12,7 +12,7 @@ CEntity::CEntity(CGameWorld *pGameWorld, int ObjType, int ObjFlag, vec2 Pos, int
 	m_pPrevTypeEntity = 0;
 	m_pNextTypeEntity = 0;
 
-	m_ID = Server()->SnapNewID();
+	m_ID = Server()->SnapNewID(GameWorld()->GameServer()->GetWorldID());
 	m_ObjType = ObjType;
 	m_ObjFlag = ObjFlag;
 
@@ -25,7 +25,7 @@ CEntity::CEntity(CGameWorld *pGameWorld, int ObjType, int ObjFlag, vec2 Pos, int
 CEntity::~CEntity()
 {
 	GameWorld()->RemoveEntity(this);
-	Server()->SnapFreeID(m_ID);
+	Server()->SnapFreeID(m_ID, GameWorld()->GameServer()->GetWorldID());
 }
 
 int CEntity::NetworkClipped(int SnappingClient)
