@@ -9,6 +9,13 @@
 #include <game/server/item_system.h>
 #include <game/server/player.h>
 
+#include <engine/shared/config.h>
+
+#include <game/server/core/components/content/content_types.h>
+#include <game/server/core/components/content/effect_registry.h>
+#include <game/server/core/components/content/trait_manager.h>
+#include <game/server/core/tworld_controller.h>
+
 #include "CKs.h"
 #include "character.h"
 
@@ -111,9 +118,7 @@ void CKs::RewardIfDestroyed(CPlayer *pPlayer)
 
 void CKs::Picking(int Dmg, CPlayer *Player)
 {
-	m_Health -= maximum(1, Dmg);
-	RewardIfDestroyed(Player);
-
+	int EffectiveDmg = maximum(1, Dmg);
 	int HoldKind = ITYPE_PICKAXE;
 	if(m_Type == ITEM_LOG)
 		HoldKind = ITYPE_AXE;
@@ -122,14 +127,49 @@ void CKs::Picking(int Dmg, CPlayer *Player)
 	CItemHelper *pH = GameServer()->ItemHelper();
 	const char *pHoldingExtra = HoldingId ? Player->GetExtraForItem(HoldingId) : "";
 
+	if(pH && pHoldingExtra && Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+	{
+		CEffectContext CritCtx = {};
+		CritCtx.m_pPlayer = Player;
+		CritCtx.m_pExtraJson = pHoldingExtra;
+		CritCtx.m_InDamage = EffectiveDmg;
+		GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, CritCtx);
+
+		int CritChance = CritCtx.m_MiningCritBonus;
+		if(GameServer()->Core()->TraitManager())
+			CritChance += GameServer()->Core()->TraitManager()->GetMiningLuckBonus(Player);
+		if(CritChance > 0 && (random_int() % 100) < CritChance)
+			EffectiveDmg *= 2;
+	}
+
+	m_Health -= EffectiveDmg;
+	RewardIfDestroyed(Player);
+
 	if(pH && pHoldingExtra)
 	{
-		const int Exp = pH->GetCard(pHoldingExtra, ITEM_CARD_EXPLOSION_ID);
+		int Exp = 0;
+		int CardDmg = 0;
+		float Radius = 72.f;
+		if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+		{
+			CEffectContext Ctx = {};
+			Ctx.m_pPlayer = Player;
+			Ctx.m_pExtraJson = pHoldingExtra;
+			Ctx.m_InDamage = Dmg;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, Ctx);
+			Exp = Ctx.m_ExplosionStacks;
+			CardDmg = Ctx.m_OutDamage;
+			Radius = 72.f + (float)Exp * 6.f;
+		}
+		if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+		{
+			Exp = pH->GetCard(pHoldingExtra, ITEM_CARD_EXPLOSION_ID);
+			CardDmg = pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID) * 2;
+			Radius = 72.f + (float)Exp * 6.f;
+		}
 		if(Exp > 0)
 		{
-			const int CardDmg = pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID);
 			const int Splash = maximum(1, (Dmg * Exp) / 4 + Exp * maximum(1, CardDmg));
-			const float Radius = 72.f + (float)Exp * 6.f;
 
 			for(CGameWorld::TypeRange r = GameServer()->m_World.DoTypeRange(CGameWorld::ENTTYPE_PICKUP); !r.empty(); r.pop_front())
 			{
@@ -151,7 +191,20 @@ void CKs::Picking(int Dmg, CPlayer *Player)
 	GameServer()->SendBroadcastLocF(Player->GetCID(), "mine.progress", "%s — %d / %d HP (hammer)",
 		GameServer()->LocItemName(Player->GetCID(), m_Type), m_Health, GetMaxHealth());
 
-	const int QFire = pH ? pH->GetCard(pHoldingExtra, ITEM_CARD_QUICKLY_FIRE_ID) : 0;
+	int QFire = 0;
+	if(pH && pHoldingExtra)
+	{
+		if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+		{
+			CEffectContext Ctx = {};
+			Ctx.m_pPlayer = Player;
+			Ctx.m_pExtraJson = pHoldingExtra;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, Ctx);
+			QFire = Ctx.m_OutMineCd;
+		}
+		if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+			QFire = pH->GetCard(pHoldingExtra, ITEM_CARD_QUICKLY_FIRE_ID);
+	}
 	const int MineCd = maximum(1, 25 - QFire);
 	if(Player->GetCharacter())
 		Player->GetCharacter()->m_MiningTick = MineCd;

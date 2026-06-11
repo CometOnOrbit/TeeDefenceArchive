@@ -13,6 +13,7 @@
         "server_items/special/cards.json",
         "server_items/special/parts.json",
         "server_items/special/turret.json",
-        "server_items/special/zombie-heart.json"
+        "server_items/special/zombie-heart.json",
+        "server_items/special/materials_extra.json"
     ]
 }

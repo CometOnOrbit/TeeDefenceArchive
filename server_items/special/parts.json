@@ -5,11 +5,12 @@
             {
                 "id": 35,
                 "name": "Barrel",
-                "desc": "Basic turret barrel (placeholder part)",
-                "capacity": 0,
+                "desc": "Wider shot spread for turrets",
+                "capacity": 20,
                 "placeable": [3],
-                "max": 0,
-                "max_place": 0,
+                "max": 2,
+                "max_place": 2,
+                "effects": ["barrel_spread"],
                 "formula": {
                     "Log": 200,
                     "Iron": 10
@@ -23,6 +24,7 @@
                 "placeable": [3],
                 "max": 3,
                 "max_place": 2,
+                "effects": ["turret_cooldown"],
                 "formula": {
                     "Log": 100,
                     "Coal": 340,
@@ -32,6 +34,36 @@
                     "Diamond": 10,
                     "Enegry": 5,
                     "Zombie's Heart": 500
+                }
+            },
+            {
+                "id": 37,
+                "name": "Magazine",
+                "desc": "Extra ammo capacity when embedded",
+                "capacity": 15,
+                "placeable": [0, 1, 2],
+                "max": 3,
+                "max_place": 2,
+                "effects": ["magazine_bonus"],
+                "formula": {
+                    "Log": 150,
+                    "Iron": 30,
+                    "Copper": 20
+                }
+            },
+            {
+                "id": 38,
+                "name": "Stabilizer",
+                "desc": "Extends turret effective range",
+                "capacity": 25,
+                "placeable": [3],
+                "max": 2,
+                "max_place": 2,
+                "effects": ["stabilizer"],
+                "formula": {
+                    "Log": 200,
+                    "Copper": 80,
+                    "Titanium": 5
                 }
             }
         ]

@@ -57,13 +57,28 @@ enum
 	ITEM_CARD_FORCE,
 	ITEM_CARD_MANUAL,
 
-	ITEM_PART_FIRST = 35,
+	ITEM_PART_BARREL = 35,
 	ITEM_PART_COOLING = 36,
+	ITEM_PART_MAGAZINE = 37,
+	ITEM_PART_STABILIZER = 38,
+	ITEM_MAT_TITANIUM = 39,
+	ITEM_MAT_VOID_SHARD = 40,
+	ITEM_CARD_LIFESTEAL = 41,
+	ITEM_CARD_ARMOR_SHRED = 42,
+	ITEM_CARD_CHAIN_LIGHTNING = 43,
+	ITEM_CARD_MINING_LUCK = 44,
+	ITEM_CARD_HASTE = 45,
+	ITEM_TURRET_SNIPER = 46,
+	ITEM_TURRET_SPLASH = 47,
+	ITEM_SWORD_FLAME = 48,
+	ITEM_PICKAXE_FORTUNE = 49,
 	NUM_ITEM,
 };
 
 enum
 {
+	MAX_ITEM_EFFECT_KEYS = 4,
+
 	ITYPE_PICKAXE = 0,
 	ITYPE_AXE,
 	ITYPE_SWORD,
@@ -121,6 +136,8 @@ class CItemHelper
 	int m_aProba[NUM_ITEM];
 	int m_aMaxPlace[NUM_ITEM];
 	bool m_aaPlaceable[NUM_ITEM][NUM_ITYPE];
+	char m_aaItemEffects[NUM_ITEM][MAX_ITEM_EFFECT_KEYS][32];
+	int m_aNumItemEffects[NUM_ITEM];
 
 public:
 	explicit CItemHelper(CGameContext *pGameServer);
@@ -155,6 +172,9 @@ public:
 	int GetPart(const char *pExtraJson, int PartItemId) const;
 	/** Sum of GetMaxCapacity(cardId)*num over Extra.Cards (was GetCapacity). **/
 	int GetCapacityFromExtra(const char *pExtraJson) const;
+	int GetNumItemEffects(int ItemId) const;
+	const char *GetItemEffectKey(int ItemId, int EffectIdx) const;
+	int GetEffectStacksFromExtra(const char *pExtraJson, int ItemId, const char *pEffectKey) const;
 
 private:
 	int GetExtraSlotNum(const char *pExtraJson, const char *pArrayName, int ItemId) const;

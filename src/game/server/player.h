@@ -42,6 +42,9 @@ enum EZombType
 	ZOMB_ZELE,
 	ZOMB_ZINVIS,
 	ZOMB_ZEATER,
+	ZOMB_ZSHIELD,
+	ZOMB_ZHEALER,
+	ZOMB_ZSPLITTER,
 	ZOMB_SPIDER_BOSS,
 	NUM_ZOMB_TYPES,
 };
@@ -70,6 +73,7 @@ public:
 	void Init(int CID);
 
 	void TryRespawn();
+	void SpawnAt(vec2 Pos);
 	void Respawn();
 	void ForbidRespawn();
 	bool IsEliminated() const { return m_RespawnDisabled; }
@@ -84,6 +88,9 @@ public:
 	void ClearAccount();
 
 	void InitZombie(int Zomb);
+	void InitQuestNpc(int DefIdx);
+	bool IsQuestNpc() const { return m_Dummy && m_QuestNpcDefIdx >= 0; }
+	int GetQuestNpcDefIdx() const { return m_QuestNpcDefIdx; }
 	int GetZomb() const { return m_Zomb; }
 	int GetZombSub(int i) const { return (i >= 0 && i < NUM_ZOMB_SUB) ? m_aZombSub[i] : ZOMB_NONE; }
 	void SetZombSub(int i, int Type);
@@ -193,6 +200,7 @@ public:
 
 	int64 m_AccountId;
 	int m_Zomb;
+	int m_QuestNpcDefIdx;
 	int m_aZombSub[NUM_ZOMB_SUB];
 	bool m_ZombVisible;
 	bool m_ZamerDetonating;

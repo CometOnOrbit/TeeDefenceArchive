@@ -1,0 +1,57 @@
+{
+    "quests": [
+        {
+            "id": "ch1_awakening",
+            "title_key": "quest.ch1_awakening",
+            "auto_grant": true,
+            "steps": [
+                { "type": "talk_npc", "npc": "dream_keeper" },
+                { "type": "reach_zone", "world": 0, "x": 448, "y": 256, "radius": 64 }
+            ],
+            "rewards": { "items": [{ "id": 7, "num": 1 }] },
+            "unlocks": []
+        },
+        {
+            "id": "ch1_mirrors",
+            "title_key": "quest.ch1_mirrors",
+            "auto_grant": false,
+            "steps": [
+                { "type": "reach_zone", "world": 0, "x": 320, "y": 192, "radius": 48 },
+                { "type": "reach_zone", "world": 0, "x": 448, "y": 320, "radius": 48 }
+            ],
+            "rewards": { "items": [{ "id": 0, "num": 3 }] },
+            "unlocks": []
+        },
+        {
+            "id": "ch1_hearts",
+            "title_key": "quest.ch1_hearts",
+            "auto_grant": false,
+            "steps": [
+                { "type": "collect_item", "item": 7, "count": 2 }
+            ],
+            "rewards": { "items": [{ "id": 2, "num": 2 }] },
+            "unlocks": []
+        },
+        {
+            "id": "ch1_gate_td",
+            "title_key": "quest.ch1_gate_td",
+            "auto_grant": false,
+            "steps": [
+                { "type": "talk_npc", "npc": "dream_keeper" }
+            ],
+            "rewards": { "items": [] },
+            "unlocks": ["ch1_gate_td"]
+        },
+        {
+            "id": "ch1_return",
+            "title_key": "quest.ch1_return",
+            "auto_grant": false,
+            "steps": [
+                { "type": "collect_item", "item": 40, "count": 1 },
+                { "type": "talk_npc", "npc": "dream_keeper" }
+            ],
+            "rewards": { "items": [{ "id": 4, "num": 1 }] },
+            "unlocks": ["ch1_return"]
+        }
+    ]
+}

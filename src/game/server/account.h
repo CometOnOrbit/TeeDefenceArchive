@@ -21,9 +21,10 @@ class CAccountSystem
 {
 	enum
 	{
-		MAX_ACCOUNT_JOBS = 16,
+		MAX_ACCOUNT_JOBS = 20,
 		MAX_AUTH_JOBS = 6,
 		FIRST_SAVE_JOB = 6,
+		QUEST_DATA_MAX = 4096,
 	};
 
 	enum
@@ -34,6 +35,7 @@ class CAccountSystem
 		JOB_LOGIN_LOAD,
 		JOB_SAVE_ACCOUNT,
 		JOB_SAVE_ITEMS,
+		JOB_SAVE_QUEST,
 	};
 
 	CSqlConnectionPool m_Pool;
@@ -53,10 +55,12 @@ class CAccountSystem
 		int m_ClientId;
 		int64 m_AccountId;
 		SAccSyncData m_Sync;
+		char m_aQuestData[4096];
 		int m_Error;
 	};
 
 	SJob m_aJobs[MAX_ACCOUNT_JOBS];
+	char m_aaQuestData[MAX_CLIENTS][4096];
 	int m_aNextItemsSaveTick[MAX_CLIENTS];
 	int m_aNextAccountSaveTick[MAX_CLIENTS];
 	bool m_aPendingItemsSave[MAX_CLIENTS];
@@ -98,6 +102,10 @@ public:
 	void RequestSaveItems(int ClientId);
 
 	void RequestSaveAccount(int ClientId);
+
+	void RequestSaveQuestData(int ClientId);
+	bool GetQuestData(int ClientId, char *pOut, int OutSize) const;
+	void SetQuestData(int ClientId, const char *pJson);
 
 	void RegisterChatCommands(CCommandManager *pManager, CGameContext *pGame);
 	void RegisterConsoleCommands(IConsole *pConsole, CGameContext *pGame);

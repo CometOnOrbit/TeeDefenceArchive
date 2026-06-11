@@ -66,6 +66,9 @@ MACRO_CONFIG_INT(SvTdWaveScoreBonus, sv_td_wave_score_bonus, 1, 0, 1, CFGFLAG_SE
 MACRO_CONFIG_INT(SvTdQQGroup, sv_td_qq_group, 1007351135, 0, 2000000000, CFGFLAG_SERVER, "Player community QQ group number shown in-game")
 MACRO_CONFIG_INT(SvTdQQSponsor, sv_td_qq_sponsor, 1562151175, 0, 2000000000, CFGFLAG_SERVER, "Author QQ for sponsorship shown in-game")
 MACRO_CONFIG_INT(SvTdDifficulty, sv_td_difficulty, 1, 0, 2, CFGFLAG_SAVE | CFGFLAG_SERVER, "Default difficulty: 0=easy 1=normal 2=hard (changeable before wave 1 via menu)")
+MACRO_CONFIG_INT(SvContentFramework, sv_content_framework, 1, 0, 1, CFGFLAG_SERVER, "Enable data-driven content framework (effects/status/abilities)")
+MACRO_CONFIG_INT(SvFreeWorldTravel, sv_free_world_travel, 1, 0, 1, CFGFLAG_SERVER, "Allow free world travel from vote menu (0 = portals/quests only)")
+MACRO_CONFIG_INT(SvContentLegacyCards, sv_content_legacy_cards, 0, 0, 1, CFGFLAG_SERVER, "Fallback to hardcoded GetCard branches when framework is on")
 
 MACRO_CONFIG_INT(SvTurretRadius, sv_turret_radius, 32, 8, 256, CFGFLAG_SERVER, "Turret ring base radius in pixels (visual grows per tier)")
 MACRO_CONFIG_INT(SvTurretFireRange, sv_turret_fire_range, 800, 64, 4000, CFGFLAG_SERVER, "Turret auto-aim range vs dummy zombies (pixels)")

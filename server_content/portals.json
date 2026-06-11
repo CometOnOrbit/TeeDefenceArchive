@@ -1,0 +1,36 @@
+{
+    "portals": [
+        {
+            "id": "to_shwar",
+            "world": 0,
+            "x": 512,
+            "y": 256,
+            "radius": 72,
+            "dest_world": 1,
+            "dest_x": 0,
+            "dest_y": 0,
+            "require_quest": "ch1_gate_td"
+        },
+        {
+            "id": "to_pvp",
+            "world": 0,
+            "x": 640,
+            "y": 256,
+            "radius": 72,
+            "dest_world": 2,
+            "dest_x": 0,
+            "dest_y": 0,
+            "require_quest": "ch1_return"
+        },
+        {
+            "id": "to_dream",
+            "world": 1,
+            "x": 0,
+            "y": 0,
+            "radius": 96,
+            "dest_world": 0,
+            "dest_x": 384,
+            "dest_y": 256
+        }
+    ]
+}

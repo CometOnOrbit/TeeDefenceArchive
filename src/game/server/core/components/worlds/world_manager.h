@@ -1,6 +1,8 @@
 #ifndef GAME_SERVER_COMPONENT_WORLD_MANAGER_H
 #define GAME_SERVER_COMPONENT_WORLD_MANAGER_H
 
+#include <base/vmath.h>
+
 #include <game/server/core/tworld_component.h>
 
 class CWorldManager : public TWorldComponent
@@ -14,6 +16,7 @@ public:
 	void FormatWorldTitle(int ClientID, int Index, char *pBuf, int BufSize) const;
 	void AddVotes(int ClientID);
 	bool Execute(int ClientID, int WorldIndex);
+	bool ExecuteWithSpawn(int ClientID, int WorldIndex, vec2 *pSpawnPos, bool AllowGatedTravel = false);
 };
 
 #endif

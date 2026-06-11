@@ -1,8 +1,8 @@
 {
     "worlds": [
-        {"title": "Shwar by Wartoz", "map": "TDef-Shwar", "mode": "defence"},
-        {"title": "Deeply", "map": "TDef-Deeply", "mode": "pvp"},
-        {"title": "Mine-Craft", "map": "Mine-Craft", "mode": "hub"},
-        {"title": "Yours Minecraft", "map": "yours_minecraft", "mode": "hub"}
+        {"title": "Shwar by Wartoz", "map": "TDef-Shwar", "mode": "defence", "travel_locked": true, "required_quest": ""},
+        {"title": "Deeply", "map": "TDef-Deeply", "mode": "pvp", "travel_locked": true, "required_quest": ""},
+        {"title": "Mine-Craft", "map": "Mine-Craft", "mode": "hub", "travel_locked": true},
+        {"title": "Yours Minecraft", "map": "yours_minecraft", "mode": "hub", "travel_locked": true}
     ]
 }

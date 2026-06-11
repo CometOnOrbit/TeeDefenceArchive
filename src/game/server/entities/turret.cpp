@@ -15,6 +15,12 @@
 
 #include "character.h"
 #include "projectile.h"
+#include <engine/shared/config.h>
+
+#include <game/server/core/components/content/content_types.h>
+#include <game/server/core/components/content/effect_registry.h>
+#include <game/server/core/tworld_controller.h>
+
 #include "turret.h"
 
 static bool IsZombieDamageSource(CGameContext *pGame, int Owner, CEntity *pFrom)
@@ -121,14 +127,29 @@ void CTurret::Tick()
 	CItemHelper *pH = GameServer()->ItemHelper();
 	const char *pExtra = pOwner->GetExtraForItem(m_ItemDefId);
 	int Cd = maximum(1, Config()->m_SvTurretFireCooldown);
+	bool ManualAim = false;
 	if(pH && pExtra)
 	{
-		const int QF = pH->GetCard(pExtra, ITEM_CARD_QUICKLY_FIRE_ID);
-		const int PC = pH->GetPart(pExtra, ITEM_PART_COOLING);
-		Cd = maximum(1, Cd - QF - PC * 2);
-		const bool ManualAim = pH->GetCard(pExtra, ITEM_CARD_MANUAL_ID) > 0;
-		if(ManualAim && QF > 0)
-			Cd = maximum(1, Cd - 2);
+		if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+		{
+			CEffectContext Ctx = {};
+			Ctx.m_pPlayer = pOwner;
+			Ctx.m_pExtraJson = pExtra;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_TURRET_FIRE, Ctx);
+			Cd = maximum(1, Cd - Ctx.m_OutTurretCd);
+			ManualAim = Ctx.m_ManualTurret;
+			if(ManualAim && Ctx.m_OutTurretCd > 0)
+				Cd = maximum(1, Cd - 2);
+		}
+		if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+		{
+			const int QF = pH->GetCard(pExtra, ITEM_CARD_QUICKLY_FIRE_ID);
+			const int PC = pH->GetPart(pExtra, ITEM_PART_COOLING);
+			Cd = maximum(1, Cd - QF - PC * 2);
+			ManualAim = pH->GetCard(pExtra, ITEM_CARD_MANUAL_ID) > 0;
+			if(ManualAim && QF > 0)
+				Cd = maximum(1, Cd - 2);
+		}
 	}
 	if(Server()->Tick() - m_LastShotTick < Cd)
 		return;
@@ -148,7 +169,7 @@ void CTurret::Tick()
 	vec2 From = m_Pos;
 	vec2 Dir(0, 0);
 	CCharacter *pTarget = nullptr;
-	const bool Manual = pH && pExtra && pH->GetCard(pExtra, ITEM_CARD_MANUAL_ID) > 0;
+	const bool Manual = ManualAim;
 	if(Manual)
 	{
 		Dir = normalize(vec2((float)pOwnChr->LatestInput().m_TargetX, (float)pOwnChr->LatestInput().m_TargetY));

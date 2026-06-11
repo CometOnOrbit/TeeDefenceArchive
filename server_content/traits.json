@@ -1,0 +1,28 @@
+{
+    "traits": [
+        {
+            "id": "miner",
+            "params": { "mining_luck_bonus": 8, "mine_cd_bonus": 1 }
+        },
+        {
+            "id": "marksman",
+            "params": { "damage_mul": 1.1, "reload_mul": 0.95 }
+        },
+        {
+            "id": "fortifier",
+            "params": { "max_health_bonus": 2, "shield_bonus": 2 }
+        },
+        {
+            "id": "alchemist",
+            "params": { "mining_luck_bonus": 4, "lifesteal_bonus": 1 }
+        },
+        {
+            "id": "berserker",
+            "params": { "damage_mul": 1.18, "reload_mul": 1.05 }
+        },
+        {
+            "id": "arcanist",
+            "params": { "skill_cd_mul": 0.82, "reload_mul": 0.97 }
+        }
+    ]
+}

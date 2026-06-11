@@ -205,8 +205,18 @@ bool CMultiWorlds::LoadFromJson(IKernel *pKernel, IStorage *pStorage, const char
 		if(El["mode"].type == json_string)
 			pMode = El["mode"].u.string.ptr;
 
+		bool TravelLocked = false;
+		if(El["travel_locked"].type == json_boolean)
+			TravelLocked = El["travel_locked"].u.boolean != 0;
+		else if(WorldTypeFromString(pMode) != WorldType::Story)
+			TravelLocked = true;
+
+		char aRequiredQuest[32] = {0};
+		if(El["required_quest"].type == json_string)
+			str_copy(aRequiredQuest, El["required_quest"].u.string.ptr, sizeof(aRequiredQuest));
+
 		const int WorldID = (int)i;
-		const CWorldDetail Detail(WorldTypeFromString(pMode), 0, 0, 0);
+		const CWorldDetail Detail(WorldTypeFromString(pMode), 0, 0, 0, TravelLocked, aRequiredQuest);
 		m_apWorlds[WorldID] = new CWorld(WorldID, aTitle, aMap, Detail);
 		if(!Init(m_apWorlds[WorldID], pKernel))
 		{

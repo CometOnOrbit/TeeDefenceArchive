@@ -56,6 +56,7 @@ public:
 
 	bool IncreaseHealth(int Amount);
 	bool IncreaseArmor(int Amount);
+	void ReduceArmor(int Amount);
 	void SetHealthDirect(int Amount);
 	void SetBossHealth(int Amount);
 	void SetHitRadius(float Radius);

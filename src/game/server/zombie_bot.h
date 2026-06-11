@@ -84,6 +84,7 @@ public:
 
 	void Tick();
 	const CNetObj_PlayerInput &Input() const { return m_InputData; }
+	CPlayer *Player() const { return m_pPlayer; }
 };
 
 #endif

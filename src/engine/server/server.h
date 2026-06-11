@@ -148,6 +148,8 @@ public:
 		int64 m_ChangeWorldAccountId;
 		int m_ChangeWorldSessionSize;
 		char m_aChangeWorldSession[CHANGE_WORLD_SESSION_MAX];
+		bool m_HasChangeWorldSpawnPos;
+		vec2 m_ChangeWorldSpawnPos;
 		bool m_NoRconNote;
 		bool m_Quitting;
 		const IConsole::CCommandInfo *m_pRconCmdToSend;
@@ -229,6 +231,7 @@ public:
 	virtual int GetNumWorlds() const override;
 	virtual int GetNumPlayersInWorld(int WorldID) const override;
 	virtual const char *GetWorldName(int WorldID) const override;
+	virtual const char *GetWorldMapPath(int WorldID) const override;
 	virtual const CWorldDetail *GetWorldDetail(int WorldID) const override;
 	virtual class IGameServer *GameServer(int WorldID = 0) const override;
 
@@ -239,6 +242,8 @@ public:
 	virtual bool ConsumeChangeWorldEnter(int ClientID) override;
 	virtual void SetChangeWorldWasReady(int ClientID, bool Ready) override;
 	virtual bool GetChangeWorldWasReady(int ClientID) const override;
+	virtual void SetChangeWorldSpawnPos(int ClientID, vec2 Pos) override;
+	virtual bool ConsumeChangeWorldSpawnPos(int ClientID, vec2 *pPos) override;
 
 	void ReleaseClientInAllWorlds(int ClientID) override;
 	void ReleaseClientInOtherWorlds(int ClientID, int KeepWorldID) override;
@@ -246,6 +251,7 @@ public:
 	bool HasHumanInWorld(int WorldID) const;
 	void SetClientWorldID(int ClientID, int WorldID);
 	void SyncLegacyMapFromWorld(int WorldID);
+	void SyncSvMapWithConnectWorld();
 
 	bool IsClientSlotEmpty(int ClientID) const;
 	void DummyJoin(int ClientID, const char *pName);
@@ -279,7 +285,7 @@ public:
 	void PumpNetwork();
 
 	virtual void ChangeMap(const char *pMap);
-	const char *GetMapName();
+	const char *GetMapName() const;
 	int LoadMap(const char *pMapName);
 
 	void InitRegister(class IEngine *pEngine, class CConfig *pConfig, class IConsole *pConsole, TOKEN SecurityToken);

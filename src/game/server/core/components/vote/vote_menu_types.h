@@ -18,6 +18,11 @@ enum EVoteMenuPage
 	PAGE_WORLDS,
 	PAGE_COMMUNITY,
 	PAGE_DIFFICULTY,
+	PAGE_SKILLS,
+	PAGE_SKILL_SELECT,
+	PAGE_TRAITS,
+	PAGE_QUESTS,
+	PAGE_QUEST_DETAIL,
 };
 
 struct SPlayerVote
@@ -42,6 +47,8 @@ struct SPlayerVote
 	int m_Select[NUM_SELECT];
 	bool m_Confirm;
 	char m_aExtraText[VOTE_DESC_LENGTH];
+	int m_SkillId;
+	int m_QuestIdx;
 
 	void Reset()
 	{
@@ -52,6 +59,8 @@ struct SPlayerVote
 		for(int i = 0; i < NUM_SELECT; i++)
 			m_Select[i] = 0;
 		m_aExtraText[0] = 0;
+		m_SkillId = 0;
+		m_QuestIdx = 0;
 	}
 };
 

@@ -1,6 +1,10 @@
 #include <base/system.h>
 
+#include <engine/shared/config.h>
+
 #include <game/server/core/components/localization/localization_manager.h>
+#include <game/server/core/components/quests/quest_manager.h>
+#include <game/server/core/components/worlds/portal_manager.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
@@ -67,6 +71,11 @@ void CWorldManager::AddVotes(int ClientID)
 				pModeKey = "worlds.mode.pvp";
 				pModeFallback = "pvp";
 			}
+			else if(pDetail->GetType() == WorldType::Story)
+			{
+				pModeKey = "worlds.mode.story";
+				pModeFallback = "story";
+			}
 		}
 		char aMode[32];
 		GS()->LocFormat(aMode, sizeof(aMode), ClientID, pModeKey, pModeFallback);
@@ -81,7 +90,7 @@ void CWorldManager::AddVotes(int ClientID)
 	}
 }
 
-bool CWorldManager::Execute(int ClientID, int WorldIndex)
+bool CWorldManager::ExecuteWithSpawn(int ClientID, int WorldIndex, vec2 *pSpawnPos, bool AllowGatedTravel)
 {
 	if(!GS() || WorldIndex < 0 || WorldIndex >= NumWorlds())
 		return false;
@@ -94,9 +103,27 @@ bool CWorldManager::Execute(int ClientID, int WorldIndex)
 	if(WorldIndex == Server()->GetClientWorldID(ClientID))
 		return true;
 
+	if(!AllowGatedTravel && GS()->Config() && !GS()->Config()->m_SvFreeWorldTravel)
+	{
+		GS()->SendChatLoc(ClientID, "travel.locked", u8"无法自由切换世界，请使用传送门或任务入口。");
+		return false;
+	}
+
+	char aReason[128];
+	if(Core() && Core()->PortalManager() && !Core()->PortalManager()->CanTravelToWorld(pPlayer, WorldIndex, aReason, sizeof(aReason)))
+	{
+		GS()->SendChatLoc(ClientID, "travel.need_quest", aReason[0] ? aReason : u8"尚未解锁该世界。");
+		return false;
+	}
+
 	char aTitle[128];
 	FormatWorldTitle(ClientID, WorldIndex, aTitle, sizeof(aTitle));
-	pPlayer->ChangeWorld(WorldIndex);
+	pPlayer->ChangeWorld(WorldIndex, pSpawnPos);
 	GS()->SendChatLocF(ClientID, "travel.to", "Traveling to %s", aTitle);
 	return true;
+}
+
+bool CWorldManager::Execute(int ClientID, int WorldIndex)
+{
+	return ExecuteWithSpawn(ClientID, WorldIndex, nullptr, false);
 }

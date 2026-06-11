@@ -27,8 +27,10 @@
 #include "worldmodes/defence.h"
 #include "worldmodes/hub.h"
 #include "worldmodes/pvp.h"
+#include "worldmodes/story.h"
 #include <engine/shared/world_detail.h>
 #include "core/tworld_controller.h"
+#include "core/components/skills/skill_manager.h"
 #include "gamecontroller.h"
 #include "player.h"
 #include "botengine.h"
@@ -117,11 +119,16 @@ void CGameContext::Clear()
 	CVoteOptionServer *pVoteOptionLast = m_pVoteOptionLast;
 	int NumVoteOptions = m_NumVoteOptions;
 	CTuningParams Tuning = m_Tuning;
+	IKernel *pKernel = Kernel();
+	int WorldID = m_WorldID;
 
 	m_Resetting = true;
 	this->~CGameContext();
 	mem_zero(this, sizeof(*this));
 	new(this) CGameContext(RESET);
+
+	RestoreKernel(pKernel);
+	m_WorldID = WorldID;
 
 	m_pVoteOptionHeap = pVoteOptionHeap;
 	m_pVoteOptionFirst = pVoteOptionFirst;
@@ -363,11 +370,19 @@ void CGameContext::EnterGame(int ClientID)
 		SendChatLoc(ClientID, "account.enter_game_pvp", u8"已加入 PvP 竞技场，祝你好运！");
 		SendBroadcastLoc(ClientID, "account.enter_game_pvp_broadcast", u8"你已加入 PvP — 击败其他玩家！");
 	}
+	else if(IsWorldType(WorldType::Story))
+	{
+		SendChatLoc(ClientID, "account.enter_game_story", u8"你踏入了梦境枢纽——现实在这里折叠。");
+	}
 	else
 	{
 		SendChatLoc(ClientID, "account.enter_game", u8"已加入防守方，祝你好运！");
 		SendBroadcastLoc(ClientID, "account.enter_game_broadcast", u8"你已加入游戏 — 守护主塔！");
 	}
+
+	vec2 SpawnPos;
+	if(Server()->ConsumeChangeWorldSpawnPos(ClientID, &SpawnPos) && pP->GetCharacter())
+		pP->GetCharacter()->GetCore()->m_Pos = SpawnPos;
 }
 
 void CGameContext::SendChatAllLoc(const char *pKey, const char *pDefault)
@@ -882,6 +897,10 @@ void CGameContext::InitWorld()
 
 	switch(Type)
 	{
+	case WorldType::Story:
+		m_pController = new CGameControllerStory(this);
+		dbg_msg("world init", "world %d (%s) mode=story", m_WorldID, Server()->GetWorldName(m_WorldID));
+		break;
 	case WorldType::Hub:
 		m_pController = new CGameControllerHub(this);
 		dbg_msg("world init", "world %d (%s) mode=hub", m_WorldID, Server()->GetWorldName(m_WorldID));
@@ -1484,6 +1503,8 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 			pPlayer->m_LastEmoteTick = Server()->Tick();
 
 			SendEmoticon(ClientID, pMsg->m_Emoticon);
+			if(Core() && Core()->SkillManager())
+				Core()->SkillManager()->UseSkillsByEmoticon(pPlayer, pMsg->m_Emoticon);
 		}
 		else if(MsgID == NETMSGTYPE_CL_KILL)
 		{

@@ -15,6 +15,9 @@
 #include <game/server/gamecontext.h>
 #include <game/server/item_system.h>
 #include <game/server/player.h>
+#include <game/server/core/components/content/content_types.h>
+#include <game/server/core/components/content/effect_registry.h>
+#include <game/server/core/tworld_controller.h>
 #include <game/server/turret_ammo.h>
 
 static const int s_aMatItemIds[NUM_TURRET_AMMO_MATS] = {
@@ -206,11 +209,29 @@ void TurretAmmo_BuildShotParams(const STurretAmmoMix *pMix, CItemHelper *pH, con
 
 	if(pH)
 	{
-		const int CardExtra = pH->GetCard(pExtra, ITEM_CARD_DAMAGE_ID) * 2;
-		pOut->m_Explosive = pH->GetCard(pExtra, ITEM_CARD_EXPLOSION_ID) > 0 || Norm.m_aPct[TURRET_AMMO_COAL] >= 20;
-		pOut->m_Fusion = pH->GetCard(pExtra, ITEM_CARD_FUSION_ID) > 0 || Norm.m_aPct[TURRET_AMMO_ENEGRY] >= 25;
-		pOut->m_HitForce = 1.f + (float)pH->GetCard(pExtra, ITEM_CARD_FORCE_ID) * 2.f;
-		pOut->m_Electron = pH->GetCard(pExtra, ITEM_CARD_ELECTRON_ID);
+		int CardExtra = 0;
+		pOut->m_HitForce = 1.f;
+		if(pH->GameServer() && pH->GameServer()->Config()->m_SvContentFramework && pH->GameServer()->Core() && pH->GameServer()->Core()->EffectRegistry())
+		{
+			CEffectContext Ctx = {};
+			Ctx.m_pExtraJson = pExtra;
+			pH->GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_TURRET_FIRE, Ctx);
+			CardExtra = Ctx.m_OutDamage;
+			pOut->m_Explosive = (Ctx.m_Flags & EFFECT_FLAG_EXPLOSIVE) != 0;
+			pOut->m_Fusion = (Ctx.m_Flags & EFFECT_FLAG_FUSION) != 0;
+			pOut->m_HitForce = Ctx.m_OutForceMul;
+			pOut->m_Electron = Ctx.m_ElectronStacks;
+		}
+		if(pH->GameServer() && (pH->GameServer()->Config()->m_SvContentLegacyCards || !pH->GameServer()->Config()->m_SvContentFramework))
+		{
+			CardExtra = pH->GetCard(pExtra, ITEM_CARD_DAMAGE_ID) * 2;
+			pOut->m_Explosive = pH->GetCard(pExtra, ITEM_CARD_EXPLOSION_ID) > 0;
+			pOut->m_Fusion = pH->GetCard(pExtra, ITEM_CARD_FUSION_ID) > 0;
+			pOut->m_HitForce = 1.f + (float)pH->GetCard(pExtra, ITEM_CARD_FORCE_ID) * 2.f;
+			pOut->m_Electron = pH->GetCard(pExtra, ITEM_CARD_ELECTRON_ID);
+		}
+		pOut->m_Explosive = pOut->m_Explosive || Norm.m_aPct[TURRET_AMMO_COAL] >= 20;
+		pOut->m_Fusion = pOut->m_Fusion || Norm.m_aPct[TURRET_AMMO_ENEGRY] >= 25;
 		const int Base = g_pData->m_Weapons.m_aId[WEAPON_LASER].m_Damage;
 		pOut->m_Damage = maximum(1, (Base + CardExtra) * DmgMul);
 	}

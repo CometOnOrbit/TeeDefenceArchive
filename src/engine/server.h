@@ -2,6 +2,8 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #ifndef ENGINE_SERVER_H
 #define ENGINE_SERVER_H
+#include <base/vmath.h>
+
 #include "kernel.h"
 #include "message.h"
 #include <engine/shared/world_detail.h>
@@ -82,6 +84,7 @@ public:
 	virtual int GetNumWorlds() const = 0;
 	virtual int GetNumPlayersInWorld(int WorldID) const = 0;
 	virtual const char *GetWorldName(int WorldID) const = 0;
+	virtual const char *GetWorldMapPath(int WorldID) const = 0;
 	virtual const CWorldDetail *GetWorldDetail(int WorldID) const = 0;
 
 	virtual class IGameServer *GameServer(int WorldID) const = 0;
@@ -93,6 +96,8 @@ public:
 	virtual bool ConsumeChangeWorldEnter(int ClientID) = 0;
 	virtual void SetChangeWorldWasReady(int ClientID, bool Ready) = 0;
 	virtual bool GetChangeWorldWasReady(int ClientID) const = 0;
+	virtual void SetChangeWorldSpawnPos(int ClientID, vec2 Pos) = 0;
+	virtual bool ConsumeChangeWorldSpawnPos(int ClientID, vec2 *pPos) = 0;
 
 	virtual void ReleaseClientInAllWorlds(int ClientID) = 0;
 	virtual void ReleaseClientInOtherWorlds(int ClientID, int KeepWorldID) = 0;

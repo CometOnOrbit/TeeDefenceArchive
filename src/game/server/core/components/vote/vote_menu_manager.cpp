@@ -1,12 +1,16 @@
 /* (c) TeeDefenceArchive - 2026 */
 #include <base/system.h>
 
+#include <engine/shared/config.h>
 #include <engine/shared/protocol.h>
 #include <engine/shared/jsonparser.h>
 
 #include <game/commands.h>
 #include <game/voting.h>
 #include <game/server/account.h>
+#include <game/server/core/components/content/trait_manager.h>
+#include <game/server/core/components/quests/quest_manager.h>
+#include <game/server/core/components/skills/skill_manager.h>
 #include <game/server/core/components/localization/localization_manager.h>
 #include <game/server/core/components/worlds/world_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
@@ -285,9 +289,9 @@ static void AddVotesHostCardManage(CGameContext *pCtx, CVoteMenuManager *pVote, 
 			continue;
 		if(!pIH->IsPlaceableOnItemType(i, HostIType))
 			continue;
-		const char *pSlotCmd = (i >= ITEM_PART_FIRST) ? "Parts" : "Cards";
-		const char *pSlot = VL(pCtx, pP, (i >= ITEM_PART_FIRST) ? "card.slot.parts" : "card.slot.cards",
-			(i >= ITEM_PART_FIRST) ? "Parts" : "Cards");
+		const char *pSlotCmd = (i >= ITEM_PART_BARREL) ? "Parts" : "Cards";
+		const char *pSlot = VL(pCtx, pP, (i >= ITEM_PART_BARREL) ? "card.slot.parts" : "card.slot.cards",
+			(i >= ITEM_PART_BARREL) ? "Parts" : "Cards");
 		char aCmd[112];
 		str_format(aCmd, sizeof(aCmd), "ccv_menuplace %d %s %d", HostId, pSlotCmd, i);
 		char aLine[VOTE_DESC_LENGTH];
@@ -344,8 +348,12 @@ void CVoteMenuManager::InitVotes(int ClientID)
 		AddVote_Goto(PAGE_CRAFT, VL(GS(), pP, "menu.goto.craft", u8"☞ 合成"));
 		AddVote_Goto(PAGE_EQUIPMENT, VL(GS(), pP, "menu.goto.equipment", u8"☞ 装备"));
 		AddVote_Goto(PAGE_TURRET, VL(GS(), pP, "menu.goto.turret", u8"☞ 炮塔"));
-		AddVote_Goto(PAGE_WORLDS, VL(GS(), pP, "menu.goto.worlds", u8"☞ 世界/地图"));
+		if(!GS()->Config() || GS()->Config()->m_SvFreeWorldTravel)
+			AddVote_Goto(PAGE_WORLDS, VL(GS(), pP, "menu.goto.worlds", u8"☞ 世界/地图"));
+		AddVote_Goto(PAGE_QUESTS, VL(GS(), pP, "menu.goto.quests", u8"☞ 任务"));
 		AddVote_Goto(PAGE_COMMUNITY, VL(GS(), pP, "menu.goto.community", u8"☞ 社区与赞助"));
+		AddVote_Goto(PAGE_SKILLS, VL(GS(), pP, "menu.goto.skills", u8"☞ 技能"));
+		AddVote_Goto(PAGE_TRAITS, VL(GS(), pP, "menu.goto.traits", u8"☞ 特质"));
 		//if(GS()->m_pController && static_cast<CGameController *>(GS()->m_pController)->TdCanChangeDifficulty()) // for now
 		//	AddVote_Goto(PAGE_DIFFICULTY, VL(GS(), pP, "menu.goto.difficulty", u8"☞ 难度选择"));
 		AddVote_Space();
@@ -397,6 +405,46 @@ void CVoteMenuManager::InitVotes(int ClientID)
 		AddVote_TextLine(VL(GS(), pP, "community.thanks", u8"感谢支持 — 用于服务器与模式开发"));
 		AddVote_TextLine(VL(GS(), pP, "menu.sep.long", "---------------------"));
 		AddVote_Back();
+	}
+	break;
+
+	case PAGE_SKILLS:
+	{
+		SetVoteLastPage(PAGE_MENU);
+		if(Core() && Core()->SkillManager())
+			Core()->SkillManager()->BuildSkillsListPage(ClientID);
+	}
+	break;
+
+	case PAGE_SKILL_SELECT:
+	{
+		SetVoteLastPage(pVote->m_LastPage >= 0 ? pVote->m_LastPage : PAGE_SKILLS);
+		if(Core() && Core()->SkillManager())
+			Core()->SkillManager()->BuildSkillDetailPage(ClientID, pVote->m_SkillId);
+	}
+	break;
+
+	case PAGE_TRAITS:
+	{
+		SetVoteLastPage(PAGE_MENU);
+		if(Core() && Core()->TraitManager())
+			Core()->TraitManager()->BuildTraitVotePage(ClientID);
+	}
+	break;
+
+	case PAGE_QUESTS:
+	{
+		SetVoteLastPage(PAGE_MENU);
+		if(Core() && Core()->QuestManager())
+			Core()->QuestManager()->BuildQuestListPage(ClientID);
+	}
+	break;
+
+	case PAGE_QUEST_DETAIL:
+	{
+		SetVoteLastPage(pVote->m_LastPage >= 0 ? pVote->m_LastPage : PAGE_QUESTS);
+		if(Core() && Core()->QuestManager())
+			Core()->QuestManager()->BuildQuestDetailPage(ClientID, pVote->m_QuestIdx);
 	}
 	break;
 

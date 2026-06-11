@@ -48,6 +48,7 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_HasPendingChangeWorldPos = false;
 	m_PendingChangeWorldPos = vec2(0.0f, 0.0f);
 	m_Zomb = ZOMB_NONE;
+	m_QuestNpcDefIdx = -1;
 	mem_zero(m_aZombSub, sizeof(m_aZombSub));
 	m_ZombVisible = true;
 	m_ZamerDetonating = false;
@@ -112,8 +113,20 @@ bool CPlayer::HasZombType(int Type) const
 	return false;
 }
 
+void CPlayer::InitQuestNpc(int DefIdx)
+{
+	m_RespawnDisabled = true;
+	m_Spawning = false;
+	m_DeadSpecMode = false;
+	m_Zomb = ZOMB_NONE;
+	m_QuestNpcDefIdx = DefIdx;
+	mem_zero(m_aZombSub, sizeof(m_aZombSub));
+	m_ZombVisible = true;
+}
+
 void CPlayer::InitZombie(int Zomb)
 {
+	m_QuestNpcDefIdx = -1;
 	m_RespawnDisabled = false;
 	m_Spawning = false;
 	m_DeadSpecMode = false;
@@ -174,6 +187,15 @@ void CPlayer::InitZombie(int Zomb)
 		break;
 	case ZOMB_ZEATER:
 		Server()->SetClientName(GetCID(), "Zeater");
+		break;
+	case ZOMB_ZSHIELD:
+		Server()->SetClientName(GetCID(), "Zshield");
+		break;
+	case ZOMB_ZHEALER:
+		Server()->SetClientName(GetCID(), "Zhealer");
+		break;
+	case ZOMB_ZSPLITTER:
+		Server()->SetClientName(GetCID(), "Zsplitter");
 		break;
 	case ZOMB_SPIDER_BOSS:
 		Server()->SetClientName(GetCID(), "Spider");
@@ -236,6 +258,8 @@ bool CPlayer::PendingChangeWorld()
 		return false;
 
 	const int WorldID = m_PendingChangeWorldID;
+	if(m_HasPendingChangeWorldPos)
+		Server()->SetChangeWorldSpawnPos(m_ClientID, m_PendingChangeWorldPos);
 	m_PendingChangeWorldID = -1;
 	m_HasPendingChangeWorldPos = false;
 
@@ -934,10 +958,18 @@ void CPlayer::TryRespawn()
 	if(!GameServer()->m_pController->CanSpawn(m_Team, &SpawnPos))
 		return;
 
+	SpawnAt(SpawnPos);
+}
+
+void CPlayer::SpawnAt(vec2 Pos)
+{
+	if(m_pCharacter)
+		KillCharacter(WEAPON_GAME);
+
 	m_Spawning = false;
 	m_pCharacter = new(m_ClientID) CCharacter(&GameServer()->m_World);
-	m_pCharacter->Spawn(this, SpawnPos);
-	GameServer()->m_World.CreatePlayerSpawn(SpawnPos);
+	m_pCharacter->Spawn(this, Pos);
+	GameServer()->m_World.CreatePlayerSpawn(Pos);
 	if(IsDummy() && GameServer()->Core())
 		GameServer()->Core()->OnCharacterSpawn(this);
 }

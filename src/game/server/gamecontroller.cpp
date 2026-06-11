@@ -20,6 +20,7 @@
 #include "core/components/accounts/account_manager.h"
 #include "core/components/bots/defence_bot_manager.h"
 #include "core/components/craft/craft_manager.h"
+#include "core/components/npcs/npc_manager.h"
 #include "core/components/vote/vote_menu_manager.h"
 #include "core/tworld_controller.h"
 #include "entities/spider_boss.h"
@@ -29,6 +30,14 @@
 #include "item_system.h"
 #include "gamecontext.h"
 #include "botengine.h"
+#include <game/server/core/components/content/trait_manager.h>
+#include <game/server/core/components/quests/quest_manager.h>
+#include <game/server/core/components/skills/skill_manager.h>
+#include <game/server/core/components/content/content_types.h>
+#include <game/server/core/components/content/effect_registry.h>
+#include <game/server/core/components/content/enemy_registry.h>
+#include <game/server/core/tworld_controller.h>
+
 #include "gamecontroller.h"
 #include "player.h"
 #include "zombie_bot.h"
@@ -201,6 +210,10 @@ int CGameController::GetDummyTeam() const
 
 void CGameController::OnBotPlayerCreated(CPlayer *pPlayer)
 {
+	if(GameServer()->Core() && GameServer()->Core()->NpcManager() &&
+		GameServer()->Core()->NpcManager()->OnBotPlayerCreated(pPlayer))
+		return;
+
 	for(int p = 0; p < NUM_SKINPARTS; p++)
 	{
 		pPlayer->m_TeeInfos.m_aUseCustomColors[p] = 0;
@@ -255,6 +268,15 @@ void CGameController::OnBotPlayerCreated(CPlayer *pPlayer)
 		break;
 	case ZOMB_ZEATER:
 		pBodySkin = "warpaint";
+		break;
+	case ZOMB_ZSHIELD:
+		pBodySkin = "brownkitty";
+		break;
+	case ZOMB_ZHEALER:
+		pBodySkin = "limekitty";
+		break;
+	case ZOMB_ZSPLITTER:
+		pBodySkin = "bluestripe";
 		break;
 	case ZOMB_SPIDER_BOSS:
 		pBodySkin = "pinky";
@@ -443,27 +465,22 @@ int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int
 
 		if(pKiller && !pKiller->IsDummy() && Weapon != WEAPON_GAME)
 		{
-			int Reward = ITEM_LOG;
-			const int Rando = rand() % 100 + 1;
-			if(Rando <= 50)
-				Reward = ITEM_LOG;
-			else if(Rando <= 75)
-				Reward = ITEM_COPPER;
-			else
-				Reward = ITEM_GOLD;
-
-			pKiller->m_AccData.m_aItems[Reward].m_Num++;
-			pKiller->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num++;
-			pKiller->m_Score++;
-
-			GameServer()->SendChatLocF(pKiller->GetCID(), "game.loot_drop", u8"掉落：%s（僵尸心+1）", GameServer()->LocItemName(pKiller->GetCID(), Reward));
-
-			if(GameServer()->Accounts()->IsEnabled() && pKiller->GetAccountId() >= 0)
-				GameServer()->Accounts()->RequestSaveItems(pKiller->GetCID());
+			if(TWorldController *pCore = GameServer()->Core())
+			{
+				if(pCore->EnemyRegistry())
+					pCore->EnemyRegistry()->RollLoot(pKiller, pVictimPlayer->GetZomb());
+				if(pCore->QuestManager())
+					pCore->QuestManager()->TryKillProgress(pKiller);
+			}
 		}
 
 		if(pVictimPlayer->GetZomb() == ZOMB_SPIDER_BOSS)
 			TdDestroySpiderBoss();
+		else if(TWorldController *pCore = GameServer()->Core())
+		{
+			if(pCore->EnemyRegistry())
+				pCore->EnemyRegistry()->OnZombieDeath(this, pVictimPlayer);
+		}
 
 		pVictimPlayer->ForbidRespawn();
 		TdClearZombieBot(pVictimPlayer->GetCID());
@@ -511,6 +528,11 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 		if(Z == ZOMB_SPIDER_BOSS)
 			Health = maximum(100, m_TdWave * 20);
 		Health = maximum(1, (int)(Health * TdDifficultyHealthMul() + 0.5f));
+		if(TWorldController *pCore = GameServer()->Core())
+		{
+			if(pCore->EnemyRegistry())
+				Health = maximum(1, (int)(Health * pCore->EnemyRegistry()->GetHpMul(Z) + 0.5f));
+		}
 
 		if(Z == ZOMB_SPIDER_BOSS)
 			pChr->SetBossHealth(Health);
@@ -547,6 +569,9 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 		case ZOMB_ZELE:
 		case ZOMB_ZINVIS:
 		case ZOMB_ZEATER:
+		case ZOMB_ZSHIELD:
+		case ZOMB_ZHEALER:
+		case ZOMB_ZSPLITTER:
 			pChr->SetWeapon(WEAPON_HAMMER);
 			break;
 		case ZOMB_SPIDER_BOSS:
@@ -1220,6 +1245,18 @@ void CGameController::RegisterChatCommands(CCommandManager *pManager)
 			pCore->CraftManager()->RegisterChatCommands(pManager);
 			pCore->CraftManager()->RegisterVoteCommands(pManager);
 		}
+		if(pCore->SkillManager())
+		{
+			pCore->SkillManager()->RegisterChatCommands(pManager);
+			pCore->SkillManager()->RegisterVoteCommands(pManager);
+		}
+		if(pCore->TraitManager())
+			pCore->TraitManager()->RegisterVoteCommands(pManager);
+		if(pCore->QuestManager())
+		{
+			pCore->QuestManager()->RegisterChatCommands(pManager);
+			pCore->QuestManager()->RegisterVoteCommands(pManager);
+		}
 	}
 }
 
@@ -1240,16 +1277,46 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 	CPlayer *pPl = pChr->GetPlayer();
 	CItemHelper *pH = GameServer()->ItemHelper();
 	const char *pSx = (pPl && pH) ? pPl->GetExtraForItem(pPl->GetHolding(ITYPE_SWORD)) : nullptr;
-	const int ExtraDmg = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_DAMAGE_ID) * 2 : 0;
-	const float MoreForce = (pH && pSx) ? 1.f + (float)pH->GetCard(pSx, ITEM_CARD_FORCE_ID) * 2.f : 1.f;
-	const int Electron = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_ELECTRON_ID) : 0;
-	const int ExplosionStacks = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_EXPLOSION_ID) : 0;
+
+	int ExtraDmg = 0;
+	float MoreForce = 1.f;
+	int Electron = 0;
+	int ExplosionStacks = 0;
+
+	CEffectContext FxCtx = {};
+	FxCtx.m_pAttacker = pChr;
+	FxCtx.m_pPlayer = pPl;
+	FxCtx.m_pExtraJson = pSx;
+	FxCtx.m_Weapon = Weapon;
+	FxCtx.m_OutForceMul = 1.f;
+
+	if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+	{
+		GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_WEAPON_FIRE, FxCtx);
+		ExtraDmg = FxCtx.m_OutDamage;
+		MoreForce = FxCtx.m_OutForceMul;
+		Electron = FxCtx.m_ElectronStacks;
+		ExplosionStacks = FxCtx.m_ExplosionStacks;
+	}
+	if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+	{
+		ExtraDmg = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_DAMAGE_ID) * 2 : 0;
+		MoreForce = (pH && pSx) ? 1.f + (float)pH->GetCard(pSx, ITEM_CARD_FORCE_ID) * 2.f : 1.f;
+		Electron = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_ELECTRON_ID) : 0;
+		ExplosionStacks = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_EXPLOSION_ID) : 0;
+	}
 
 	int ReloadTimer = 0;
 	switch(Weapon)
 	{
 		case WEAPON_HAMMER:
 		{
+			if(GameServer()->Core() && GameServer()->Core()->NpcManager() &&
+				GameServer()->Core()->NpcManager()->TryHammerTalk(pChr, ProjStartPos))
+			{
+				return Server()->TickSpeed() / 3;
+			}
+
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_HAMMER_FIRE);
 
 			if(Electron > 0)
@@ -1301,6 +1368,9 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 				CCharacter *pTarget = static_cast<CCharacter *>(pHitEnt);
 
 				if((pTarget == pChr) || GameServer()->Collision()->IntersectLine(ProjStartPos, pTarget->GetPos(), NULL, NULL))
+					continue;
+
+				if(pTarget->GetPlayer() && pTarget->GetPlayer()->IsQuestNpc())
 					continue;
 
 				// set his velocity to fast upward (for now)
@@ -1419,7 +1489,15 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 		}
 		break;
 	}
-	const int LessReload = (pH && pSx) ? 10 * pH->GetCard(pSx, ITEM_CARD_QUICKLY_FIRE_ID) : 0;
+	int LessReload = 0;
+	if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+	{
+		CEffectContext ReloadCtx = FxCtx;
+		GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_RELOAD, ReloadCtx);
+		LessReload = ReloadCtx.m_OutReloadDelta;
+	}
+	if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+		LessReload = (pH && pSx) ? 10 * pH->GetCard(pSx, ITEM_CARD_QUICKLY_FIRE_ID) : 0;
 	if(!ReloadTimer)
 		ReloadTimer = maximum(0, g_pData->m_Weapons.m_aId[Weapon].m_Firedelay * Server()->TickSpeed() / 1000 - LessReload);
 
@@ -1523,6 +1601,12 @@ void CGameController::TdStartWave(int Wave)
 	else
 		TdSetWaveAlg(Wave % 3, Wave / 3, Wave);
 
+	if(TWorldController *pCore = GameServer()->Core())
+	{
+		if(pCore->EnemyRegistry())
+			pCore->EnemyRegistry()->ApplyWaveBoost(this, Wave);
+	}
+
 	if(!m_TdBossWave)
 	{
 		TdApplyDifficultyToZombieCounts();
@@ -1621,6 +1705,17 @@ int CGameController::TdCountZombiePopulation() const
 			Count++;
 	}
 	return Count;
+}
+
+void CGameController::TdAddZombiePool(int ZombType, int Count)
+{
+	if(Count <= 0 || ZombType < ZOMB_ZABY || ZombType == ZOMB_SPIDER_BOSS)
+		return;
+	const int Idx = ZombType - ZOMB_ZABY;
+	if(Idx < 0 || Idx >= NUM_TD_ZOMB)
+		return;
+	m_TdZombie[Idx] += Count;
+	m_TdZombLeft += Count;
 }
 
 int CGameController::TdRandZomb()

@@ -24,6 +24,8 @@ void CItemHelper::ResetStats()
 	mem_zero(m_aProba, sizeof(m_aProba));
 	mem_zero(m_aMaxPlace, sizeof(m_aMaxPlace));
 	mem_zero(m_aaPlaceable, sizeof(m_aaPlaceable));
+	mem_zero(m_aaItemEffects, sizeof(m_aaItemEffects));
+	mem_zero(m_aNumItemEffects, sizeof(m_aNumItemEffects));
 
 	for(int i = 0; i < NUM_ITEM; i++)
 		m_aItemType[i] = ITYPE_MATERIAL;
@@ -66,6 +68,22 @@ void CItemHelper::ConsumeStatPass(const json_value &Entry, int ParentType)
 			const int T = (int)PV.u.integer;
 			if(T >= 0 && T < NUM_ITYPE)
 				m_aaPlaceable[ID][T] = true;
+		}
+	}
+	if(Entry["effect"].type == json_string && m_aNumItemEffects[ID] < MAX_ITEM_EFFECT_KEYS)
+	{
+		str_copy(m_aaItemEffects[ID][m_aNumItemEffects[ID]++], Entry["effect"].u.string.ptr,
+			sizeof(m_aaItemEffects[ID][0]));
+	}
+	const json_value &Effects = Entry["effects"];
+	if(Effects.type == json_array)
+	{
+		for(unsigned e = 0; e < Effects.u.array.length && m_aNumItemEffects[ID] < MAX_ITEM_EFFECT_KEYS; e++)
+		{
+			const json_value &EV = Effects[(int)e];
+			if(EV.type != json_string)
+				continue;
+			str_copy(m_aaItemEffects[ID][m_aNumItemEffects[ID]++], EV.u.string.ptr, sizeof(m_aaItemEffects[ID][0]));
 		}
 	}
 }
@@ -370,4 +388,38 @@ int CItemHelper::GetCapacityFromExtra(const char *pExtraJson) const
 		Sum += GetMaxCapacity(Id) * Num;
 	}
 	return Sum;
+}
+
+int CItemHelper::GetNumItemEffects(int ItemId) const
+{
+	if(!CheckItemValid(ItemId))
+		return 0;
+	return m_aNumItemEffects[ItemId];
+}
+
+const char *CItemHelper::GetItemEffectKey(int ItemId, int EffectIdx) const
+{
+	if(!CheckItemValid(ItemId) || EffectIdx < 0 || EffectIdx >= m_aNumItemEffects[ItemId])
+		return nullptr;
+	return m_aaItemEffects[ItemId][EffectIdx];
+}
+
+int CItemHelper::GetEffectStacksFromExtra(const char *pExtraJson, int ItemId, const char *pEffectKey) const
+{
+	if(!pEffectKey || !pEffectKey[0] || !CheckItemValid(ItemId))
+		return 0;
+
+	bool Matches = false;
+	for(int e = 0; e < m_aNumItemEffects[ItemId]; e++)
+	{
+		if(str_comp(m_aaItemEffects[ItemId][e], pEffectKey) == 0)
+		{
+			Matches = true;
+			break;
+		}
+	}
+	if(!Matches)
+		return 0;
+
+	return GetCard(pExtraJson, ItemId) + GetPart(pExtraJson, ItemId);
 }

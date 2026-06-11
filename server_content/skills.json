@@ -1,0 +1,57 @@
+{
+    "skills": [
+        {
+            "id": 1,
+            "key": "dash",
+            "auto_learn": true,
+            "cooldown_ticks": 150,
+            "params": { "distance": 160 }
+        },
+        {
+            "id": 2,
+            "key": "heal_pulse",
+            "auto_learn": true,
+            "cooldown_ticks": 450,
+            "params": { "radius": 200, "heal": 3 }
+        },
+        {
+            "id": 3,
+            "key": "tower_repair_aura",
+            "auto_learn": false,
+            "learn_cost_hearts": 2,
+            "cooldown_ticks": 600,
+            "params": { "radius": 320, "repair": 15 }
+        },
+        {
+            "id": 4,
+            "key": "frost_nova",
+            "auto_learn": false,
+            "learn_cost_hearts": 3,
+            "cooldown_ticks": 500,
+            "params": { "radius": 240 }
+        },
+        {
+            "id": 5,
+            "key": "poison_cloud",
+            "auto_learn": false,
+            "learn_cost_hearts": 3,
+            "cooldown_ticks": 480,
+            "params": { "radius": 200, "heal": 2 }
+        },
+        {
+            "id": 6,
+            "key": "battle_cry",
+            "auto_learn": true,
+            "cooldown_ticks": 400,
+            "params": { "radius": 220, "heal": 2 }
+        },
+        {
+            "id": 7,
+            "key": "arcane_shield",
+            "auto_learn": false,
+            "learn_cost_hearts": 4,
+            "cooldown_ticks": 700,
+            "params": { "heal": 12 }
+        }
+    ]
+}

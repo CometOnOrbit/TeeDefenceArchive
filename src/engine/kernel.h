@@ -16,6 +16,7 @@ class IInterface
 
 protected:
 	IKernel *Kernel() { return m_pKernel; }
+	void RestoreKernel(IKernel *pKernel) { m_pKernel = pKernel; }
 
 public:
 	IInterface() : m_pKernel(0) {}

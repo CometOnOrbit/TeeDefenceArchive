@@ -1,0 +1,142 @@
+{
+    "effects": [
+        {
+            "id": "reload_haste",
+            "triggers": ["OnReload", "OnMine", "OnTurretFire"],
+            "legacy_item": 27,
+            "params": { "reload_per_stack": 10, "mine_cd_per_stack": 1, "turret_cd_per_stack": 1 }
+        },
+        {
+            "id": "ammo_regen",
+            "triggers": ["OnTick"],
+            "legacy_item": 28,
+            "params": { "regen_per_stack": 500 }
+        },
+        {
+            "id": "damage_bonus",
+            "triggers": ["OnWeaponFire", "OnMine", "OnTurretFire"],
+            "legacy_item": 29,
+            "params": { "damage_per_stack": 2 }
+        },
+        {
+            "id": "explosive",
+            "triggers": ["OnDealDamage", "OnProjectileHit", "OnLaserHit", "OnMine"],
+            "legacy_item": 30,
+            "params": { "radius_base": 72, "radius_per_stack": 6 }
+        },
+        {
+            "id": "electron_chain",
+            "triggers": ["OnProjectileHit", "OnWeaponFire", "OnTurretFire"],
+            "legacy_item": 31,
+            "params": {}
+        },
+        {
+            "id": "electron_slow",
+            "triggers": ["OnTakeDamage"],
+            "legacy_item": 31,
+            "status": true,
+            "params": { "duration_per_stack": 125, "slow_mul": 0.86 }
+        },
+        {
+            "id": "fusion_bloom",
+            "triggers": ["OnProjectileHit", "OnLaserHit", "OnTurretFire"],
+            "legacy_item": 32,
+            "params": { "radius_per_stack": 24 }
+        },
+        {
+            "id": "knockback",
+            "triggers": ["OnDealDamage", "OnWeaponFire", "OnTurretFire"],
+            "legacy_item": 33,
+            "params": { "force_per_stack": 2.0 }
+        },
+        {
+            "id": "turret_manual",
+            "triggers": ["OnTurretFire"],
+            "legacy_item": 34,
+            "params": {}
+        },
+        {
+            "id": "turret_cooldown",
+            "triggers": ["OnTurretFire"],
+            "legacy_item": 36,
+            "params": { "cd_per_stack": 2 }
+        },
+        {
+            "id": "barrel_spread",
+            "triggers": ["OnTurretFire"],
+            "legacy_item": 35,
+            "params": { "spread_deg_per_stack": 4 }
+        },
+        {
+            "id": "burn",
+            "triggers": ["OnTakeDamage", "OnTick"],
+            "status": true,
+            "params": { "dot_per_stack": 1, "duration_ticks": 150, "tick_interval": 25 }
+        },
+        {
+            "id": "bleed",
+            "triggers": ["OnTick"],
+            "status": true,
+            "params": { "move_dot_per_stack": 1, "duration_ticks": 200 }
+        },
+        {
+            "id": "shield",
+            "triggers": ["OnTakeDamage"],
+            "status": true,
+            "params": { "absorb_per_stack": 5, "duration_ticks": 300 }
+        },
+        {
+            "id": "haste",
+            "triggers": ["OnReload"],
+            "legacy_item": 45,
+            "params": { "reload_per_stack": 6 }
+        },
+        {
+            "id": "lifesteal",
+            "triggers": ["OnDealDamage"],
+            "legacy_item": 41,
+            "params": { "heal_per_stack": 1 }
+        },
+        {
+            "id": "armor_shred",
+            "triggers": ["OnDealDamage"],
+            "legacy_item": 42,
+            "params": { "armor_per_stack": 1 }
+        },
+        {
+            "id": "chain_lightning",
+            "triggers": ["OnProjectileHit"],
+            "legacy_item": 43,
+            "params": { "chains_per_stack": 1 }
+        },
+        {
+            "id": "mining_luck",
+            "triggers": ["OnMine"],
+            "legacy_item": 44,
+            "params": { "crit_bonus": 5 }
+        },
+        {
+            "id": "burn_on_hit",
+            "triggers": ["OnDealDamage"],
+            "params": { "burn_stacks": 1 }
+        },
+        {
+            "id": "magazine_bonus",
+            "triggers": ["OnWeaponFire"],
+            "legacy_item": 37,
+            "params": { "ammo_bonus_per_stack": 2 }
+        },
+        {
+            "id": "stabilizer",
+            "triggers": ["OnTurretFire"],
+            "legacy_item": 38,
+            "params": { "range_bonus_per_stack": 48 }
+        },
+        {
+            "id": "poison",
+            "triggers": ["OnTakeDamage", "OnTick"],
+            "status": true,
+            "params": { "dot_per_stack": 1, "duration_ticks": 200, "tick_interval": 25 }
+        }
+    ]
+}

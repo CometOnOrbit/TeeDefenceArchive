@@ -18,7 +18,7 @@ class CSpiderBoss;
 
 enum
 {
-	NUM_TD_ZOMB = 13,
+	NUM_TD_ZOMB = 16,
 	TD_MAX_ACTIVE_ZOMBIES = MAX_ZOMBIE_CLIENTS,
 	TD_REMOVE_QUEUE = MAX_CLIENTS,
 	TD_DIFF_EASY = 0,
@@ -217,6 +217,8 @@ public:
 	void TdSetWave(int Wave);
 	void TdSetTowerHealth(int Health);
 	int GetTdDifficulty() const { return m_TdDifficulty; }
+	void TdAddZombiePool(int ZombType, int Count);
+	class CZombieBot *TdGetZombieBot(int ClientID) const { return m_apZombieBots[ClientID]; }
 	float TdDifficultyAiMul() const;
 	bool TdCanChangeDifficulty() const;
 	bool TdSetDifficulty(int Difficulty);

@@ -5,6 +5,12 @@
 #include <generated/server_data.h>
 
 #include "character.h"
+#include <engine/shared/config.h>
+
+#include <game/server/core/components/content/content_types.h>
+#include <game/server/core/components/content/effect_registry.h>
+#include <game/server/core/tworld_controller.h>
+
 #include "laser.h"
 
 CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Damage, bool Explosive, float HitForce, int ElectronStacks, int CardHostItemId) : CChildEntity(pGameWorld, CGameWorld::ENTTYPE_LASER, 0, Pos)
@@ -93,10 +99,24 @@ void CLaser::DoBounce()
 					if(HostItem > 0)
 					{
 						const char *pEx = pOwner->GetExtraForItem(HostItem);
-						const int Exp = pH->GetCard(pEx, ITEM_CARD_EXPLOSION_ID);
+						int Exp = 0;
+						int Fu = 0;
+						if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+						{
+							CEffectContext Ctx = {};
+							Ctx.m_pPlayer = pOwner;
+							Ctx.m_pExtraJson = pEx;
+							GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_LASER_HIT, Ctx);
+							Exp = Ctx.m_ExplosionStacks;
+							Fu = Ctx.m_FusionStacks;
+						}
+						if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+						{
+							Exp = pH->GetCard(pEx, ITEM_CARD_EXPLOSION_ID);
+							Fu = pH->GetCard(pEx, ITEM_CARD_FUSION_ID);
+						}
 						if(Exp > 0)
 						{
-							const int Fu = pH->GetCard(pEx, ITEM_CARD_FUSION_ID);
 							const int BoomDmg = maximum(1, m_Damage * (2 + Fu) / 2);
 							GameWorld()->CreateExplosion(m_Pos, this, WEAPON_LASER, BoomDmg);
 						}

@@ -13,6 +13,7 @@
 #include <engine/shared/protocol.h>
 
 #include <game/commands.h>
+#include <game/server/core/components/quests/quest_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/gamecontext.h>
@@ -202,6 +203,11 @@ static bool MigrateAccountsTable(MYSQL *pSql)
 		if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` ADD COLUMN `Holding` JSON DEFAULT NULL"))
 			return false;
 	}
+	if(!ColumnExists(pSql, "tw_Accounts", "QuestData"))
+	{
+		if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` ADD COLUMN `QuestData` TEXT DEFAULT NULL"))
+			return false;
+	}
 	if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` MODIFY COLUMN `Password` varchar(128) NOT NULL"))
 		return false;
 	if(ColumnExists(pSql, "tw_Accounts", "Sword"))
@@ -363,6 +369,7 @@ CAccountSystem::CAccountSystem()
 	mem_zero(m_aPendingItemsSave, sizeof(m_aPendingItemsSave));
 	mem_zero(m_aPendingAccountSave, sizeof(m_aPendingAccountSave));
 	mem_zero(m_aPendingAuthUser, sizeof(m_aPendingAuthUser));
+	mem_zero(m_aaQuestData, sizeof(m_aaQuestData));
 }
 
 bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pConsole, CConfig *pConfig)
@@ -707,8 +714,35 @@ int CAccountSystem::JobRunner(void *pData)
 	}
 	else if(pSlot->m_Type == JOB_LOGIN_LOAD)
 	{
+		pSlot->m_aQuestData[0] = 0;
 		if(!LoadItemsForUser(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync))
 			pSlot->m_Error = 104;
+		else
+		{
+			char aQuery[256];
+			str_format(aQuery, sizeof(aQuery), "SELECT IFNULL(QuestData,'') FROM tw_Accounts WHERE UserID=%lld LIMIT 1", (long long)pSlot->m_AccountId);
+			if(SqlExec(pSql, aQuery))
+			{
+				MYSQL_RES *pRes = mysql_store_result(pSql);
+				if(pRes)
+				{
+					MYSQL_ROW Row = mysql_fetch_row(pRes);
+					if(Row && Row[0] && Row[0][0])
+						str_copy(pSlot->m_aQuestData, Row[0], sizeof(pSlot->m_aQuestData));
+					mysql_free_result(pRes);
+				}
+			}
+			pSlot->m_Error = 0;
+		}
+	}
+	else if(pSlot->m_Type == JOB_SAVE_QUEST)
+	{
+		char aEsc[8192];
+		mysql_real_escape_string(pSql, aEsc, pSlot->m_aQuestData, str_length(pSlot->m_aQuestData));
+		char aQuery[8704];
+		str_format(aQuery, sizeof(aQuery), "UPDATE tw_Accounts SET QuestData='%s' WHERE UserID=%lld", aEsc, (long long)pSlot->m_AccountId);
+		if(!SqlExec(pSql, aQuery))
+			pSlot->m_Error = 106;
 		else
 			pSlot->m_Error = 0;
 	}
@@ -795,6 +829,8 @@ void CAccountSystem::ApplyLogin(int ClientId, int64 AccountId, const SAccSyncDat
 	pCtx->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
 	pCtx->SendCommunityInfo(ClientId);
 	pCtx->EnterGame(ClientId);
+	if(TWorldController *pCore = pCtx->Core())
+		pCore->OnPlayerLogin(pP);
 	if(SPlayerVote *pV = pCtx->GetPlayerVote(ClientId))
 		pV->m_Page = PAGE_MENU;
 	pCtx->ClearVotes(ClientId);
@@ -906,6 +942,7 @@ void CAccountSystem::PumpCompletedJobs()
 				}
 				else
 				{
+					SetQuestData(ClientId, Slot.m_aQuestData);
 					ApplyLogin(ClientId, Slot.m_AccountId, &Slot.m_Sync);
 				}
 			}
@@ -1026,11 +1063,17 @@ void CAccountSystem::OnClientDisconnect(int ClientId)
 		return;
 	}
 
+	if(m_pGame->Core() && m_pGame->Core()->QuestManager())
+		m_pGame->Core()->QuestManager()->RequestPersist(ClientId);
+	else
+		RequestSaveQuestData(ClientId);
+
 	const int UserId = (int)pP->GetAccountId();
 	SAccSyncData Sync;
 	mem_copy(&Sync, &pP->m_AccData, sizeof(Sync));
 	pP->ClearAccount();
 	StartSaveJob(ClientId, UserId, &Sync);
+	m_aaQuestData[ClientId][0] = 0;
 	ClearSaveThrottle(ClientId);
 }
 
@@ -1042,6 +1085,52 @@ void CAccountSystem::RequestSaveItems(int ClientId)
 void CAccountSystem::RequestSaveAccount(int ClientId)
 {
 	QueueAccountSave(ClientId, false);
+}
+
+bool CAccountSystem::GetQuestData(int ClientId, char *pOut, int OutSize) const
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS || !pOut || OutSize <= 0)
+		return false;
+	str_copy(pOut, m_aaQuestData[ClientId], OutSize);
+	return m_aaQuestData[ClientId][0] != 0;
+}
+
+void CAccountSystem::SetQuestData(int ClientId, const char *pJson)
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return;
+	if(!pJson)
+		m_aaQuestData[ClientId][0] = 0;
+	else
+		str_copy(m_aaQuestData[ClientId], pJson, sizeof(m_aaQuestData[ClientId]));
+}
+
+void CAccountSystem::RequestSaveQuestData(int ClientId)
+{
+	if(!m_Enabled || !m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return;
+	CPlayer *pP = PlayerAt(m_pGame, ClientId);
+	if(!pP || pP->GetAccountId() < 0)
+		return;
+
+	for(int i = FIRST_SAVE_JOB; i < MAX_ACCOUNT_JOBS; i++)
+	{
+		SJob &Slot = m_aJobs[i];
+		if(!JobSlotIdle(Slot))
+			continue;
+
+		mem_zero(&Slot, sizeof(Slot));
+		Slot.m_pSys = this;
+		Slot.m_Submitted = true;
+		Slot.m_Type = JOB_SAVE_QUEST;
+		Slot.m_ClientId = ClientId;
+		Slot.m_AccountId = pP->GetAccountId();
+		str_copy(Slot.m_aQuestData, m_aaQuestData[ClientId], sizeof(Slot.m_aQuestData));
+		Slot.m_Error = -1;
+
+		m_pEngine->AddJob(&Slot.m_Job, JobRunner, &Slot);
+		return;
+	}
 }
 
 void CAccountSystem::ComChatRegister(IConsole::IResult *pResult, void *pUser)

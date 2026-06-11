@@ -8,6 +8,13 @@
 #include <game/server/player.h>
 #include <generated/server_data.h>
 
+#include <engine/shared/config.h>
+
+#include <game/server/core/components/content/content_types.h>
+#include <game/server/core/components/content/effect_registry.h>
+#include <game/server/core/components/content/status_manager.h>
+#include <game/server/core/tworld_controller.h>
+
 #include "character.h"
 /*
 #include "laser.h"
@@ -330,12 +337,24 @@ void CCharacter::HandleWeapons()
 		if(CItemHelper *pH = GameServer()->ItemHelper())
 		{
 			const char *pSx = m_pPlayer->GetExtraForItem(m_pPlayer->GetHolding(ITYPE_SWORD));
-			const int NumCard = pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID);
-			if(NumCard)
+			if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
 			{
-				const int MaxPlace = pH->GetMaxPlace(ITEM_CARD_QUICKLY_LOADING_ID);
-				AmmoRegenTime = 1 + MaxPlace * 500 - NumCard * 500;
-				AmmoRegenTime = clamp(AmmoRegenTime, 0, 1 + MaxPlace * 500);
+				CEffectContext Ctx = {};
+				Ctx.m_pPlayer = m_pPlayer;
+				Ctx.m_pExtraJson = pSx;
+				GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_TICK, Ctx);
+				if(Ctx.m_AmmoRegenTime > 0)
+					AmmoRegenTime = Ctx.m_AmmoRegenTime;
+			}
+			if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+			{
+				const int NumCard = pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID);
+				if(NumCard)
+				{
+					const int MaxPlace = pH->GetMaxPlace(ITEM_CARD_QUICKLY_LOADING_ID);
+					AmmoRegenTime = 1 + MaxPlace * 500 - NumCard * 500;
+					AmmoRegenTime = clamp(AmmoRegenTime, 0, 1 + MaxPlace * 500);
+				}
 			}
 		}
 	}
@@ -532,7 +551,9 @@ void CCharacter::Tick()
 		m_Core.m_Vel = vec2(0.0f, 0.0f);
 	}
 
-	if(m_CardElectronTicks > 0)
+	if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->StatusManager())
+		GameServer()->Core()->StatusManager()->TickCharacter(this);
+	else if(m_CardElectronTicks > 0)
 	{
 		m_Core.m_Vel *= 0.86f;
 		m_CardElectronTicks--;
@@ -714,6 +735,13 @@ bool CCharacter::IncreaseArmor(int Amount)
 	return true;
 }
 
+void CCharacter::ReduceArmor(int Amount)
+{
+	if(Amount <= 0)
+		return;
+	m_Armor = maximum(0, m_Armor - Amount);
+}
+
 void CCharacter::Die(int Killer, int Weapon)
 {
 	if(!m_Alive)
@@ -813,10 +841,23 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 				if(CItemHelper *pH = GameServer()->ItemHelper())
 				{
 					const char *pEx = GameServer()->m_apPlayers[From]->GetExtraForItem(GameServer()->m_apPlayers[From]->GetHolding(ITYPE_SWORD));
-					const int El = pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID);
-					const int Frc = pH->GetCard(pEx, ITEM_CARD_FORCE_ID);
-					if(El > 0)
-						ApplyElectronSlow(El + minimum(El, Frc));
+					if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+					{
+						CEffectContext Ctx = {};
+						Ctx.m_pAttacker = GameServer()->m_apPlayers[From]->GetCharacter();
+						Ctx.m_pVictim = this;
+						Ctx.m_pExtraJson = pEx;
+						Ctx.m_Weapon = Weapon;
+						Ctx.m_Source = Source;
+						GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_TAKE_DAMAGE, Ctx);
+					}
+					if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+					{
+						const int El = pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID);
+						const int Frc = pH->GetCard(pEx, ITEM_CARD_FORCE_ID);
+						if(El > 0)
+							ApplyElectronSlow(El + minimum(El, Frc));
+					}
 				}
 			}
 		}
@@ -837,6 +878,9 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	if(m_pPlayer->GetZomb() == ZOMB_SPIDER_BOSS && From >= 0 && From < MAX_CLIENTS &&
 		GameServer()->m_apPlayers[From] && !GameServer()->m_apPlayers[From]->IsDummy())
 		Dmg *= 4;
+
+	if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->StatusManager())
+		GameServer()->Core()->StatusManager()->AbsorbDamage(this, Dmg);
 
 	int OldHealth = m_Health, OldArmor = m_Armor;
 	if(Dmg)
@@ -862,6 +906,23 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 		}
 
 		m_Health -= Dmg;
+	}
+
+	const int Dealt = (OldHealth - m_Health) + (OldArmor - m_Armor);
+	if(Dealt > 0 && From >= 0 && GameServer()->m_apPlayers[From] && !GameServer()->m_apPlayers[From]->IsDummy())
+	{
+		if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+		{
+			CEffectContext Ctx = {};
+			Ctx.m_pAttacker = GameServer()->m_apPlayers[From]->GetCharacter();
+			Ctx.m_pVictim = this;
+			Ctx.m_pPlayer = GameServer()->m_apPlayers[From];
+			Ctx.m_pExtraJson = GameServer()->m_apPlayers[From]->GetExtraForItem(GameServer()->m_apPlayers[From]->GetHolding(ITYPE_SWORD));
+			Ctx.m_Weapon = Weapon;
+			Ctx.m_Source = Source;
+			Ctx.m_InDamage = Dealt;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_DEAL_DAMAGE, Ctx);
+		}
 	}
 
 	// create healthmod indicator

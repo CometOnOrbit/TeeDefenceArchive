@@ -1,0 +1,9 @@
+{
+    "effects": "server_content/effects.json",
+    "skills": "server_content/skills.json",
+    "traits": "server_content/traits.json",
+    "enemies": "server_content/enemies.json",
+    "portals": "server_content/portals.json",
+    "quests": "server_content/quests.json",
+    "npcs": "server_content/npcs.json"
+}

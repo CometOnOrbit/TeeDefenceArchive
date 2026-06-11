@@ -6,6 +6,7 @@
                 "id": 27,
                 "name": "Card: Quickly-Fire",
                 "desc": "Haste makes apple.(Reload Timer)",
+                "effects": ["reload_haste"],
                 "capacity": 10,
                 "placeable": [0, 1, 2, 3],
                 "max": 0,
@@ -20,6 +21,7 @@
                 "id": 28,
                 "name": "Card: Quickly-Loading",
                 "desc": "Haste makes apple.(Ammo Regen)",
+                "effects": ["ammo_regen"],
                 "capacity": 10,
                 "placeable": [0, 1, 2, 3],
                 "max": 0,
@@ -34,6 +36,7 @@
                 "id": 29,
                 "name": "Card: Damage",
                 "desc": "Oh, that hurt!",
+                "effects": ["damage_bonus"],
                 "capacity": 10,
                 "placeable": [0, 1, 2, 3],
                 "max": 0,
@@ -48,6 +51,7 @@
                 "id": 30,
                 "name": "Card: Explosion",
                 "desc": "BOOM!",
+                "effects": ["explosive"],
                 "capacity": 15,
                 "max_place": 2,
                 "placeable": [2, 3],
@@ -63,6 +67,7 @@
                 "id": 31,
                 "name": "Card: Electron",
                 "desc": "Numb.",
+                "effects": ["electron_chain", "electron_slow"],
                 "capacity": 30,
                 "placeable": [2, 3],
                 "max": 0,
@@ -79,6 +84,7 @@
                 "id": 32,
                 "name": "Card: Fusion",
                 "desc": "World War III",
+                "effects": ["fusion_bloom"],
                 "capacity": 55,
                 "placeable": [2, 3],
                 "max": 0,
@@ -96,6 +102,7 @@
                 "id": 33,
                 "name": "Card: Force",
                 "desc": "Fly away.",
+                "effects": ["knockback"],
                 "capacity": 10,
                 "placeable": [2, 3],
                 "max": 0,
@@ -109,6 +116,7 @@
                 "id": 34,
                 "name": "Card: Manual Control",
                 "desc": "Be your own.",
+                "effects": ["turret_manual"],
                 "capacity": 0,
                 "placeable": [3],
                 "max": 0,
@@ -122,6 +130,80 @@
                     "Diamond": 10,
                     "Enegry": 5,
                     "Zombie's Heart": 1000
+                }
+            },
+            {
+                "id": 41,
+                "name": "Card: Lifesteal",
+                "desc": "Heal on hit",
+                "capacity": 20,
+                "placeable": [2],
+                "max": 0,
+                "max_place": 3,
+                "effects": ["lifesteal"],
+                "formula": {
+                    "Log": 200,
+                    "Zombie's Heart": 80,
+                    "Void Shard": 2
+                }
+            },
+            {
+                "id": 42,
+                "name": "Card: Armor Shred",
+                "desc": "Strip enemy armor",
+                "capacity": 15,
+                "placeable": [2],
+                "max": 0,
+                "max_place": 2,
+                "effects": ["armor_shred"],
+                "formula": {
+                    "Iron": 100,
+                    "Titanium": 10
+                }
+            },
+            {
+                "id": 43,
+                "name": "Card: Chain Lightning",
+                "desc": "Extra lightning chains",
+                "capacity": 25,
+                "placeable": [2, 3],
+                "max": 0,
+                "max_place": 2,
+                "effects": ["chain_lightning", "electron_chain"],
+                "formula": {
+                    "Copper": 300,
+                    "Coal": 200,
+                    "Enegry": 5
+                }
+            },
+            {
+                "id": 44,
+                "name": "Card: Mining Luck",
+                "desc": "Better mining crit chance",
+                "capacity": 10,
+                "placeable": [0, 1],
+                "max": 0,
+                "max_place": 3,
+                "effects": ["mining_luck"],
+                "proba": 15,
+                "formula": {
+                    "Log": 300,
+                    "Golden": 50
+                }
+            },
+            {
+                "id": 45,
+                "name": "Card: Haste",
+                "desc": "General attack speed (lighter than Quickly-Fire)",
+                "capacity": 8,
+                "placeable": [0, 1, 2, 3],
+                "max": 0,
+                "max_place": 4,
+                "effects": ["haste"],
+                "formula": {
+                    "Log": 100,
+                    "Iron": 30,
+                    "Titanium": 3
                 }
             }
         ]

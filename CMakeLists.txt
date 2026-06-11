@@ -398,6 +398,7 @@ set(DEP_JSON $<TARGET_OBJECTS:json>)
 set(EXPECTED_DATA
   maps/Mine-Craft.map
   maps/TDef-City.map
+  maps/TDef-Dream.map
   maps/TDef-Deeply.map
   maps/TDef-Shwar.map
   maps/TDef-Zero.map
@@ -420,6 +421,11 @@ foreach(datafile ${DATA})
   file(COPY ${datafile} DESTINATION ${DESTINATION})
 endforeach()
 file(COPY ${PROJECT_SOURCE_DIR}/storage.cfg DESTINATION ${PROJECT_BINARY_DIR})
+file(COPY ${PROJECT_SOURCE_DIR}/server_content DESTINATION ${PROJECT_BINARY_DIR})
+file(COPY ${PROJECT_SOURCE_DIR}/server_items DESTINATION ${PROJECT_BINARY_DIR})
+file(COPY ${PROJECT_SOURCE_DIR}/server_lang DESTINATION ${PROJECT_BINARY_DIR})
+# Storage searches $DATADIR (data/) before $CURRENTDIR — keep both in sync.
+file(COPY ${PROJECT_SOURCE_DIR}/server_lang DESTINATION ${PROJECT_BINARY_DIR}/data)
 
 ########################################################################
 # CODE GENERATION
@@ -658,6 +664,20 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   botengine.h
   core/components/accounts/account_manager.cpp
   core/components/accounts/account_manager.h
+  core/components/skills/skill_data.cpp
+  core/components/skills/skill_data.h
+  core/components/skills/skill_manager.cpp
+  core/components/skills/skill_manager.h
+  core/components/content/content_types.cpp
+  core/components/content/content_types.h
+  core/components/content/effect_registry.cpp
+  core/components/content/effect_registry.h
+  core/components/content/enemy_registry.cpp
+  core/components/content/enemy_registry.h
+  core/components/content/status_manager.cpp
+  core/components/content/status_manager.h
+  core/components/content/trait_manager.cpp
+  core/components/content/trait_manager.h
   core/components/craft/craft_manager.cpp
   core/components/craft/craft_manager.h
   core/components/vote/vote_menu_manager.cpp
@@ -695,8 +715,14 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   core/components/bots/defence_bot_manager.h
   core/components/localization/localization_manager.cpp
   core/components/localization/localization_manager.h
+  core/components/worlds/portal_manager.cpp
+  core/components/worlds/portal_manager.h
   core/components/worlds/world_manager.cpp
   core/components/worlds/world_manager.h
+  core/components/npcs/npc_manager.cpp
+  core/components/npcs/npc_manager.h
+  core/components/quests/quest_manager.cpp
+  core/components/quests/quest_manager.h
   core/tworld_component.h
   core/tworld_controller.cpp
   core/tworld_controller.h
@@ -725,6 +751,8 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   worldmodes/defence.h
   worldmodes/hub.cpp
   worldmodes/hub.h
+  worldmodes/story.cpp
+  worldmodes/story.h
   worldmodes/pvp.cpp
   worldmodes/pvp.h
 )

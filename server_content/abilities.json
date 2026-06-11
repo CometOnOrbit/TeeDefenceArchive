@@ -1,0 +1,22 @@
+{
+    "abilities": [
+        {
+            "id": "dash",
+            "cooldown_ticks": 150,
+            "cost_mp": 0,
+            "params": { "distance": 160 }
+        },
+        {
+            "id": "heal_pulse",
+            "cooldown_ticks": 450,
+            "cost_mp": 0,
+            "params": { "radius": 200, "heal": 3 }
+        },
+        {
+            "id": "tower_repair_aura",
+            "cooldown_ticks": 600,
+            "cost_mp": 0,
+            "params": { "radius": 320, "repair": 15 }
+        }
+    ]
+}

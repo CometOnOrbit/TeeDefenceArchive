@@ -360,6 +360,8 @@ int CServer::Init()
 		m_aClients[i].m_HasChangeWorldSession = false;
 		m_aClients[i].m_ChangeWorldAccountId = -1;
 		m_aClients[i].m_ChangeWorldSessionSize = 0;
+		m_aClients[i].m_HasChangeWorldSpawnPos = false;
+		m_aClients[i].m_ChangeWorldSpawnPos = vec2(0, 0);
 		m_aClients[i].m_Snapshots.Init();
 	}
 
@@ -440,6 +442,23 @@ bool CServer::GetChangeWorldWasReady(int ClientID) const
 	return m_aClients[ClientID].m_ChangeWorldWasReady;
 }
 
+void CServer::SetChangeWorldSpawnPos(int ClientID, vec2 Pos)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+	m_aClients[ClientID].m_HasChangeWorldSpawnPos = true;
+	m_aClients[ClientID].m_ChangeWorldSpawnPos = Pos;
+}
+
+bool CServer::ConsumeChangeWorldSpawnPos(int ClientID, vec2 *pPos)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || !pPos || !m_aClients[ClientID].m_HasChangeWorldSpawnPos)
+		return false;
+	*pPos = m_aClients[ClientID].m_ChangeWorldSpawnPos;
+	m_aClients[ClientID].m_HasChangeWorldSpawnPos = false;
+	return true;
+}
+
 bool CServer::PopChangeWorldSession(int ClientID, int64 *pAccountId, void *pData, int *pSize)
 {
 	if(ClientID < 0 || ClientID >= MAX_CLIENTS || !m_aClients[ClientID].m_HasChangeWorldSession)
@@ -488,6 +507,25 @@ int CServer::GetNumWorlds() const
 const char *CServer::GetWorldName(int WorldID) const
 {
 	return m_pMultiWorlds ? m_pMultiWorlds->GetWorldName(WorldID) : "";
+}
+
+const char *CServer::GetWorldMapPath(int WorldID) const
+{
+	if(m_pMultiWorlds)
+	{
+		CWorld *pWorld = m_pMultiWorlds->GetWorld(WorldID);
+		if(pWorld && pWorld->GetPath()[0])
+			return pWorld->GetPath();
+	}
+	if(!m_pConfig)
+		return "";
+	const char *pMapShortName = m_pConfig->m_SvMap;
+	for(int i = 0; m_pConfig->m_SvMap[i] && m_pConfig->m_SvMap[i + 1]; i++)
+	{
+		if(m_pConfig->m_SvMap[i] == '/' || m_pConfig->m_SvMap[i] == '\\')
+			pMapShortName = &m_pConfig->m_SvMap[i + 1];
+	}
+	return pMapShortName;
 }
 
 const CWorldDetail *CServer::GetWorldDetail(int WorldID) const
@@ -981,7 +1019,7 @@ void CServer::SendMap(int ClientID)
 	CMapDetail *pMapDetail = m_pMultiWorlds->GetWorld(WorldID)->MapDetail();
 
 	CMsgPacker Msg(NETMSG_MAP_CHANGE, true);
-	Msg.AddString(m_pMultiWorlds->GetWorld(WorldID)->GetName(), 0);
+	Msg.AddString(m_pMultiWorlds->GetWorld(WorldID)->GetPath(), 0);
 	Msg.AddInt((int)pMapDetail->GetCrc());
 	Msg.AddInt((int)pMapDetail->GetSize());
 	Msg.AddInt(m_MapChunksPerRequest);
@@ -1625,16 +1663,31 @@ void CServer::PumpNetwork()
 	m_Econ.Update();
 }
 
-const char *CServer::GetMapName()
+const char *CServer::GetMapName() const
 {
-	// get the name of the map without his path
-	char *pMapShortName = &Config()->m_SvMap[0];
-	for(int i = 0; i < str_length(Config()->m_SvMap) - 1; i++)
+	if(m_pMultiWorlds && m_pMultiWorlds->IsValid(m_pConfig->m_SvShowWorldWhenConnect))
+		return m_pMultiWorlds->GetWorld(m_pConfig->m_SvShowWorldWhenConnect)->GetPath();
+
+	if(!m_pConfig)
+		return "";
+	const char *pMapShortName = m_pConfig->m_SvMap;
+	for(int i = 0; m_pConfig->m_SvMap[i] && m_pConfig->m_SvMap[i + 1]; i++)
 	{
-		if(Config()->m_SvMap[i] == '/' || Config()->m_SvMap[i] == '\\')
-			pMapShortName = &Config()->m_SvMap[i + 1];
+		if(m_pConfig->m_SvMap[i] == '/' || m_pConfig->m_SvMap[i] == '\\')
+			pMapShortName = &m_pConfig->m_SvMap[i + 1];
 	}
 	return pMapShortName;
+}
+
+void CServer::SyncSvMapWithConnectWorld()
+{
+	if(!m_pMultiWorlds || !m_pMultiWorlds->IsValid(Config()->m_SvShowWorldWhenConnect))
+		return;
+	const char *pPath = m_pMultiWorlds->GetWorld(Config()->m_SvShowWorldWhenConnect)->GetPath();
+	if(!pPath[0] || str_comp(Config()->m_SvMap, pPath) == 0)
+		return;
+	str_copy(Config()->m_SvMap, pPath, sizeof(Config()->m_SvMap));
+	m_MapReload = str_comp(Config()->m_SvMap, m_aCurrentMap) != 0;
 }
 
 void CServer::ChangeMap(const char *pMap)
@@ -1737,6 +1790,7 @@ int CServer::Run()
 		Free();
 		return -1;
 	}
+	SyncSvMapWithConnectWorld();
 	m_MapChunksPerRequest = Config()->m_SvMapDownloadSpeed;
 
 	// start server

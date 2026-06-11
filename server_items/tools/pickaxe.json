@@ -79,6 +79,21 @@
                     "Diamond": 35,
                     "Enegry": 10
                 }
+            },
+            {
+                "id": 49,
+                "name": "Fortune Pickaxe",
+                "desc": "Energy pickaxe with mining luck",
+                "damage": 28000,
+                "proba": 25,
+                "capacity": 80,
+                "max": 0,
+                "effects": ["mining_luck"],
+                "formula": {
+                    "Enegry Pickaxe": 1,
+                    "Golden": 100,
+                    "Void Shard": 3
+                }
             }
         ]
     }

@@ -9,6 +9,12 @@
 #include "character.h"
 #include "growingexplosion.h"
 #include "lightning.h"
+#include <engine/shared/config.h>
+
+#include <game/server/core/components/content/content_types.h>
+#include <game/server/core/components/content/effect_registry.h>
+#include <game/server/core/tworld_controller.h>
+
 #include "projectile.h"
 
 CProjectile::CProjectile(CGameWorld *pGameWorld, int Type, int Owner, vec2 Pos, vec2 Dir, int Span,
@@ -85,7 +91,18 @@ void CProjectile::Tick()
 	{
 		CItemHelper *pH = GameServer()->ItemHelper();
 		const char *pEx = pOwnerChar->GetPlayer()->GetExtraForItem(pOwnerChar->GetPlayer()->GetHolding(ITYPE_SWORD));
-		if(pH && pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID) > 0)
+		int ElectronCheck = 0;
+		if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+		{
+			CEffectContext Ctx = {};
+			Ctx.m_pPlayer = pOwnerChar->GetPlayer();
+			Ctx.m_pExtraJson = pEx;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_PROJECTILE_HIT, Ctx);
+			ElectronCheck = Ctx.m_ElectronStacks;
+		}
+		if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+			ElectronCheck = pH ? pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID) : 0;
+		if(pH && ElectronCheck > 0)
 		{
 			const int LightningDmg = maximum(1, m_Damage / 2);
 			vec2 FlyDir = CurPos - PrevPos;
@@ -118,14 +135,29 @@ void CProjectile::Tick()
 		int FusionStacks = 0;
 		bool ExplosionCard = false;
 		int ElectronStacks = 0;
+		int ChainLightningStacks = 0;
 		if(pOwnerChar && pOwnerChar->GetPlayer())
 		{
 			if(CItemHelper *pH = GameServer()->ItemHelper())
 			{
 				const char *pEx = pOwnerChar->GetPlayer()->GetExtraForItem(pOwnerChar->GetPlayer()->GetHolding(ITYPE_SWORD));
-				FusionStacks = pH->GetCard(pEx, ITEM_CARD_FUSION_ID);
-				ExplosionCard = pH->GetCard(pEx, ITEM_CARD_EXPLOSION_ID) > 0;
-				ElectronStacks = pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID);
+				if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+				{
+					CEffectContext Ctx = {};
+					Ctx.m_pPlayer = pOwnerChar->GetPlayer();
+					Ctx.m_pExtraJson = pEx;
+					GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_PROJECTILE_HIT, Ctx);
+					FusionStacks = Ctx.m_FusionStacks;
+					ExplosionCard = (Ctx.m_Flags & EFFECT_FLAG_EXPLOSIVE) != 0;
+					ElectronStacks = Ctx.m_ElectronStacks;
+					ChainLightningStacks = Ctx.m_ChainLightningStacks;
+				}
+				if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+				{
+					FusionStacks = pH->GetCard(pEx, ITEM_CARD_FUSION_ID);
+					ExplosionCard = pH->GetCard(pEx, ITEM_CARD_EXPLOSION_ID) > 0;
+					ElectronStacks = pH->GetCard(pEx, ITEM_CARD_ELECTRON_ID);
+				}
 			}
 		}
 
@@ -146,6 +178,18 @@ void CProjectile::Tick()
 		else if(pTargetEnt)
 		{
 			pTargetEnt->TakeHit(m_Direction * maximum(0.001f, m_Force), m_Direction * -1, m_Damage, this, m_Weapon);
+			if(ChainLightningStacks > 0)
+			{
+				const int LightningDmg = maximum(1, m_Damage / 2);
+				const float Spreading[] = {-0.185f, -0.130f, -0.050f, 0.050f, 0.130f, 0.185f};
+				float a = angle(m_Direction);
+				const int NumBolts = minimum(ChainLightningStacks, 5);
+				for(int i = 0; i < NumBolts; i++)
+				{
+					float SpreadA = a + Spreading[i + 1];
+					new CLightning(GameWorld(), CurPos, vec2(cosf(SpreadA), sinf(SpreadA)), 200.f, 100.f, m_Owner, LightningDmg);
+				}
+			}
 			if(pTargetEnt->ObjType() == CGameWorld::ENTTYPE_CHARACTER && pOwnerChar && pOwnerChar->GetPlayer() &&
 				pOwnerChar->GetPlayer()->GetZomb() == ZOMB_SPIDER_BOSS && m_Weapon == WEAPON_SHOTGUN)
 			{
