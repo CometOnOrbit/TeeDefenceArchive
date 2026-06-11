@@ -42,6 +42,7 @@ struct SQuestDef
 	char m_aaUnlocks[MAX_QUEST_UNLOCKS][QUEST_KEY_LEN];
 	int m_RewardItem;
 	int m_RewardNum;
+	char m_aNextQuest[QUEST_KEY_LEN];
 };
 
 struct SPlayerQuestState

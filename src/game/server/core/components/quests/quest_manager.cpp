@@ -110,6 +110,9 @@ void CQuestManager::LoadQuests()
 					Def.m_RewardNum = (int)Items[0]["num"].u.integer;
 			}
 		}
+
+		if(Q["next_quest"].type == json_string)
+			str_copy(Def.m_aNextQuest, Q["next_quest"].u.string.ptr, sizeof(Def.m_aNextQuest));
 	}
 	dbg_msg("quest", "loaded %d quests", m_NumQuests);
 }
@@ -460,14 +463,8 @@ void CQuestManager::CompleteQuest(CPlayer *pPlayer, int QuestIdx)
 
 	GS()->SendChatLocF(CID, "quest.complete", u8"任务完成：%s", GS()->Loc(CID, Def.m_aTitleKey, Def.m_aId));
 
-	if(str_comp(Def.m_aId, "ch1_awakening") == 0)
-		ActivateQuest(pPlayer, "ch1_mirrors");
-	else if(str_comp(Def.m_aId, "ch1_mirrors") == 0)
-		ActivateQuest(pPlayer, "ch1_hearts");
-	else if(str_comp(Def.m_aId, "ch1_hearts") == 0)
-		ActivateQuest(pPlayer, "ch1_gate_td");
-	else if(str_comp(Def.m_aId, "ch1_gate_td") == 0)
-		ActivateQuest(pPlayer, "ch1_return");
+	if(Def.m_aNextQuest[0])
+		ActivateQuest(pPlayer, Def.m_aNextQuest);
 
 	RequestPersist(CID);
 
