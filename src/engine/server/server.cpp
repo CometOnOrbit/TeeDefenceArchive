@@ -1838,6 +1838,9 @@ int CServer::Run()
 	// process pending commands
 	m_pConsole->StoreCommands(false);
 
+	// ECON cfg uses CFGFLAG_ECON; apply after the command queue is flushed at server start
+	Console()->ExecuteFile("econ.cfg");
+
 	if(m_GeneratedRconPassword)
 	{
 		dbg_msg("server", "+-------------------------+");
