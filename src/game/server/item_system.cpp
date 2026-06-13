@@ -371,21 +371,26 @@ int CItemHelper::GetCapacityFromExtra(const char *pExtraJson) const
 	const json_value &Ex = (*pRoot)["Extra"];
 	if(Ex.type != json_object)
 		return 0;
-	const json_value &Cards = Ex["Cards"];
-	if(Cards.type != json_array)
-		return 0;
 
 	int Sum = 0;
-	for(unsigned i = 0; i < Cards.u.array.length; i++)
+	// Sum capacity of both Cards and Parts
+	for(int s = 0; s < 2; s++)
 	{
-		const json_value &El = Cards[(int)i];
-		if(El.type != json_object)
+		const char *apKeys[2] = {"Cards", "Parts"};
+		const json_value &Arr = Ex[apKeys[s]];
+		if(Arr.type != json_array)
 			continue;
-		if(El["id"].type != json_integer || El["num"].type != json_integer)
-			continue;
-		const int Id = (int)El["id"].u.integer;
-		const int Num = (int)El["num"].u.integer;
-		Sum += GetMaxCapacity(Id) * Num;
+		for(unsigned i = 0; i < Arr.u.array.length; i++)
+		{
+			const json_value &El = Arr[(int)i];
+			if(El.type != json_object)
+				continue;
+			if(El["id"].type != json_integer || El["num"].type != json_integer)
+				continue;
+			const int Id = (int)El["id"].u.integer;
+			const int Num = (int)El["num"].u.integer;
+			Sum += GetMaxCapacity(Id) * Num;
+		}
 	}
 	return Sum;
 }

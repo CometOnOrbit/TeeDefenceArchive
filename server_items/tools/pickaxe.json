@@ -86,7 +86,7 @@
                 "desc": "Energy pickaxe with mining luck",
                 "damage": 28000,
                 "proba": 25,
-                "capacity": 80,
+                "capacity": 120,
                 "max": 0,
                 "effects": ["mining_luck"],
                 "formula": {

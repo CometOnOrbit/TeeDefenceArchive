@@ -16,6 +16,7 @@
 #include "entities/lightning.h"
 #include "entities/pickup.h"
 #include "entities/projectile.h"
+#include "entities/turret.h"
 #include "account.h"
 #include "core/components/accounts/account_manager.h"
 #include "core/components/bots/defence_bot_manager.h"
@@ -1351,8 +1352,45 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 				CEntity *pHitEnt = lpEnts[i];
 				if(pHitEnt->ObjType() == CGameWorld::ENTTYPE_TOWERMAIN || pHitEnt->ObjType() == CGameWorld::ENTTYPE_TURRET)
 				{
-					if(!pChr->GetPlayer()->IsDummy() && pChr->GetPlayer()->GetTeam() != TEAM_BLUE)
+					const bool IsZombie = pChr->GetPlayer()->IsDummy() || pChr->GetPlayer()->GetTeam() == TEAM_BLUE;
+					if(!IsZombie)
+					{
+						// Human defender hammering turrets: recall or repair own turret
+						if(pHitEnt->ObjType() != CGameWorld::ENTTYPE_TURRET)
+							continue;
+						CTurret *pHammerTurret = static_cast<CTurret *>(pHitEnt);
+						if(pHammerTurret->GetOwner() != ClientID)
+							continue;
+						if(GameServer()->Collision()->IntersectLine(ProjStartPos, pHammerTurret->GetPos(), NULL, NULL))
+							continue;
+
+						if(distance(pHammerTurret->GetPos(), ProjStartPos) > 0.0f)
+							GameServer()->m_World.CreateHammerHit(pHammerTurret->GetPos() - normalize(pHammerTurret->GetPos() - ProjStartPos) * pChr->GetProximityRadius() * 0.5f);
+						else
+							GameServer()->m_World.CreateHammerHit(ProjStartPos);
+
+						if(pHammerTurret->IsBroken())
+						{
+							if(pPl->RepairDeployedTurret())
+							{
+								GameServer()->SendChatLoc(ClientID, "turret.hammer_repair.ok", u8"炮塔已修复。");
+								if(GameServer()->Accounts())
+									GameServer()->Accounts()->RequestSaveAccount(ClientID);
+							}
+							else
+							{
+								GameServer()->SendChatLoc(ClientID, "turret.hammer_repair.fail", u8"修复失败（材料不足或距离太远）。");
+							}
+						}
+						else
+						{
+							pPl->RecallTurret();
+							GameServer()->SendChatLoc(ClientID, "turret.hammer_recall.ok", u8"炮塔已收回。");
+						}
+						GameServer()->m_World.CreateSound(pChr->GetPos(), SOUND_PICKUP_ARMOR);
+						Hits++;
 						continue;
+					}
 
 					CHitableEntity *pStructure = static_cast<CHitableEntity *>(pHitEnt);
 					if(GameServer()->Collision()->IntersectLine(ProjStartPos, pStructure->GetPos(), NULL, NULL))

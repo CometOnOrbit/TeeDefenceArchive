@@ -456,6 +456,8 @@ void CPlayer::SnapPlayerInfoOnly(int SnappingClient, CGameContext *pSnappingCtx)
 		pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_ADMIN;
 	if(m_IsReadyToPlay)
 		pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_READY;
+	// Cross-world players are always shown as dead/spectator
+	pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_DEAD;
 	if(m_RespawnDisabled && (!GetCharacter() || !GetCharacter()->IsAlive()))
 		pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_DEAD;
 	if(SnappingClient != -1 && (m_Team == TEAM_SPECTATORS || m_DeadSpecMode) && (SnappingClient == m_SpectatorID))

@@ -46,6 +46,7 @@ struct SEffectParams
 	int m_MineCdPerStack;
 	int m_TurretCdPerStack;
 	int m_DamagePerStack;
+	int m_MineDmgPctPerStack;
 	int m_RegenPerStack;
 	int m_ForcePerStack;
 	int m_RadiusBase;

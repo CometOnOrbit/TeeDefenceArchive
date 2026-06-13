@@ -73,7 +73,7 @@
                 "desc": "Elemental sword that ignites targets",
                 "damage": 35,
                 "proba": 95,
-                "capacity": 40,
+                "capacity": 80,
                 "max": 0,
                 "effect": "burn_on_hit",
                 "formula": {

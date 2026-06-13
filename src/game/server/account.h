@@ -56,11 +56,13 @@ class CAccountSystem
 		int64 m_AccountId;
 		SAccSyncData m_Sync;
 		char m_aQuestData[4096];
+		char m_aSkillBinds[4096];
 		int m_Error;
 	};
 
 	SJob m_aJobs[MAX_ACCOUNT_JOBS];
 	char m_aaQuestData[MAX_CLIENTS][4096];
+	char m_aaSkillBinds[MAX_CLIENTS][4096];
 	int m_aNextItemsSaveTick[MAX_CLIENTS];
 	int m_aNextAccountSaveTick[MAX_CLIENTS];
 	bool m_aPendingItemsSave[MAX_CLIENTS];
@@ -106,6 +108,8 @@ public:
 	void RequestSaveQuestData(int ClientId);
 	bool GetQuestData(int ClientId, char *pOut, int OutSize) const;
 	void SetQuestData(int ClientId, const char *pJson);
+	const char *GetSkillBinds(int ClientId) const;
+	void SetSkillBinds(int ClientId, const char *pJson);
 
 	void RegisterChatCommands(CCommandManager *pManager, CGameContext *pGame);
 	void RegisterConsoleCommands(IConsole *pConsole, CGameContext *pGame);

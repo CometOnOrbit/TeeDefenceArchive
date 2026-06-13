@@ -37,12 +37,16 @@ public:
 	bool Use(CPlayer *pPlayer, int SkillId);
 	bool Learn(CPlayer *pPlayer, int SkillId);
 	void CycleEmoticonBind(CPlayer *pPlayer, int SkillId);
+	int GetEmoticonBindForClient(int ClientID, int SkillIdx) const;
+	void SetEmoticonBindForClient(int ClientID, int SkillIdx, int Bind);
+	void RestoreSkillBinds(CPlayer *pPlayer);
 
 private:
 	void LoadSkills();
 	void ResetClientSkills(int ClientID);
 	void AutoLearnForPlayer(CPlayer *pPlayer);
 	bool ExecuteSkill(CPlayer *pPlayer, const SSkillDescription &Def);
+	void SerializeSkillBindsForSave(int ClientID, char *pOut, int OutLen) const;
 };
 
 #endif

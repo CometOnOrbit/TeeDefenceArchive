@@ -54,6 +54,7 @@ void CEffectRegistry::ParseEffectParams(const json_value &Params, SEffectParams 
 	if(Params["cd_per_stack"].type == json_integer)
 		Out.m_TurretCdPerStack = (int)Params["cd_per_stack"].u.integer;
 	PARSE_INT(m_DamagePerStack, "damage_per_stack");
+	PARSE_INT(m_MineDmgPctPerStack, "mine_dmg_pct_per_stack");
 	PARSE_INT(m_RegenPerStack, "regen_per_stack");
 	PARSE_INT(m_ForcePerStack, "force_per_stack");
 	PARSE_INT(m_RadiusBase, "radius_base");
@@ -201,6 +202,8 @@ void CEffectRegistry::ApplyOne(const SEffectDef &Def, int Stacks, EEffectTrigger
 	{
 		if(Trigger == TRIGGER_RELOAD)
 			Ctx.m_OutReloadDelta += P.m_ReloadPerStack * Stacks;
+		else if(Trigger == TRIGGER_MINE)
+			Ctx.m_OutMineCd += P.m_MineCdPerStack * Stacks;
 	}
 	else if(str_comp(Def.m_aId, "ammo_regen") == 0 && Trigger == TRIGGER_TICK)
 	{
@@ -213,9 +216,17 @@ void CEffectRegistry::ApplyOne(const SEffectDef &Def, int Stacks, EEffectTrigger
 	}
 	else if(str_comp(Def.m_aId, "damage_bonus") == 0)
 	{
-		const int Bonus = P.m_DamagePerStack * Stacks;
-		if(Trigger == TRIGGER_WEAPON_FIRE || Trigger == TRIGGER_TURRET_FIRE || Trigger == TRIGGER_MINE)
+		if(Trigger == TRIGGER_MINE && P.m_MineDmgPctPerStack > 0)
+		{
+			const int Bonus = (Ctx.m_InDamage * P.m_MineDmgPctPerStack * Stacks) / 100;
 			Ctx.m_OutDamage += Bonus;
+		}
+		else
+		{
+			const int Bonus = P.m_DamagePerStack * Stacks;
+			if(Trigger == TRIGGER_WEAPON_FIRE || Trigger == TRIGGER_TURRET_FIRE || Trigger == TRIGGER_MINE)
+				Ctx.m_OutDamage += Bonus;
+		}
 	}
 	else if(str_comp(Def.m_aId, "explosive") == 0)
 	{

@@ -16,7 +16,7 @@
             "id": "damage_bonus",
             "triggers": ["OnWeaponFire", "OnMine", "OnTurretFire"],
             "legacy_item": 29,
-            "params": { "damage_per_stack": 2 }
+            "params": { "damage_per_stack": 2, "mine_dmg_pct_per_stack": 25 }
         },
         {
             "id": "explosive",
@@ -87,9 +87,9 @@
         },
         {
             "id": "haste",
-            "triggers": ["OnReload"],
+            "triggers": ["OnReload", "OnMine"],
             "legacy_item": 45,
-            "params": { "reload_per_stack": 6 }
+            "params": { "reload_per_stack": 6, "mine_cd_per_stack": 2 }
         },
         {
             "id": "lifesteal",

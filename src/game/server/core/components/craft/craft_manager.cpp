@@ -363,6 +363,7 @@ static void ComVoteRecallTurret(IConsole::IResult *pResult, void *pUser)
 	{
 		if(pV)
 			str_copy(pV->m_aExtraText, pGame->Loc(pCtx->m_ClientID, "err.account.disabled", u8"未启用账号。"), sizeof(pV->m_aExtraText));
+		pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
 		return;
 	}
 

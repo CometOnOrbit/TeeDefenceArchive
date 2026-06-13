@@ -16,6 +16,7 @@
 #include <game/server/core/components/quests/quest_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/tworld_controller.h>
+#include <game/server/core/components/skills/skill_manager.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
 
@@ -206,6 +207,11 @@ static bool MigrateAccountsTable(MYSQL *pSql)
 	if(!ColumnExists(pSql, "tw_Accounts", "QuestData"))
 	{
 		if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` ADD COLUMN `QuestData` TEXT DEFAULT NULL"))
+			return false;
+	}
+	if(!ColumnExists(pSql, "tw_Accounts", "SkillBinds"))
+	{
+		if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` ADD COLUMN `SkillBinds` TEXT DEFAULT NULL"))
 			return false;
 	}
 	if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` MODIFY COLUMN `Password` varchar(128) NOT NULL"))
@@ -530,6 +536,7 @@ bool CAccountSystem::StartSaveJob(int ClientId, int UserId, const SAccSyncData *
 		Slot.m_ClientId = ClientId;
 		Slot.m_AccountId = UserId;
 		mem_copy(&Slot.m_Sync, pSync, sizeof(Slot.m_Sync));
+		str_copy(Slot.m_aSkillBinds, m_aaSkillBinds[ClientId], sizeof(Slot.m_aSkillBinds));
 		Slot.m_Error = -1;
 
 		m_pEngine->AddJob(&Slot.m_Job, JobRunner, &Slot);
@@ -715,12 +722,13 @@ int CAccountSystem::JobRunner(void *pData)
 	else if(pSlot->m_Type == JOB_LOGIN_LOAD)
 	{
 		pSlot->m_aQuestData[0] = 0;
+		pSlot->m_aSkillBinds[0] = 0;
 		if(!LoadItemsForUser(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync))
 			pSlot->m_Error = 104;
 		else
 		{
 			char aQuery[256];
-			str_format(aQuery, sizeof(aQuery), "SELECT IFNULL(QuestData,'') FROM tw_Accounts WHERE UserID=%lld LIMIT 1", (long long)pSlot->m_AccountId);
+			str_format(aQuery, sizeof(aQuery), "SELECT IFNULL(QuestData,''),IFNULL(SkillBinds,'') FROM tw_Accounts WHERE UserID=%lld LIMIT 1", (long long)pSlot->m_AccountId);
 			if(SqlExec(pSql, aQuery))
 			{
 				MYSQL_RES *pRes = mysql_store_result(pSql);
@@ -729,6 +737,8 @@ int CAccountSystem::JobRunner(void *pData)
 					MYSQL_ROW Row = mysql_fetch_row(pRes);
 					if(Row && Row[0] && Row[0][0])
 						str_copy(pSlot->m_aQuestData, Row[0], sizeof(pSlot->m_aQuestData));
+					if(Row && Row[1] && Row[1][0])
+						str_copy(pSlot->m_aSkillBinds, Row[1], sizeof(pSlot->m_aSkillBinds));
 					mysql_free_result(pRes);
 				}
 			}
@@ -757,10 +767,13 @@ int CAccountSystem::JobRunner(void *pData)
 		SerializeHolding(pSlot->m_Sync.m_Holding, aHoldingJson, sizeof(aHoldingJson));
 		mysql_real_escape_string(pSql, aEscHolding, aHoldingJson, str_length(aHoldingJson));
 
-		char aQuery[1024];
+		char aEscSkillBinds[8192];
+		mysql_real_escape_string(pSql, aEscSkillBinds, pSlot->m_aSkillBinds, str_length(pSlot->m_aSkillBinds));
+
+		char aQuery[8704];
 		str_format(aQuery, sizeof(aQuery),
-			"UPDATE tw_Accounts SET Username='%s',Language='%s',Holding='%s' WHERE UserID=%lld",
-			aEscUser, aEscLang, aEscHolding, (long long)pSlot->m_AccountId);
+			"UPDATE tw_Accounts SET Username='%s',Language='%s',Holding='%s',SkillBinds='%s' WHERE UserID=%lld",
+			aEscUser, aEscLang, aEscHolding, aEscSkillBinds, (long long)pSlot->m_AccountId);
 		if(!SqlExec(pSql, aQuery))
 			pSlot->m_Error = 105;
 		else
@@ -831,6 +844,8 @@ void CAccountSystem::ApplyLogin(int ClientId, int64 AccountId, const SAccSyncDat
 	pCtx->EnterGame(ClientId);
 	if(TWorldController *pCore = pCtx->Core())
 		pCore->OnPlayerLogin(pP);
+	if(pCtx->Core() && pCtx->Core()->SkillManager())
+		pCtx->Core()->SkillManager()->RestoreSkillBinds(pP);
 	if(SPlayerVote *pV = pCtx->GetPlayerVote(ClientId))
 		pV->m_Page = PAGE_MENU;
 	pCtx->ClearVotes(ClientId);
@@ -943,6 +958,8 @@ void CAccountSystem::PumpCompletedJobs()
 				else
 				{
 					SetQuestData(ClientId, Slot.m_aQuestData);
+					if(Slot.m_aSkillBinds[0])
+						str_copy(m_aaSkillBinds[ClientId], Slot.m_aSkillBinds, sizeof(m_aaSkillBinds[ClientId]));
 					ApplyLogin(ClientId, Slot.m_AccountId, &Slot.m_Sync);
 				}
 			}
@@ -1103,6 +1120,23 @@ void CAccountSystem::SetQuestData(int ClientId, const char *pJson)
 		m_aaQuestData[ClientId][0] = 0;
 	else
 		str_copy(m_aaQuestData[ClientId], pJson, sizeof(m_aaQuestData[ClientId]));
+}
+
+const char *CAccountSystem::GetSkillBinds(int ClientId) const
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return "";
+	return m_aaSkillBinds[ClientId];
+}
+
+void CAccountSystem::SetSkillBinds(int ClientId, const char *pJson)
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return;
+	if(!pJson)
+		m_aaSkillBinds[ClientId][0] = 0;
+	else
+		str_copy(m_aaSkillBinds[ClientId], pJson, sizeof(m_aaSkillBinds[ClientId]));
 }
 
 void CAccountSystem::RequestSaveQuestData(int ClientId)

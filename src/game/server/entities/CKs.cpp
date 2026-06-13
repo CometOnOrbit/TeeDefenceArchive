@@ -89,8 +89,6 @@ void CKs::Tick()
 				if(PickId > 0 && pH)
 				{
 					Dmg = maximum(1, pH->GetDmg(PickId));
-					if(m_Type == ITEM_ENEGRY)
-						Dmg = maximum(1, Dmg / 2);
 				}
 			}
 

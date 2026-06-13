@@ -64,6 +64,7 @@ public:
 
 	bool GiveWeapon(int Weapon, int Ammo);
 	void GiveNinja();
+	void SetNinjaActivationTick(int Tick) { m_Ninja.m_ActivationTick = Tick; }
 
 	void SetEmote(int Emote, int Tick);
 

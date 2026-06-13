@@ -14,6 +14,7 @@
 #include <game/server/gameworld.h>
 #include <game/server/item_system.h>
 #include <game/server/player.h>
+#include <generated/server_data.h>
 
 CSkillManager::CSkillManager()
 {
@@ -209,6 +210,105 @@ void CSkillManager::CycleEmoticonBind(CPlayer *pPlayer, int SkillId)
 	GS()->SendChatLocF(pPlayer->GetCID(), "skill.emote_bind", u8"[%s] 表情触发：%s",
 		pDef ? GS()->Loc(pPlayer->GetCID(), aKey, pDef->m_aKey) : "?",
 		SkillEmoticonName(pInst->m_EmoticonBind));
+
+	if(GS() && GS()->Accounts() && GS()->Accounts()->IsEnabled() && pPlayer->GetAccountId() >= 0)
+	{
+		// Persist skill bind changes to account data.
+		char aBinds[4096];
+		SerializeSkillBindsForSave(pPlayer->GetCID(), aBinds, sizeof(aBinds));
+		GS()->Accounts()->SetSkillBinds(pPlayer->GetCID(), aBinds);
+		GS()->Accounts()->RequestSaveAccount(pPlayer->GetCID());
+	}
+}
+
+int CSkillManager::GetEmoticonBindForClient(int ClientID, int SkillIdx) const
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || SkillIdx < 0 || SkillIdx >= m_NumSkills)
+		return SKILL_EMOTICON_NONE;
+	const SSkillInstance &Inst = m_aaInstances[ClientID][SkillIdx];
+	if(Inst.m_SkillId != m_aSkills[SkillIdx].m_Id)
+		return SKILL_EMOTICON_NONE;
+	return Inst.m_EmoticonBind;
+}
+
+void CSkillManager::SetEmoticonBindForClient(int ClientID, int SkillIdx, int Bind)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || SkillIdx < 0 || SkillIdx >= m_NumSkills)
+		return;
+	SSkillInstance &Inst = m_aaInstances[ClientID][SkillIdx];
+	if(Inst.m_SkillId != m_aSkills[SkillIdx].m_Id)
+	{
+		mem_zero(&Inst, sizeof(Inst));
+		Inst.m_SkillId = m_aSkills[SkillIdx].m_Id;
+	}
+	Inst.m_EmoticonBind = clamp(Bind, -1, NUM_SKILL_EMOTICONS - 1);
+}
+
+void CSkillManager::RestoreSkillBinds(CPlayer *pPlayer)
+{
+	if(!pPlayer || !GS())
+		return;
+	const int CID = pPlayer->GetCID();
+	CAccountSystem *pAcc = GS()->Accounts();
+	if(!pAcc || !pAcc->IsEnabled())
+		return;
+	const char *pJson = pAcc->GetSkillBinds(CID);
+	if(!pJson || !pJson[0])
+		return;
+	CJsonParser P;
+	json_value *pRoot = P.ParseString(pJson);
+	if(!pRoot || pRoot->type != json_object)
+		return;
+	for(unsigned i = 0; i < pRoot->u.object.length; i++)
+	{
+		const int SkillIdx = str_toint(pRoot->u.object.values[i].name);
+		const int Idx = SkillIdx;
+		if(Idx < 0 || Idx >= m_NumSkills)
+			continue;
+		const int Bind = (int)pRoot->u.object.values[i].value->u.integer;
+		if(Bind < 0 || Bind >= NUM_SKILL_EMOTICONS)
+			continue;
+		SSkillInstance &Inst = m_aaInstances[CID][Idx];
+		if(Inst.m_SkillId != m_aSkills[Idx].m_Id)
+		{
+			mem_zero(&Inst, sizeof(Inst));
+			Inst.m_SkillId = m_aSkills[Idx].m_Id;
+		}
+		Inst.m_EmoticonBind = Bind;
+	}
+}
+
+void CSkillManager::SerializeSkillBindsForSave(int ClientID, char *pOut, int OutLen) const
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || OutLen <= 2)
+	{
+		if(pOut && OutLen > 0)
+		{
+			pOut[0] = '{';
+			if(OutLen > 1) pOut[1] = '}';
+			if(OutLen > 2) pOut[2] = 0;
+		}
+		return;
+	}
+	char aBuf[4096];
+	aBuf[0] = '{';
+	aBuf[1] = 0;
+	bool First = true;
+	for(int i = 0; i < m_NumSkills; i++)
+	{
+		const SSkillInstance &Inst = m_aaInstances[ClientID][i];
+		if(Inst.m_EmoticonBind < 0)
+			continue;
+		char aEntry[64];
+		if(First)
+			str_format(aEntry, sizeof(aEntry), "\"%d\":%d", i, Inst.m_EmoticonBind);
+		else
+			str_format(aEntry, sizeof(aEntry), ",\"%d\":%d", i, Inst.m_EmoticonBind);
+		str_append(aBuf, aEntry, sizeof(aBuf));
+		First = false;
+	}
+	str_append(aBuf, "}", sizeof(aBuf));
+	str_copy(pOut, aBuf, OutLen);
 }
 
 bool CSkillManager::ExecuteSkill(CPlayer *pPlayer, const SSkillDescription &Def)
@@ -224,7 +324,13 @@ bool CSkillManager::ExecuteSkill(CPlayer *pPlayer, const SSkillDescription &Def)
 		vec2 Dir = normalize(vec2((float)pChr->LatestInput().m_TargetX, (float)pChr->LatestInput().m_TargetY));
 		if(length(Dir) < 0.01f)
 			Dir = vec2(1.f, 0.f);
-		pChr->GetCore()->m_Pos += Dir * (float)maximum(32, Def.m_Distance);
+		const float Speed = g_pData->m_Weapons.m_Ninja.m_Velocity;
+		const int MoveTime = Speed > 0.01f ? maximum(1, (int)((float)maximum(32, Def.m_Distance) / Speed + 0.5f)) : 4;
+		pChr->GiveNinja();
+		pChr->DoNinjaFire(Dir, MoveTime);
+		const int DurationTicks = g_pData->m_Weapons.m_Ninja.m_Duration * GS()->Server()->TickSpeed() / 1000;
+		pChr->SetNinjaActivationTick(GS()->Server()->Tick() + MoveTime - DurationTicks - 1);
+		GS()->m_World.CreateSound(pChr->GetPos(), SOUND_NINJA_FIRE);
 		return true;
 	}
 	if(str_comp(Def.m_aKey, "heal_pulse") == 0 || str_comp(Def.m_aKey, "cure") == 0)

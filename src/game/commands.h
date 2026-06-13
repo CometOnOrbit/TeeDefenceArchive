@@ -13,7 +13,7 @@ public:
 	class CCommand
 	{
 	public:
-		char m_aName[16];
+		char m_aName[32];
 		char m_aHelpText[64];
 		char m_aArgsFormat[64];
 

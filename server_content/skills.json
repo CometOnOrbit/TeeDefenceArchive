@@ -5,7 +5,7 @@
             "key": "dash",
             "auto_learn": true,
             "cooldown_ticks": 150,
-            "params": { "distance": 160 }
+            "params": { "distance": 400 }
         },
         {
             "id": 2,
