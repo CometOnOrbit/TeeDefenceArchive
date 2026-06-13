@@ -145,12 +145,12 @@ bool CTraitManager::SelectTrait(CPlayer *pPlayer, const char *pTraitId)
 
 	if(m_aTraitLocked[CID])
 	{
-		if(pPlayer->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num < 1)
+		if(pPlayer->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num < 100)
 		{
-			GS()->SendChatLoc(CID, "trait.change.need_heart", u8"更换特质需要 1 个僵尸之心。");
+			GS()->SendChatLoc(CID, "trait.change.need_heart", u8"更换特质需要 100 个僵尸之心。");
 			return false;
 		}
-		pPlayer->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num--;
+		pPlayer->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num -= 100;
 		if(GS()->Accounts() && GS()->Accounts()->IsEnabled() && pPlayer->GetAccountId() >= 0)
 			GS()->Accounts()->RequestSaveItems(CID);
 	}
@@ -200,7 +200,7 @@ void CTraitManager::BuildTraitVotePage(int ClientID)
 		pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.short", "---"));
 		pVote->AddVote_TextLine(GS()->Loc(ClientID, aDescKey, pCurrent));
 	}
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "trait.change.hint", u8"首次选择免费；更换需 1 僵尸之心"));
+	pVote->AddVote_TextLine(GS()->Loc(ClientID, "trait.change.hint", u8"首次选择免费；更换需 100 僵尸之心"));
 	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.long", "---------------------"));
 	pVote->AddVote_Back();
 	(void)pP;

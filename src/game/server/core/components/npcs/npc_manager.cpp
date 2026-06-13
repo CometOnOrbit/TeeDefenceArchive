@@ -163,7 +163,7 @@ bool CNpcManager::SpawnNpc(int DefIdx)
 		return false;
 
 	m_PendingSpawnDefIdx = DefIdx;
-	Server()->DummyJoin(Slot, m_aNpcs[DefIdx].m_aId);
+	Server()->DummyJoin(Slot, m_aNpcs[DefIdx].m_aId, GS()->GetWorldID());
 	return m_aNpcs[DefIdx].m_ClientID >= 0;
 }
 

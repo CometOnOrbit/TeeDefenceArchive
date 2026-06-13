@@ -690,7 +690,7 @@ bool CServer::IsClientSlotEmpty(int ClientID) const
 	return ClientID >= 0 && ClientID < MAX_CLIENTS && m_aClients[ClientID].m_State == CClient::STATE_EMPTY;
 }
 
-void CServer::DummyJoin(int ClientID, const char *pName)
+void CServer::DummyJoin(int ClientID, const char *pName, int WorldID)
 {
 	if(ClientID < MAX_HUMAN_CLIENTS || ClientID >= MAX_CLIENTS)
 		return;
@@ -702,9 +702,10 @@ void CServer::DummyJoin(int ClientID, const char *pName)
 	str_copy(m_aClients[ClientID].m_aName, pName, sizeof(m_aClients[ClientID].m_aName));
 	m_aClients[ClientID].m_aClan[0] = 0;
 	m_aClients[ClientID].m_Country = -1;
+	m_aClients[ClientID].m_WorldID = WorldID;
 	m_aClients[ClientID].Reset();
 
-	GameServerPlayer(ClientID)->OnBotConnected(ClientID);
+	GameServer(WorldID)->OnBotConnected(ClientID);
 }
 
 void CServer::DummyRemove(int ClientID)

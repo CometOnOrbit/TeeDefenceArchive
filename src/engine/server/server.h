@@ -254,7 +254,7 @@ public:
 	void SyncSvMapWithConnectWorld();
 
 	bool IsClientSlotEmpty(int ClientID) const;
-	void DummyJoin(int ClientID, const char *pName);
+	void DummyJoin(int ClientID, const char *pName, int WorldID);
 	void DummyRemove(int ClientID);
 
 	virtual int SendMsg(CMsgPacker *pMsg, int Flags, int ClientID);

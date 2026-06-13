@@ -76,7 +76,7 @@ public:
 
 	// This shit fucks me 2 hours!!!
 	virtual bool IsClientSlotEmpty(int ClientID) const = 0;
-	virtual void DummyJoin(int ClientID, const char *pName) = 0;
+	virtual void DummyJoin(int ClientID, const char *pName, int WorldID) = 0;
 	virtual void DummyRemove(int ClientID) = 0;
 
 	virtual int GetClientWorldID(int ClientID) const = 0;

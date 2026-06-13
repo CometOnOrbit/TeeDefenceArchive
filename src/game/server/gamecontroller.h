@@ -139,6 +139,7 @@ public:
 	CTowerMain *GetTower() const { return m_pTower; }
 	CSpiderBoss *GetSpiderBoss() const { return m_pSpiderBoss; }
 	bool IsSpiderBossCore(class CCharacter *pChr) const;
+	void TdPurgeZombieDummies();
 
 	// event
 	/*

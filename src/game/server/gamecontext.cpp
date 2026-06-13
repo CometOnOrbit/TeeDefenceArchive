@@ -1105,7 +1105,10 @@ void CGameContext::ReleaseClientPlayer(int ClientID)
 {
 	if(!m_apPlayers[ClientID])
 		return;
+	const bool WasHuman = !m_apPlayers[ClientID]->IsDummy();
 	OnClientDrop(ClientID, "released");
+	if(WasHuman && m_pController && Server()->GetNumPlayersInWorld(m_WorldID) == 0)
+		m_pController->TdPurgeZombieDummies();
 }
 
 void CGameContext::OnClientConnected(int ClientID, bool Dummy, bool AsSpec)
@@ -1497,7 +1500,7 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 		{
 			CNetMsg_Cl_Emoticon *pMsg = (CNetMsg_Cl_Emoticon *) pRawMsg;
 
-			if(Config()->m_SvSpamprotection && pPlayer->m_LastEmoteTick && pPlayer->m_LastEmoteTick + Server()->TickSpeed() * 3 > Server()->Tick())
+			if(Config()->m_SvSpamprotection && pPlayer->m_LastEmoteTick && pPlayer->m_LastEmoteTick + (Server()->TickSpeed() / 2) > Server()->Tick())
 				return;
 
 			pPlayer->m_LastEmoteTick = Server()->Tick();

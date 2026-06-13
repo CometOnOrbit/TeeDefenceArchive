@@ -52,6 +52,16 @@ static bool IsZombiePlayer(const CPlayer *pPlayer)
 	return pPlayer && pPlayer->IsDummy() && pPlayer->GetZomb() != ZOMB_NONE;
 }
 
+static bool IsHumanDefenderInWorld(CGameContext *pGame, int ClientID, int WorldID)
+{
+	if(!pGame || ClientID < 0 || ClientID >= MAX_HUMAN_CLIENTS)
+		return false;
+	if(pGame->Server()->GetClientWorldID(ClientID) != WorldID)
+		return false;
+	CPlayer *pP = pGame->m_apPlayers[ClientID];
+	return pP && pP->GetTeam() == TEAM_RED && pP->GetCharacter();
+}
+
 CGameController::CGameController(CGameContext *pGameServer)
 {
 	m_pGameServer = pGameServer;
@@ -884,13 +894,10 @@ void CGameController::Tick()
 	}
 
 	int Players = 0;
+	const int WorldID = GameServer()->GetWorldID();
 	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
 	{
-		if(!GameServer()->m_apPlayers[i])
-			continue;
-		if(GameServer()->m_apPlayers[i]->GetTeam() != TEAM_RED)
-			continue;
-		if(!GameServer()->GetPlayerChar(i))
+		if(!IsHumanDefenderInWorld(GameServer(), i, WorldID))
 			continue;
 		Players++;
 	}
@@ -1533,17 +1540,32 @@ bool CGameController::TdSkipWarmup()
 	return true;
 }
 
+void CGameController::TdPurgeZombieDummies()
+{
+	const int Zombie0 = TdZombieFirstSlot(Config());
+	const int WorldID = GameServer()->GetWorldID();
+	for(int i = Zombie0; i < MAX_CLIENTS; i++)
+	{
+		if(Server()->GetClientWorldID(i) != WorldID)
+			continue;
+		if(Server()->IsClientSlotEmpty(i))
+			continue;
+		CPlayer *pP = GameServer()->m_apPlayers[i];
+		if(pP && pP->IsQuestNpc())
+			continue;
+		if(pP && !pP->IsDummy())
+			continue;
+		if(pP && !IsZombiePlayer(pP))
+			continue;
+		Server()->DummyRemove(i);
+	}
+}
+
 void CGameController::TdStartRound()
 {
 	m_TdGameOverTick = -1;
 	TdDestroySpiderBoss();
-
-	const int Zombie0 = TdZombieFirstSlot(Config());
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->IsDummy())
-			Server()->DummyRemove(i);
-	}
+	TdPurgeZombieDummies();
 
 	m_TdWave++;
 	TdStartWave(m_TdWave);
@@ -1555,13 +1577,7 @@ void CGameController::TdEndRound()
 	m_TdWave = 0;
 	mem_zero(m_TdZombie, sizeof(m_TdZombie));
 	TdDestroySpiderBoss();
-
-	const int Zombie0 = TdZombieFirstSlot(Config());
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->IsDummy())
-			Server()->DummyRemove(i);
-	}
+	TdPurgeZombieDummies();
 
 	GameServer()->SendChatAllLoc("game.tower_destroyed", "The tower was destroyed! Game over — map will reload.");
 	TdBroadcastGameInfo();
@@ -1646,7 +1662,7 @@ void CGameController::TdTrySpawnSpiderBoss()
 
 		m_TdPendingZomb = ZOMB_SPIDER_BOSS;
 		m_TdSpiderBossPending = true;
-		Server()->DummyJoin(i, "Spider");
+		Server()->DummyJoin(i, "Spider", GameServer()->GetWorldID());
 		return;
 	}
 }
@@ -1690,7 +1706,7 @@ void CGameController::TdCheckZombie()
 
 		char aName[16];
 		str_format(aName, sizeof(aName), "z%d", i);
-		Server()->DummyJoin(i, aName);
+		Server()->DummyJoin(i, aName, GameServer()->GetWorldID());
 		break;
 	}
 }
@@ -1787,12 +1803,7 @@ bool CGameController::TdEndWave()
 
 	if(!PlayerCount)
 	{
-		const int Zombie0 = TdZombieFirstSlot(Config());
-		for(int i = Zombie0; i < MAX_CLIENTS; i++)
-		{
-			if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->IsDummy())
-				Server()->DummyRemove(i);
-		}
+		TdPurgeZombieDummies();
 		m_TdWave = 0;
 		return true;
 	}
@@ -1814,7 +1825,7 @@ bool CGameController::TdEndWave()
 
 	if(m_TdWave % 5 == 0)
 	{
-		GameServer()->SendBroadcastLocF(-1, "community.broadcast",
+		GameServer()->SendChatAllLocF("community.broadcast",
 			u8"加群 %d · 赞助 QQ %d — 输入 /community 查看",
 			Config()->m_SvTdQQGroup, Config()->m_SvTdQQSponsor);
 	}

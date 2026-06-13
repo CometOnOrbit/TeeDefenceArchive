@@ -20,13 +20,13 @@
             "auto_learn": false,
             "learn_cost_hearts": 2,
             "cooldown_ticks": 600,
-            "params": { "radius": 320, "repair": 15 }
+            "params": { "radius": 320, "repair": 20 }
         },
         {
             "id": 4,
             "key": "frost_nova",
             "auto_learn": false,
-            "learn_cost_hearts": 3,
+            "learn_cost_hearts": 50,
             "cooldown_ticks": 500,
             "params": { "radius": 240 }
         },
@@ -34,9 +34,9 @@
             "id": 5,
             "key": "poison_cloud",
             "auto_learn": false,
-            "learn_cost_hearts": 3,
+            "learn_cost_hearts": 100,
             "cooldown_ticks": 480,
-            "params": { "radius": 200, "heal": 2 }
+            "params": { "radius": 200, "heal": 5 }
         },
         {
             "id": 6,
@@ -49,7 +49,7 @@
             "id": 7,
             "key": "arcane_shield",
             "auto_learn": false,
-            "learn_cost_hearts": 4,
+            "learn_cost_hearts": 100,
             "cooldown_ticks": 700,
             "params": { "heal": 12 }
         }
