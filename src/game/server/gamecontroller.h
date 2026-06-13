@@ -81,7 +81,7 @@ class CGameController
 	int TdCountZombiePopulation() const;
 	bool TdIsWaveCleared() const;
 	bool TdEndWave();
-	void TdDoZombMessage(int Which);
+	void TdDoZombMessage(int Left);
 	void TdSetWaveAlg(int Modulus, int WaveThird, int Wave);
 	static int TdZombieBaseHealth(int Wave);
 	int TdGetZombieOrder(int WaveThird);

@@ -447,10 +447,11 @@ void CGameController::TdDestroySpiderBoss()
 bool CGameController::TdHasSpiderBossPlayer() const
 {
 	const int Zombie0 = TdZombieFirstSlot(Config());
+	const int WorldID = GameServer()->GetWorldID();
 	for(int i = Zombie0; i < MAX_CLIENTS; i++)
 	{
 		const CPlayer *pP = GameServer()->m_apPlayers[i];
-		if(pP && pP->IsDummy() && pP->GetZomb() == ZOMB_SPIDER_BOSS)
+		if(pP && pP->IsDummy() && pP->GetZomb() == ZOMB_SPIDER_BOSS && Server()->GetClientWorldID(i) == WorldID)
 			return true;
 	}
 	return false;
@@ -496,8 +497,11 @@ int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int
 		TdClearZombieBot(pVictimPlayer->GetCID());
 
 		if(m_TdZombLeft > 0)
+		{
 			m_TdZombLeft--;
-		TdDoZombMessage(m_TdZombLeft);
+			if(m_TdZombLeft > 0)
+				TdDoZombMessage(m_TdZombLeft);
+		}
 
 		if(m_TdDummyRemoveLen < TD_REMOVE_QUEUE)
 			m_aTdDummyRemove[m_TdDummyRemoveLen++] = pVictimPlayer->GetCID();
@@ -1664,7 +1668,9 @@ void CGameController::TdStartWave(int Wave)
 		}
 	}
 
-	TdDoZombMessage(0);
+	m_TdZombStart = m_TdZombLeft;
+	if(!m_TdBossWave)
+		GameServer()->SendChatAllLocF("game.wave_start", "Wave %d started — %d zombies!", m_TdWave, m_TdZombLeft);
 	TdBroadcastGameInfo();
 
 	if(m_TdBossWave)
@@ -1709,7 +1715,7 @@ void CGameController::TdCheckZombie()
 	if(m_TdBossWave)
 		return;
 
-	const int ConcurrentCap = minimum((int)TD_MAX_ACTIVE_ZOMBIES, m_TdZombStart);
+	const int ConcurrentCap = maximum(1, (int)TD_MAX_ACTIVE_ZOMBIES);
 	if(TdCountZombiePopulation() >= ConcurrentCap)
 		return;
 
@@ -1743,10 +1749,15 @@ int CGameController::TdCountZombiePopulation() const
 {
 	int Count = 0;
 	const int Zombie0 = TdZombieFirstSlot(Config());
+	const int WorldID = GameServer()->GetWorldID();
 	for(int i = Zombie0; i < MAX_CLIENTS; i++)
 	{
-		if(IsZombiePlayer(GameServer()->m_apPlayers[i]))
-			Count++;
+		CPlayer *pP = GameServer()->m_apPlayers[i];
+		if(!IsZombiePlayer(pP))
+			continue;
+		if(Server()->GetClientWorldID(i) != WorldID)
+			continue;
+		Count++;
 	}
 	return Count;
 }
@@ -1802,10 +1813,13 @@ bool CGameController::TdIsWaveCleared() const
 	}
 
 	const int Zombie0 = TdZombieFirstSlot(Config());
+	const int WorldID = GameServer()->GetWorldID();
 	for(int i = Zombie0; i < MAX_CLIENTS; i++)
 	{
 		CPlayer *pP = GameServer()->m_apPlayers[i];
 		if(!IsZombiePlayer(pP))
+			continue;
+		if(Server()->GetClientWorldID(i) != WorldID)
 			continue;
 		if(!pP->IsEliminated())
 			return false;
@@ -1863,18 +1877,8 @@ bool CGameController::TdEndWave()
 	return true;
 }
 
-void CGameController::TdDoZombMessage(int Which)
+void CGameController::TdDoZombMessage(int Left)
 {
-	if(!Which)
-	{
-		m_TdZombStart = m_TdZombLeft;
-		if(m_TdBossWave)
-			return;
-		GameServer()->SendChatAllLocF("game.wave_start", "Wave %d started — %d zombies!", m_TdWave, m_TdZombLeft);
-		return;
-	}
-
-	const int Left = Which;
 	if(Left > 1 && (Left <= 5 || !(Left % 10)))
 		GameServer()->SendChatAllLocF("game.wave_left", "Wave %d: %d zombies left", m_TdWave, Left);
 	else if(Left == 1)
