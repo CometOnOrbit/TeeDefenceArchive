@@ -33,7 +33,7 @@ bool CLaser::HitCharacter(vec2 From, vec2 To)
 {
 	vec2 At;
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
-	CHitableEntity *pHit = (CHitableEntity *) GameWorld()->IntersectFlagEntity(m_Pos, To, 0.f, At, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
+	CHitableEntity *pHit = (CHitableEntity *) GameWorld()->IntersectFlagEntity(From, To, 0.f, At, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
 	if(!pHit)
 		return false;
 	if(pHit->ObjType() == CGameWorld::ENTTYPE_TURRET && GameWorld()->IsHumanDefenderOwner(m_Owner))
@@ -64,62 +64,67 @@ void CLaser::DoBounce()
 		return;
 	}
 
-	vec2 To = m_Pos + m_Dir * m_Energy;
+	vec2 FullTo = m_Pos + m_Dir * m_Energy;
 
-	if(GameServer()->Collision()->IntersectLine(m_Pos, To, 0x0, &To))
+	// Always check for character hits along the full beam path first,
+	// so zombies (or any characters) are hit even when a wall is between
+	// the laser origin and the target position.
+	if(HitCharacter(m_Pos, FullTo))
+		return;
+
+	// No character hit — check for wall collision.
+	vec2 WallTo = FullTo;
+	if(GameServer()->Collision()->IntersectLine(m_Pos, WallTo, 0x0, &WallTo))
 	{
-		if(!HitCharacter(m_Pos, To))
+		// Wall hit — bounce
+		m_From = m_Pos;
+		m_Pos = WallTo;
+
+		vec2 TempPos = m_Pos;
+		vec2 TempDir = m_Dir * 4.0f;
+
+		GameServer()->Collision()->MovePoint(&TempPos, &TempDir, 1.0f, 0);
+		m_Pos = TempPos;
+		m_Dir = normalize(TempDir);
+
+		m_Energy -= distance(m_From, m_Pos) + GameServer()->Tuning()->m_LaserBounceCost;
+		m_Bounces++;
+
+		if(m_Bounces > GameServer()->Tuning()->m_LaserBounceNum)
+			m_Energy = -1;
+
+		GameWorld()->CreateSound(m_Pos, SOUND_LASER_BOUNCE);
+
+		CItemHelper *pH = GameServer()->ItemHelper();
+		if(pH && m_Owner >= 0 && m_Owner < MAX_CLIENTS)
 		{
-			// intersected
-			m_From = m_Pos;
-			m_Pos = To;
-
-			vec2 TempPos = m_Pos;
-			vec2 TempDir = m_Dir * 4.0f;
-
-			GameServer()->Collision()->MovePoint(&TempPos, &TempDir, 1.0f, 0);
-			m_Pos = TempPos;
-			m_Dir = normalize(TempDir);
-
-			m_Energy -= distance(m_From, m_Pos) + GameServer()->Tuning()->m_LaserBounceCost;
-			m_Bounces++;
-
-			if(m_Bounces > GameServer()->Tuning()->m_LaserBounceNum)
-				m_Energy = -1;
-
-			GameWorld()->CreateSound(m_Pos, SOUND_LASER_BOUNCE);
-
-			CItemHelper *pH = GameServer()->ItemHelper();
-			if(pH && m_Owner >= 0 && m_Owner < MAX_CLIENTS)
+			CPlayer *pOwner = GameServer()->m_apPlayers[m_Owner];
+			if(pOwner)
 			{
-				CPlayer *pOwner = GameServer()->m_apPlayers[m_Owner];
-				if(pOwner)
+				const int HostItem = m_CardHostItemId >= 0 ? m_CardHostItemId : pOwner->GetHolding(ITYPE_SWORD);
+				if(HostItem > 0)
 				{
-					const int HostItem = m_CardHostItemId >= 0 ? m_CardHostItemId : pOwner->GetHolding(ITYPE_SWORD);
-					if(HostItem > 0)
+					const char *pEx = pOwner->GetExtraForItem(HostItem);
+					int Exp = 0;
+					int Fu = 0;
+					if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
 					{
-						const char *pEx = pOwner->GetExtraForItem(HostItem);
-						int Exp = 0;
-						int Fu = 0;
-						if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
-						{
-							CEffectContext Ctx = {};
-							Ctx.m_pPlayer = pOwner;
-							Ctx.m_pExtraJson = pEx;
-							GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_LASER_HIT, Ctx);
-							Exp = Ctx.m_ExplosionStacks;
-							Fu = Ctx.m_FusionStacks;
-						}
-						if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
-						{
-							Exp = pH->GetCard(pEx, ITEM_CARD_EXPLOSION_ID);
-							Fu = pH->GetCard(pEx, ITEM_CARD_FUSION_ID);
-						}
-						if(Exp > 0)
-						{
-							const int BoomDmg = maximum(1, m_Damage * (2 + Fu) / 2);
-							GameWorld()->CreateExplosion(m_Pos, this, WEAPON_LASER, BoomDmg);
-						}
+						CEffectContext Ctx = {};
+						Ctx.m_pPlayer = pOwner;
+						Ctx.m_pExtraJson = pEx;
+						GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_LASER_HIT, Ctx);
+						Exp = Ctx.m_ExplosionStacks;
+						Fu = Ctx.m_FusionStacks;
+					}
+					if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
+					{
+						Exp = pH->GetCard(pEx, ITEM_CARD_EXPLOSION_ID);
+						Fu = pH->GetCard(pEx, ITEM_CARD_FUSION_ID);
+					}
+					if(Exp > 0)
+					{
+						const int BoomDmg = maximum(1, m_Damage * (2 + Fu) / 2);
+						GameWorld()->CreateExplosion(m_Pos, this, WEAPON_LASER, BoomDmg);
 					}
 				}
 			}
@@ -127,12 +132,10 @@ void CLaser::DoBounce()
 	}
 	else
 	{
-		if(!HitCharacter(m_Pos, To))
-		{
-			m_From = m_Pos;
-			m_Pos = To;
-			m_Energy = -1;
-		}
+		// No wall, no character — beam reaches full range
+		m_From = m_Pos;
+		m_Pos = FullTo;
+		m_Energy = -1;
 	}
 }
 

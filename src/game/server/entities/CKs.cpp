@@ -140,6 +140,8 @@ void CKs::Picking(int Dmg, CPlayer *Player)
 			CritChance += GameServer()->Core()->TraitManager()->GetMiningLuckBonus(Player);
 		if(CritChance > 0 && (random_int() % 100) < CritChance)
 			EffectiveDmg *= 2;
+
+		EffectiveDmg = maximum(1, EffectiveDmg + CritCtx.m_OutDamage);
 	}
 
 	m_Health -= EffectiveDmg;
