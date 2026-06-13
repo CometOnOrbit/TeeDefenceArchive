@@ -1484,12 +1484,13 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 
 		case WEAPON_GRENADE:
 		{
+			const int GrenadeDmg = g_pData->m_Weapons.m_aId[WEAPON_GRENADE].m_Damage + ExtraDmg;
 			new CProjectile(&GameServer()->m_World, WEAPON_GRENADE,
 				ClientID,
 				ProjStartPos,
 				Direction,
 				(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_GrenadeLifetime),
-				ExtraDmg, true, MoreForce, SOUND_GRENADE_EXPLODE, WEAPON_GRENADE);
+				GrenadeDmg, true, MoreForce, SOUND_GRENADE_EXPLODE, WEAPON_GRENADE);
 
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_GRENADE_FIRE);
 		}
