@@ -398,7 +398,6 @@ set(DEP_JSON $<TARGET_OBJECTS:json>)
 set(EXPECTED_DATA
   maps/Mine-Craft.map
   maps/TDef-City.map
-  maps/TDef-Dream.map
   maps/TDef-Deeply.map
   maps/TDef-Shwar.map
   maps/TDef-Zero.map
