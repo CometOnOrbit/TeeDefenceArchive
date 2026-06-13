@@ -56,6 +56,7 @@ public:
 	const SNpcDef *FindNpcNear(CPlayer *pPlayer, vec2 Pos) const;
 	const char *NpcIdForClient(int ClientID) const;
 	bool IsQuestNpc(const CPlayer *pPlayer) const;
+	bool IsQuestNpcCharacter(CCharacter *pChr) const;
 
 private:
 	void LoadNpcs();

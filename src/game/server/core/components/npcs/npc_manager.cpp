@@ -241,6 +241,21 @@ bool CNpcManager::IsQuestNpc(const CPlayer *pPlayer) const
 	return pPlayer && pPlayer->IsDummy() && pPlayer->GetQuestNpcDefIdx() >= 0;
 }
 
+bool CNpcManager::IsQuestNpcCharacter(CCharacter *pChr) const
+{
+	if(!pChr || !GS())
+		return false;
+	CPlayer *pPlayer = pChr->GetPlayer();
+	if(!pPlayer)
+		return false;
+	const int CID = pChr->GetCID();
+	if(CID < 0 || CID >= MAX_CLIENTS)
+		return false;
+	if(GS()->m_apPlayers[CID] != pPlayer)
+		return false;
+	return IsQuestNpc(pPlayer);
+}
+
 const SNpcDef *CNpcManager::GetNpc(int Index) const
 {
 	if(Index < 0 || Index >= m_NumNpcs)
@@ -307,7 +322,7 @@ bool CNpcManager::TryHammerTalk(CCharacter *pChr, vec2 ProjStartPos)
 	for(CGameWorld::TypeRange r = GS()->m_World.DoTypeRange(CGameWorld::ENTTYPE_CHARACTER); !r.empty(); r.pop_front())
 	{
 		CCharacter *pTarget = static_cast<CCharacter *>(r.front());
-		if(!pTarget || pTarget == pChr || !pTarget->GetPlayer() || !IsQuestNpc(pTarget->GetPlayer()))
+		if(!pTarget || pTarget == pChr || !IsQuestNpcCharacter(pTarget))
 			continue;
 
 		const float Dist = distance(pTarget->GetPos(), ChrPos);

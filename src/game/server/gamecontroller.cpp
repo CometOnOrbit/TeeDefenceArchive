@@ -1372,12 +1372,40 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 					continue;
 				}
 
+				if(pHitEnt->ObjType() == CGameWorld::ENTTYPE_SPIDERLEG)
+				{
+					CHitableEntity *pLeg = static_cast<CHitableEntity *>(pHitEnt);
+					if(GameServer()->Collision()->IntersectLine(ProjStartPos, pLeg->GetPos(), NULL, NULL))
+						continue;
+
+					if(distance(pLeg->GetPos(), ProjStartPos) > 0.0f)
+						GameServer()->m_World.CreateHammerHit(pLeg->GetPos() - normalize(pLeg->GetPos() - ProjStartPos) * pChr->GetProximityRadius() * 0.5f);
+					else
+						GameServer()->m_World.CreateHammerHit(ProjStartPos);
+
+					vec2 Dir;
+					if(length(pLeg->GetPos() - ChrPos) > 0.0f)
+						Dir = normalize(pLeg->GetPos() - ChrPos);
+					else
+						Dir = vec2(0.f, -1.f);
+
+					const int HamVanilla = g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage;
+					pLeg->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f * MoreForce, Dir * -1, HamVanilla + ExtraDmg,
+						pChr, Weapon);
+					Hits++;
+					continue;
+				}
+
+				if(pHitEnt->ObjType() != CGameWorld::ENTTYPE_CHARACTER)
+					continue;
+
 				CCharacter *pTarget = static_cast<CCharacter *>(pHitEnt);
 
 				if((pTarget == pChr) || GameServer()->Collision()->IntersectLine(ProjStartPos, pTarget->GetPos(), NULL, NULL))
 					continue;
 
-				if(pTarget->GetPlayer() && pTarget->GetPlayer()->IsQuestNpc())
+				if(GameServer()->Core() && GameServer()->Core()->NpcManager() &&
+					GameServer()->Core()->NpcManager()->IsQuestNpcCharacter(pTarget))
 					continue;
 
 				// set his velocity to fast upward (for now)
