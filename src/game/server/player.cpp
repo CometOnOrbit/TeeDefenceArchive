@@ -438,7 +438,7 @@ void CPlayer::Snap(int SnappingClient)
 	}
 }
 
-void CPlayer::SnapPlayerInfoOnly(int SnappingClient)
+void CPlayer::SnapPlayerInfoOnly(int SnappingClient, CGameContext *pSnappingCtx)
 {
 	if(!IsDummy() && !Server()->ClientIngame(m_ClientID))
 		return;
@@ -461,7 +461,12 @@ void CPlayer::SnapPlayerInfoOnly(int SnappingClient)
 	if(SnappingClient != -1 && (m_Team == TEAM_SPECTATORS || m_DeadSpecMode) && (SnappingClient == m_SpectatorID))
 		pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_WATCHING;
 
-	pPlayerInfo->m_Latency = SnappingClient == -1 ? m_Latency.m_Min : GameServer()->m_apPlayers[SnappingClient]->m_aActLatency[m_ClientID];
+	if(SnappingClient == -1)
+		pPlayerInfo->m_Latency = m_Latency.m_Min;
+	else if(pSnappingCtx && pSnappingCtx->m_apPlayers[SnappingClient])
+		pPlayerInfo->m_Latency = pSnappingCtx->m_apPlayers[SnappingClient]->m_aActLatency[m_ClientID];
+	else
+		pPlayerInfo->m_Latency = m_Latency.m_Min;
 	pPlayerInfo->m_Score = m_Score;
 
 	const bool ZombieBot = IsDummy() && m_Zomb != ZOMB_NONE;

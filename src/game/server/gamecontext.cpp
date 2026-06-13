@@ -2050,7 +2050,7 @@ void CGameContext::OnSnap(int ClientID)
 			CPlayer *pOther = pOtherCtx->m_apPlayers[i];
 			if(!pOther || pOther->IsDummy() || !Server()->ClientIngame(i))
 				continue;
-			pOther->SnapPlayerInfoOnly(ClientID);
+			pOther->SnapPlayerInfoOnly(ClientID, this);
 		}
 	}
 }
