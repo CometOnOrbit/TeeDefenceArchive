@@ -123,6 +123,7 @@ public:
 	void Tick();
 	void PostTick();
 	void Snap(int SnappingClient);
+	void SnapPlayerInfoOnly(int SnappingClient);
 
 	bool PendingChangeWorld();
 	void ChangeWorld(int WorldID, vec2 *pPos = nullptr);

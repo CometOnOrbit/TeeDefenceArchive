@@ -438,6 +438,45 @@ void CPlayer::Snap(int SnappingClient)
 	}
 }
 
+void CPlayer::SnapPlayerInfoOnly(int SnappingClient)
+{
+	if(!IsDummy() && !Server()->ClientIngame(m_ClientID))
+		return;
+
+	const int SnapID = m_pGameServer->ClientSnapID(SnappingClient, m_ClientID);
+	if(SnapID < 0)
+		return;
+
+	CNetObj_PlayerInfo *pPlayerInfo = static_cast<CNetObj_PlayerInfo *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFO, SnapID, sizeof(CNetObj_PlayerInfo)));
+	if(!pPlayerInfo)
+		return;
+
+	pPlayerInfo->m_PlayerFlags = m_PlayerFlags & PLAYERFLAG_CHATTING;
+	if(Server()->IsAuthed(m_ClientID))
+		pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_ADMIN;
+	if(m_IsReadyToPlay)
+		pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_READY;
+	if(m_RespawnDisabled && (!GetCharacter() || !GetCharacter()->IsAlive()))
+		pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_DEAD;
+	if(SnappingClient != -1 && (m_Team == TEAM_SPECTATORS || m_DeadSpecMode) && (SnappingClient == m_SpectatorID))
+		pPlayerInfo->m_PlayerFlags |= PLAYERFLAG_WATCHING;
+
+	pPlayerInfo->m_Latency = SnappingClient == -1 ? m_Latency.m_Min : GameServer()->m_apPlayers[SnappingClient]->m_aActLatency[m_ClientID];
+	pPlayerInfo->m_Score = m_Score;
+
+	const bool ZombieBot = IsDummy() && m_Zomb != ZOMB_NONE;
+	const bool MappedSlot = SnapID != m_ClientID;
+	if(MappedSlot || ZombieBot)
+	{
+		CNetObj_PlayerInfoExtra *pPlayerInfoExtra = static_cast<CNetObj_PlayerInfoExtra *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFOEXTRA, SnapID, sizeof(CNetObj_PlayerInfoExtra)));
+		if(pPlayerInfoExtra)
+		{
+			pPlayerInfoExtra->m_RealClientID = m_ClientID;
+			pPlayerInfoExtra->m_PlayerFlagsExtra = ZombieBot ? PLAYERFLAGEXTRA_HIDDEN_IN_BOARD : 0;
+		}
+	}
+}
+
 void CPlayer::OnDisconnect()
 {
 	DestroyTurret();

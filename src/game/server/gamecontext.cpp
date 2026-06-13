@@ -2035,6 +2035,24 @@ void CGameContext::OnSnap(int ClientID)
 		if(m_apPlayers[i])
 			m_apPlayers[i]->Snap(ClientID);
 	}
+
+	// Show players from all worlds in the scoreboard.
+	const int NumWorlds = Server()->GetNumWorlds();
+	for(int w = 0; w < NumWorlds; w++)
+	{
+		if(w == m_WorldID)
+			continue;
+		CGameContext *pOtherCtx = static_cast<CGameContext *>(Server()->GameServer(w));
+		if(!pOtherCtx)
+			continue;
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			CPlayer *pOther = pOtherCtx->m_apPlayers[i];
+			if(!pOther || pOther->IsDummy() || !Server()->ClientIngame(i))
+				continue;
+			pOther->SnapPlayerInfoOnly(ClientID);
+		}
+	}
 }
 void CGameContext::OnPreSnap() {}
 void CGameContext::OnPostSnap()
