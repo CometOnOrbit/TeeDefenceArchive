@@ -127,6 +127,7 @@ public:
 	*/
 	CEntity *IntersectEntity(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, int Type, CEntity *pNotThis = 0);
 	CEntity *IntersectFlagEntity(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, int Flag, CEntity *pNotThis = 0);
+	CEntity *IntersectFlagEntitySkippingTurrets(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, int Flag, CEntity *pNotThis = 0);
 	class CCharacter *IntersectCharacter(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, class CCharacter *pNotThis = nullptr);
 
 	/*
@@ -181,6 +182,7 @@ public:
 	bool IsHumanDefenderOwner(int OwnerCid);
 	int DamageOwnerFromEntity(class CEntity *pFrom) const;
 	void CreateDamage(vec2 Pos, int Id, vec2 Source, int HealthAmount, int ArmorAmount, bool Self);
+	void CreateFloatingAmount(vec2 Pos, int ClientID, int Amount, int64 Mask = -1);
 	void CreateExplosion(vec2 Pos, class CEntity *pOwner, int Weapon, int MaxDamage);
 	void CreateHammerHit(vec2 Pos);
 	void CreatePlayerSpawn(vec2 Pos);

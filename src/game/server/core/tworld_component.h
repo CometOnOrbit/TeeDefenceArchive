@@ -63,6 +63,7 @@ protected:
 	virtual void OnClientReset(int ClientID) {}
 	virtual void OnPlayerLogin(CPlayer *pPlayer) {}
 	virtual void OnCharacterSpawn(CPlayer *pPlayer) {}
+	virtual bool OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs) { (void)pPlayer; (void)pCmd; (void)pArgs; return false; }
 };
 
 #endif

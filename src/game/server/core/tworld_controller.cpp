@@ -6,6 +6,11 @@
 #include <game/server/core/components/bots/defence_bot_manager.h>
 #include <game/server/core/components/craft/craft_manager.h>
 #include <game/server/core/components/localization/localization_manager.h>
+#include <game/server/core/components/meta/achievement_manager.h>
+#include <game/server/core/components/meta/duties_manager.h>
+#include <game/server/core/components/meta/durability_manager.h>
+#include <game/server/core/components/meta/meta_manager.h>
+#include <game/server/core/components/meta/mini_events_manager.h>
 #include <game/server/core/components/npcs/npc_manager.h>
 #include <game/server/core/components/quests/quest_manager.h>
 #include <game/server/core/components/worlds/portal_manager.h>
@@ -24,6 +29,7 @@
 
 TWorldController::TWorldController(CGameContext *pGameServer)
 	: m_pGameServer(pGameServer),
+	m_EntityManager(pGameServer),
 	m_pLocalizationManager(nullptr),
 	m_pAccountManager(nullptr),
 	m_pVoteMenuManager(nullptr),
@@ -37,7 +43,12 @@ TWorldController::TWorldController(CGameContext *pGameServer)
 	m_pStatusManager(nullptr),
 	m_pSkillManager(nullptr),
 	m_pTraitManager(nullptr),
-	m_pEnemyRegistry(nullptr)
+	m_pEnemyRegistry(nullptr),
+	m_pMetaManager(nullptr),
+	m_pAchievementManager(nullptr),
+	m_pDutiesManager(nullptr),
+	m_pMiniEventsManager(nullptr),
+	m_pDurabilityManager(nullptr)
 {
 	m_System.Add(m_pLocalizationManager = new CLocalizationManager);
 	m_System.Add(m_pEffectRegistry = new CEffectRegistry);
@@ -46,6 +57,11 @@ TWorldController::TWorldController(CGameContext *pGameServer)
 	m_System.Add(m_pSkillManager = new CSkillManager);
 	m_System.Add(m_pEnemyRegistry = new CEnemyRegistry);
 	m_System.Add(m_pAccountManager = new CAccountManager);
+	m_System.Add(m_pMetaManager = new CMetaManager);
+	m_System.Add(m_pAchievementManager = new CAchievementManager);
+	m_System.Add(m_pDutiesManager = new CDutiesManager);
+	m_System.Add(m_pMiniEventsManager = new CMiniEventsManager);
+	m_System.Add(m_pDurabilityManager = new CDurabilityManager);
 	m_System.Add(m_pVoteMenuManager = new CVoteMenuManager);
 	m_System.Add(m_pCraftManager = new CCraftManager);
 	m_System.Add(m_pPortalManager = new CPortalManager);
@@ -105,16 +121,35 @@ void TWorldController::OnResetClientData(int ClientID) const
 		m_System.m_apComponents[i]->OnClientReset(ClientID);
 }
 
-void TWorldController::OnCharacterSpawn(CPlayer *pPlayer) const
+void TWorldController::OnCharacterSpawn(CPlayer *pPlayer)
 {
 	for(int i = 0; i < m_System.m_apComponents.size(); i++)
 		m_System.m_apComponents[i]->OnCharacterSpawn(pPlayer);
+	if(pPlayer && !pPlayer->IsDummy())
+		m_Events.EmitCharacterSpawn(pPlayer);
 }
 
-void TWorldController::OnPlayerLogin(CPlayer *pPlayer) const
+void TWorldController::OnPlayerLogin(CPlayer *pPlayer)
 {
 	for(int i = 0; i < m_System.m_apComponents.size(); i++)
 		m_System.m_apComponents[i]->OnPlayerLogin(pPlayer);
+	if(pPlayer && !pPlayer->IsDummy())
+		m_Events.EmitPlayerLogin(pPlayer);
+}
+
+bool TWorldController::DispatchPlayerVoteCommand(int ClientID, const char *pCmd, const char *pArgs) const
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || !m_pGameServer)
+		return false;
+	CPlayer *pP = m_pGameServer->m_apPlayers[ClientID];
+	if(!pP)
+		return false;
+	for(int i = 0; i < m_System.m_apComponents.size(); i++)
+	{
+		if(m_System.m_apComponents[i]->OnPlayerVoteCommand(pP, pCmd, pArgs))
+			return true;
+	}
+	return false;
 }
 
 IServer *TWorldController::Server() const

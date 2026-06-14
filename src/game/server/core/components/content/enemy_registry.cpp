@@ -3,7 +3,9 @@
 #include <game/server/account.h>
 #include <game/server/core/components/content/enemy_registry.h>
 #include <game/server/core/components/content/status_manager.h>
+#include <game/server/core/components/meta/mini_events_manager.h>
 #include <game/server/core/tworld_controller.h>
+#include <game/server/entity_manager.h>
 #include <game/server/entities/character.h>
 #include <game/server/gamecontroller.h>
 #include <game/server/gamecontext.h>
@@ -232,16 +234,37 @@ void CEnemyRegistry::RollLoot(CPlayer *pKiller, int ZombId) const
 			Reward = ITEM_GOLD;
 	}
 
-	pKiller->m_AccData.m_aItems[Reward].m_Num += Num;
-	const int Hearts = pDef ? maximum(1, pDef->m_BonusHearts) : 1;
-	pKiller->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num += Hearts;
+	if(Core() && Core()->MiniEventsManager())
+	{
+		const int Bonus = Core()->MiniEventsManager()->GetLootBonusPercent();
+		if(Bonus > 0)
+			Num = maximum(1, Num + Num * Bonus / 100);
+	}
+
+	vec2 Pos = vec2(0.f, 0.f);
+	if(CCharacter *pChr = pKiller->GetCharacter())
+		Pos = pChr->GetPos();
+	else
+		Pos = pKiller->m_ViewPos;
+
+	if(Core() && Core()->EntityManager())
+	{
+		Core()->EntityManager()->DropItem(Pos, pKiller->GetCID(), Reward, Num);
+		const int Hearts = pDef ? maximum(1, pDef->m_BonusHearts) : 1;
+		Core()->EntityManager()->DropItem(Pos, pKiller->GetCID(), ITEM_ZOMBIEHEART, Hearts);
+	}
+	else
+	{
+		pKiller->m_AccData.m_aItems[Reward].m_Num += Num;
+		const int Hearts = pDef ? maximum(1, pDef->m_BonusHearts) : 1;
+		pKiller->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num += Hearts;
+		if(GS()->Accounts() && GS()->Accounts()->IsEnabled() && pKiller->GetAccountId() >= 0)
+			GS()->Accounts()->RequestSaveItems(pKiller->GetCID());
+	}
+
 	pKiller->m_Score++;
-
 	GS()->SendChatLocF(pKiller->GetCID(), "game.loot_drop", u8"掉落：%s ×%d（僵尸心+%d）",
-		GS()->LocItemName(pKiller->GetCID(), Reward), Num, Hearts);
-
-	if(GS()->Accounts() && GS()->Accounts()->IsEnabled() && pKiller->GetAccountId() >= 0)
-		GS()->Accounts()->RequestSaveItems(pKiller->GetCID());
+		GS()->LocItemName(pKiller->GetCID(), Reward), Num, pDef ? maximum(1, pDef->m_BonusHearts) : 1);
 }
 
 void CEnemyRegistry::TickZombie(CZombieBot *pBot) const

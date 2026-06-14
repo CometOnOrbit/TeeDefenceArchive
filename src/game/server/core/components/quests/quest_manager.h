@@ -6,6 +6,7 @@
 #include <engine/shared/protocol.h>
 
 #include <game/server/core/tworld_component.h>
+#include <game/server/core/tools/event_listener.h>
 
 class CCommandManager;
 class CPlayer;
@@ -53,7 +54,7 @@ struct SPlayerQuestState
 	int m_SubProgress;
 };
 
-class CQuestManager : public TWorldComponent
+class CQuestManager : public TWorldComponent, public IGameEventListener
 {
 	SQuestDef m_aQuests[MAX_QUESTS];
 	int m_NumQuests;
@@ -69,6 +70,9 @@ public:
 	void OnClientReset(int ClientID) override;
 	void OnCharacterSpawn(CPlayer *pPlayer) override;
 	void OnTick() override;
+	void OnShutdown() override;
+
+	void OnPlayerKill(CPlayer *pKiller, int ZombId) override;
 
 	void RegisterChatCommands(CCommandManager *pMgr);
 	void RegisterVoteCommands(CCommandManager *pMgr);

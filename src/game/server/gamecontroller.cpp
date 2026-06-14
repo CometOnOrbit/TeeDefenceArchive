@@ -33,6 +33,9 @@
 #include "botengine.h"
 #include <game/server/core/components/content/trait_manager.h>
 #include <game/server/core/components/quests/quest_manager.h>
+#include <game/server/core/components/meta/achievement_manager.h>
+#include <game/server/core/components/meta/duties_manager.h>
+#include <game/server/core/components/meta/durability_manager.h>
 #include <game/server/core/components/skills/skill_manager.h>
 #include <game/server/core/components/content/content_types.h>
 #include <game/server/core/components/content/effect_registry.h>
@@ -481,8 +484,7 @@ int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int
 			{
 				if(pCore->EnemyRegistry())
 					pCore->EnemyRegistry()->RollLoot(pKiller, pVictimPlayer->GetZomb());
-				if(pCore->QuestManager())
-					pCore->QuestManager()->TryKillProgress(pKiller);
+				pCore->Events().EmitPlayerKill(pKiller, pVictimPlayer->GetZomb());
 			}
 		}
 
@@ -523,6 +525,9 @@ int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int
 		pKiller->m_Score++; // normal kill
 	if(Weapon == WEAPON_SELF)
 		pVictim->GetPlayer()->m_RespawnTick = Server()->Tick() + Server()->TickSpeed() * 3.0f;
+
+	if(TWorldController *pCore = GameServer()->Core())
+		pCore->Events().EmitCharacterDeath(pVictim->GetPlayer(), pKiller, Weapon);
 
 	return 0;
 }
@@ -614,6 +619,58 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 	}
 	else
 		pChr->SetHealthDirect(Config()->m_SvPlayerMaxHealth);
+
+	// Apply max health bonus from cards equipped on armor (helm/chest/legs)
+	if(!pChr->GetPlayer()->IsDummy())
+	{
+		CItemHelper *pH = GameServer()->ItemHelper();
+		if(pH)
+		{
+			const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+			int TotalStacks = 0;
+			for(int a = 0; a < 3; a++)
+			{
+				const int ItemId = pChr->GetPlayer()->GetHolding(ArmorTypes[a]);
+				if(ItemId <= 0)
+					continue;
+				const char *pExtra = pChr->GetPlayer()->GetExtraForItem(ItemId);
+				TotalStacks += pH->GetEffectStacksFromExtra(pExtra, ITEM_CARD_MAX_HEALTH, "max_health_bonus");
+			}
+			if(TotalStacks > 0)
+			{
+				const int Bonus = TotalStacks * 2; // health_per_stack
+				pChr->AddMaxHealth(Bonus);
+			}
+		}
+	}
+	pChr->SetMaxHealth(pChr->GetHealth());
+
+	// Magazine parts on pickaxe/axe/sword increase spawn ammo
+	if(!pChr->GetPlayer()->IsDummy() && Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+	{
+		CPlayer *pPl = pChr->GetPlayer();
+		int AmmoBonus = 0;
+		const int ToolTypes[] = {ITYPE_PICKAXE, ITYPE_AXE, ITYPE_SWORD};
+		for(int t = 0; t < 3; t++)
+		{
+			const int HoldId = pPl->GetHolding(ToolTypes[t]);
+			if(HoldId <= 0)
+				continue;
+			const char *pExtra = pPl->GetExtraForItem(HoldId);
+			if(!pExtra || !pExtra[0])
+				continue;
+			CEffectContext Ctx = {};
+			Ctx.m_pPlayer = pPl;
+			Ctx.m_pExtraJson = pExtra;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_WEAPON_FIRE, Ctx);
+			AmmoBonus += Ctx.m_OutAmmoBonus;
+		}
+		if(AmmoBonus > 0)
+		{
+			for(int w = WEAPON_GUN; w <= WEAPON_LASER; w++)
+				pChr->AddWeaponAmmo(w, AmmoBonus);
+		}
+	}
 
 	if(IsZombiePlayer(pChr->GetPlayer()) && pChr->GetPlayer()->GetZomb() != ZOMB_SPIDER_BOSS)
 	{
@@ -1269,6 +1326,12 @@ void CGameController::RegisterChatCommands(CCommandManager *pManager)
 			pCore->QuestManager()->RegisterChatCommands(pManager);
 			pCore->QuestManager()->RegisterVoteCommands(pManager);
 		}
+		if(pCore->AchievementManager())
+			pCore->AchievementManager()->RegisterVoteCommands(pManager);
+		if(pCore->DutiesManager())
+			pCore->DutiesManager()->RegisterVoteCommands(pManager);
+		if(pCore->DurabilityManager())
+			pCore->DurabilityManager()->RegisterVoteCommands(pManager);
 	}
 }
 
@@ -1309,6 +1372,29 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 		MoreForce = FxCtx.m_OutForceMul;
 		Electron = FxCtx.m_ElectronStacks;
 		ExplosionStacks = FxCtx.m_ExplosionStacks;
+
+		// Aggregate effects from armor items (helm/chest/legs)
+		const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+		for(int a = 0; a < 3; a++)
+		{
+			const int ArmorId = pPl->GetHolding(ArmorTypes[a]);
+			if(ArmorId <= 0)
+				continue;
+			const char *pArmorExtra = pPl->GetExtraForItem(ArmorId);
+			if(!pArmorExtra || !pArmorExtra[0])
+				continue;
+			CEffectContext ArmorCtx = FxCtx;
+			ArmorCtx.m_pExtraJson = pArmorExtra;
+			ArmorCtx.m_OutDamage = 0;
+			ArmorCtx.m_OutForceMul = 1.f;
+			ArmorCtx.m_ElectronStacks = 0;
+			ArmorCtx.m_ExplosionStacks = 0;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_WEAPON_FIRE, ArmorCtx);
+			ExtraDmg += ArmorCtx.m_OutDamage;
+			MoreForce *= ArmorCtx.m_OutForceMul;
+			Electron += ArmorCtx.m_ElectronStacks;
+			ExplosionStacks += ArmorCtx.m_ExplosionStacks;
+		}
 	}
 	if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
 	{
@@ -1316,6 +1402,12 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 		MoreForce = (pH && pSx) ? 1.f + (float)pH->GetCard(pSx, ITEM_CARD_FORCE_ID) * 2.f : 1.f;
 		Electron = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_ELECTRON_ID) : 0;
 		ExplosionStacks = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_EXPLOSION_ID) : 0;
+	}
+
+	if(Server()->Tick() < pChr->m_RetaliationExpireTick && pChr->m_RetaliationStacks > 0)
+	{
+		const int WeaponDmg = g_pData->m_Weapons.m_aId[Weapon].m_Damage + ExtraDmg;
+		ExtraDmg += WeaponDmg * 15 * pChr->m_RetaliationStacks / 100;
 	}
 
 	int ReloadTimer = 0;
@@ -1573,6 +1665,23 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 		CEffectContext ReloadCtx = FxCtx;
 		GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_RELOAD, ReloadCtx);
 		LessReload = ReloadCtx.m_OutReloadDelta;
+
+		// Aggregate reload speed from armor items (helm/chest/legs)
+		const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+		for(int a = 0; a < 3; a++)
+		{
+			const int ArmorId = pPl->GetHolding(ArmorTypes[a]);
+			if(ArmorId <= 0)
+				continue;
+			const char *pArmorExtra = pPl->GetExtraForItem(ArmorId);
+			if(!pArmorExtra || !pArmorExtra[0])
+				continue;
+			CEffectContext ArmorCtx = FxCtx;
+			ArmorCtx.m_pExtraJson = pArmorExtra;
+			ArmorCtx.m_OutReloadDelta = 0;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_RELOAD, ArmorCtx);
+			LessReload += ArmorCtx.m_OutReloadDelta;
+		}
 	}
 	if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
 		LessReload = (pH && pSx) ? 10 * pH->GetCard(pSx, ITEM_CARD_QUICKLY_FIRE_ID) : 0;
@@ -1913,6 +2022,8 @@ bool CGameController::TdEndWave()
 
 	TdDoWarmup(NextBreak);
 	TdBroadcastGameInfo();
+	if(TWorldController *pCore = GameServer()->Core())
+		pCore->Events().EmitWaveComplete(m_TdWave);
 	return true;
 }
 

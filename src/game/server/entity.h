@@ -3,10 +3,21 @@
 #ifndef GAME_SERVER_ENTITY_H
 #define GAME_SERVER_ENTITY_H
 
+#include <base/tl/array.h>
 #include <base/vmath.h>
 
 #include "alloc.h"
 #include "gameworld.h"
+
+enum
+{
+	SNAP_GROUP_CENTER = 1,
+	SNAP_GROUP_RING = 2,
+	SNAP_GROUP_TOWER_BODY = 3,
+	SNAP_GROUP_TOWER_SIDE = 4,
+	SNAP_GROUP_TOWER_FLAG = 5,
+	SNAP_GROUP_SPIDER_LEGS = 6,
+};
 
 /*
 	Class: Entity
@@ -20,6 +31,12 @@ private:
 	/* Friend classes */
 	friend class CGameWorld; // for entity list handling
 
+	struct SSnapIdGroup
+	{
+		int m_GroupId;
+		array<int> m_aIds;
+	};
+
 	/* Identity */
 	class CGameWorld *m_pGameWorld;
 
@@ -29,6 +46,8 @@ private:
 	int m_ID;
 	int m_ObjType;
 	int m_ObjFlag;
+
+	array<SSnapIdGroup> m_aSnapIdGroups;
 
 	/*
 		Variable: m_ProximityRadius
@@ -50,6 +69,8 @@ protected:
 
 	/* Getters */
 	int GetID() const { return m_ID; }
+	const array<int> *FindSnappingGroupIds(int GroupId) const;
+	int SnapGroupId(int GroupId, int Index = 0) const;
 
 public:
 	/* Constructor */
@@ -75,6 +96,9 @@ public:
 	/* Setters */
 	void MarkForDestroy() { m_MarkedForDestroy = true; }
 	void SetProximityRadius(float Radius) { m_ProximityRadius = Radius; }
+
+	void AddSnappingGroupIds(int GroupId, int NumIds);
+	void RemoveSnappingGroupIds(int GroupId);
 
 	/* Other functions */
 

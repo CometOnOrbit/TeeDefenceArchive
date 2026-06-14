@@ -3,6 +3,7 @@
 #include <engine/storage.h>
 
 #include <game/server/gamecontext.h>
+#include <game/server/player.h>
 
 #include "item_system.h"
 
@@ -17,6 +18,7 @@ void CItemHelper::ResetStats()
 	mem_zero(m_aToolDmg, sizeof(m_aToolDmg));
 	mem_zero(m_aMatHealth, sizeof(m_aMatHealth));
 	mem_zero(m_aaItemName, sizeof(m_aaItemName));
+	mem_zero(m_aaItemDesc, sizeof(m_aaItemDesc));
 	mem_zero(m_aItemType, sizeof(m_aItemType));
 	mem_zero(m_aItemMaxStack, sizeof(m_aItemMaxStack));
 	mem_zero(m_aFormula, sizeof(m_aFormula));
@@ -43,6 +45,8 @@ void CItemHelper::ConsumeStatPass(const json_value &Entry, int ParentType)
 		return;
 	if(Entry["name"].type == json_string)
 		str_copy(m_aaItemName[ID], Entry["name"].u.string.ptr, sizeof(m_aaItemName[ID]));
+	if(Entry["desc"].type == json_string)
+		str_copy(m_aaItemDesc[ID], Entry["desc"].u.string.ptr, sizeof(m_aaItemDesc[ID]));
 	m_aItemType[ID] = Type;
 	if(Entry["max"].type == json_integer)
 		m_aItemMaxStack[ID] = (int)Entry["max"].u.integer;
@@ -52,6 +56,8 @@ void CItemHelper::ConsumeStatPass(const json_value &Entry, int ParentType)
 		m_aToolDmg[ID].m_Damage = (int)Entry["damage"].u.integer;
 	if(Entry["capacity"].type == json_integer)
 		m_aToolDmg[ID].m_Capacity = (int)Entry["capacity"].u.integer;
+	if(Entry["defense"].type == json_integer)
+		m_aToolDmg[ID].m_Defense = (int)Entry["defense"].u.integer;
 	if(Entry["proba"].type == json_integer)
 		m_aProba[ID] = (int)Entry["proba"].u.integer;
 	if(Entry["max_place"].type == json_integer)
@@ -250,6 +256,13 @@ int CItemHelper::GetDmg(int ID) const
 	return m_aToolDmg[ID].m_Damage;
 }
 
+int CItemHelper::GetDefense(int ID) const
+{
+	if(!CheckItemValid(ID))
+		return 0;
+	return m_aToolDmg[ID].m_Defense;
+}
+
 int CItemHelper::GetMaxHealth(int MatID) const
 {
 	if(!CheckItemValid(MatID))
@@ -292,6 +305,11 @@ bool CItemHelper::IsPlaceableOnItemType(int CardOrPartId, int HostItemType) cons
 	return m_aaPlaceable[CardOrPartId][HostItemType];
 }
 
+bool CItemHelper::IsPartItem(int ID) const
+{
+	return ID >= ITEM_PART_BARREL && ID <= ITEM_PART_STABILIZER;
+}
+
 int CItemHelper::GetType(int ID) const
 {
 	if(!CheckItemValid(ID))
@@ -315,6 +333,13 @@ const char *CItemHelper::GetItemName(int ID, bool IncludeZero) const
 	if(m_aaItemName[ID][0])
 		return m_aaItemName[ID];
 	return "Item";
+}
+
+const char *CItemHelper::GetItemDesc(int ID) const
+{
+	if(!CheckItemValid(ID) || !m_aaItemDesc[ID][0])
+		return "";
+	return m_aaItemDesc[ID];
 }
 
 int CItemHelper::GetExtraSlotNum(const char *pExtraJson, const char *pArrayName, int ItemId) const
@@ -427,4 +452,39 @@ int CItemHelper::GetEffectStacksFromExtra(const char *pExtraJson, int ItemId, co
 		return 0;
 
 	return GetCard(pExtraJson, ItemId) + GetPart(pExtraJson, ItemId);
+}
+
+int CItemHelper::SumArmorEffectStacks(CPlayer *pP, int CardItemId, const char *pEffectKey) const
+{
+	if(!pP || !pEffectKey || !pEffectKey[0] || !CheckItemValid(CardItemId))
+		return 0;
+
+	const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+	int Total = 0;
+	for(int a = 0; a < 3; a++)
+	{
+		const int ArmorId = pP->GetHolding(ArmorTypes[a]);
+		if(ArmorId <= 0)
+			continue;
+		Total += GetEffectStacksFromExtra(pP->GetExtraForItem(ArmorId), CardItemId, pEffectKey);
+	}
+	return Total;
+}
+
+int CItemHelper::CountArmorWithCard(CPlayer *pP, int CardItemId) const
+{
+	if(!pP || !CheckItemValid(CardItemId))
+		return 0;
+
+	const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+	int Count = 0;
+	for(int a = 0; a < 3; a++)
+	{
+		const int ArmorId = pP->GetHolding(ArmorTypes[a]);
+		if(ArmorId <= 0)
+			continue;
+		if(GetCard(pP->GetExtraForItem(ArmorId), CardItemId) > 0)
+			Count++;
+	}
+	return Count;
 }

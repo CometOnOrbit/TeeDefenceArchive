@@ -124,7 +124,8 @@ void CGameWorld::Snap(int SnappingClient)
 {
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 		for(auto &pEnt : m_alpEntityLists[i])
-			pEnt->Snap(SnappingClient);
+			if(pEnt)
+				pEnt->Snap(SnappingClient);
 	m_Events.Snap(SnappingClient);
 }
 
@@ -132,7 +133,8 @@ void CGameWorld::PostSnap()
 {
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 		for(auto &pEnt : m_alpEntityLists[i])
-			pEnt->PostSnap();
+			if(pEnt)
+				pEnt->PostSnap();
 	m_Events.Clear();
 }
 
@@ -155,11 +157,13 @@ void CGameWorld::Tick()
 	// update all objects (index loop: Tick() may InsertEntity into any list)
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 		for(int j = 0; j < m_alpEntityLists[i].size(); j++)
-			m_alpEntityLists[i][j]->Tick();
+			if(m_alpEntityLists[i][j])
+				m_alpEntityLists[i][j]->Tick();
 
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 		for(int j = 0; j < m_alpEntityLists[i].size(); j++)
-			m_alpEntityLists[i][j]->TickDefered();
+			if(m_alpEntityLists[i][j])
+				m_alpEntityLists[i][j]->TickDefered();
 
 	RemoveEntities();
 }
@@ -231,6 +235,37 @@ CEntity *CGameWorld::IntersectFlagEntity(vec2 Pos0, vec2 Pos1, float Radius, vec
 	return pClosest;
 }
 
+CEntity *CGameWorld::IntersectFlagEntitySkippingTurrets(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, int Flag, CEntity *pNotThis)
+{
+	const float MaxDist = distance(Pos0, Pos1);
+	if(MaxDist < 0.001f)
+		return IntersectFlagEntity(Pos0, Pos1, Radius, NewPos, Flag, pNotThis);
+
+	const vec2 Dir = normalize(Pos1 - Pos0);
+	vec2 Start = Pos0;
+	float Traveled = 0.f;
+
+	while(Traveled < MaxDist)
+	{
+		vec2 At;
+		CEntity *pHit = IntersectFlagEntity(Start, Pos1, Radius, At, Flag, pNotThis);
+		if(!pHit)
+			return nullptr;
+		if(pHit->ObjType() != ENTTYPE_TURRET)
+		{
+			NewPos = At;
+			return pHit;
+		}
+
+		const float Step = distance(Start, At) + pHit->GetProximityRadius() + Radius + 2.0f;
+		if(Step < 0.5f)
+			return nullptr;
+		Traveled += Step;
+		Start = Pos0 + Dir * minimum(Traveled, MaxDist);
+	}
+	return nullptr;
+}
+
 CEntity *CGameWorld::ClosestEntity(vec2 Pos, float Radius, int Type, CEntity *pNotThis)
 {
 	// Find other entities
@@ -300,6 +335,35 @@ void CGameWorld::CreateDamage(vec2 Pos, int Id, vec2 Source, int HealthAmount, i
 	}
 }
 
+void CGameWorld::CreateFloatingAmount(vec2 Pos, int ClientID, int Amount, int64 Mask)
+{
+	if(Amount <= 0)
+		return;
+
+	int HealthAmount = 0;
+	int ArmorAmount = 0;
+	if(Amount < 10)
+		HealthAmount = Amount;
+	else
+	{
+		HealthAmount = minimum(9, Amount / 10);
+		ArmorAmount = Amount % 10;
+	}
+
+	float f = angle(vec2(0.f, -1.f));
+	CNetEvent_Damage *pEvent = (CNetEvent_Damage *)m_Events.Create(NETEVENTTYPE_DAMAGE, sizeof(CNetEvent_Damage), Mask);
+	if(pEvent)
+	{
+		pEvent->m_X = (int)Pos.x;
+		pEvent->m_Y = (int)Pos.y;
+		pEvent->m_ClientID = ClientID;
+		pEvent->m_Angle = (int)(f * 256.0f);
+		pEvent->m_HealthAmount = HealthAmount;
+		pEvent->m_ArmorAmount = ArmorAmount;
+		pEvent->m_Self = false;
+	}
+}
+
 void CGameWorld::CreateHammerHit(vec2 Pos)
 {
 	// create the event
@@ -344,6 +408,9 @@ void CGameWorld::CreateExplosion(vec2 Pos, CEntity *pOwner, int Weapon, int MaxD
 		pEvent->m_Y = (int) Pos.y;
 	}
 
+	const int OwnerCid = DamageOwnerFromEntity(pOwner);
+	const bool HumanDefender = IsHumanDefenderOwner(OwnerCid);
+
 	// deal damage
 	array<CEntity *> lpEnts;
 	lpEnts.hint_size(8);
@@ -358,6 +425,8 @@ void CGameWorld::CreateExplosion(vec2 Pos, CEntity *pOwner, int Weapon, int MaxD
 			continue;
 		const int Type = pEnt->ObjType();
 		if(Type != ENTTYPE_CHARACTER && Type != ENTTYPE_TOWERMAIN && Type != ENTTYPE_TURRET && Type != ENTTYPE_SPIDERLEG)
+			continue;
+		if(HumanDefender && (Type == ENTTYPE_TOWERMAIN || Type == ENTTYPE_TURRET))
 			continue;
 
 		vec2 Diff = pEnt->GetPos() - Pos;

@@ -11,7 +11,6 @@ class CTowerMain : public CHitableEntity
 {
 public:
 	CTowerMain(CGameWorld *pGameWorld, vec2 StandPos);
-	virtual ~CTowerMain();
 
 	virtual void Tick() override;
 	virtual void Reset() override;
@@ -24,9 +23,6 @@ public:
 	void SetHealth(int Health);
 
 private:
-	int m_FlagID;
-	int m_aIDs[9];
-	int m_alIDs[s_TowerNumSide];
 	int m_Health;
 };
 

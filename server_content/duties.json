@@ -1,0 +1,15 @@
+{
+    "duties": [
+        {"id": "daily_kill_basic",    "title": "Basic Hunt",        "desc": "Kill 20 zombies today",     "type": "kill",  "count": 20,   "reward_item": 0,  "reward_num": 20,  "tier": 0},
+        {"id": "daily_mine_basic",    "title": "Basic Miner",       "desc": "Mine 15 resources today",   "type": "mine",  "count": 15,   "reward_item": 0,  "reward_num": 15,  "tier": 0},
+
+        {"id": "daily_craft_medium",  "title": "Skilled Crafter",   "desc": "Craft 5 items today",       "type": "craft", "count": 5,    "reward_item": 2,  "reward_num": 5,   "tier": 1},
+        {"id": "daily_wave_medium",   "title": "Steady Defender",   "desc": "Clear 3 waves today",       "type": "wave",  "count": 3,    "reward_item": 7,  "reward_num": 2,   "tier": 1},
+
+        {"id": "daily_kill_advanced", "title": "Master Hunter",     "desc": "Kill 60 zombies today",     "type": "kill",  "count": 60,   "reward_item": 4,  "reward_num": 3,   "tier": 2},
+        {"id": "daily_craft_advanced","title": "Master Crafter",    "desc": "Craft 10 items today",      "type": "craft", "count": 10,   "reward_item": 39, "reward_num": 2,   "tier": 2},
+
+        {"id": "daily_kill_expert",   "title": "Legendary Hunter",  "desc": "Kill 100 zombies today",    "type": "kill",  "count": 100,  "reward_item": 5,  "reward_num": 2,   "tier": 3},
+        {"id": "daily_mine_expert",   "title": "Legendary Miner",   "desc": "Mine 50 resources today",   "type": "mine",  "count": 50,   "reward_item": 40, "reward_num": 2,   "tier": 3}
+    ]
+}

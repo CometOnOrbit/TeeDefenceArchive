@@ -24,8 +24,61 @@ CEntity::CEntity(CGameWorld *pGameWorld, int ObjType, int ObjFlag, vec2 Pos, int
 
 CEntity::~CEntity()
 {
+	const int WorldId = GameWorld()->GameServer()->GetWorldID();
+	Server()->SnapFreeID(m_ID, WorldId);
+	for(int i = 0; i < m_aSnapIdGroups.size(); i++)
+	{
+		for(int j = 0; j < m_aSnapIdGroups[i].m_aIds.size(); j++)
+			Server()->SnapFreeID(m_aSnapIdGroups[i].m_aIds[j], WorldId);
+	}
+	m_aSnapIdGroups.clear();
 	GameWorld()->RemoveEntity(this);
-	Server()->SnapFreeID(m_ID, GameWorld()->GameServer()->GetWorldID());
+}
+
+void CEntity::AddSnappingGroupIds(int GroupId, int NumIds)
+{
+	if(NumIds <= 0)
+		return;
+
+	RemoveSnappingGroupIds(GroupId);
+
+	SSnapIdGroup Group;
+	Group.m_GroupId = GroupId;
+	Group.m_aIds.set_size(NumIds);
+	const int WorldId = GameWorld()->GameServer()->GetWorldID();
+	for(int i = 0; i < NumIds; i++)
+		Group.m_aIds[i] = Server()->SnapNewID(WorldId);
+	m_aSnapIdGroups.add(Group);
+}
+
+void CEntity::RemoveSnappingGroupIds(int GroupId)
+{
+	const int WorldId = GameWorld()->GameServer()->GetWorldID();
+	for(int i = 0; i < m_aSnapIdGroups.size(); i++)
+	{
+		if(m_aSnapIdGroups[i].m_GroupId != GroupId)
+			continue;
+		for(int j = 0; j < m_aSnapIdGroups[i].m_aIds.size(); j++)
+			Server()->SnapFreeID(m_aSnapIdGroups[i].m_aIds[j], WorldId);
+		m_aSnapIdGroups.remove_index(i);
+		return;
+	}
+}
+
+const array<int> *CEntity::FindSnappingGroupIds(int GroupId) const
+{
+	for(int i = 0; i < m_aSnapIdGroups.size(); i++)
+		if(m_aSnapIdGroups[i].m_GroupId == GroupId)
+			return &m_aSnapIdGroups[i].m_aIds;
+	return nullptr;
+}
+
+int CEntity::SnapGroupId(int GroupId, int Index) const
+{
+	const array<int> *pIds = FindSnappingGroupIds(GroupId);
+	if(!pIds || Index < 0 || Index >= pIds->size())
+		return -1;
+	return (*pIds)[Index];
 }
 
 int CEntity::NetworkClipped(int SnappingClient)

@@ -53,17 +53,9 @@ CTurret::CTurret(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId)
 		m_MaxHealth = maximum(1, pH->GetMaxCapacity(ItemDefId));
 	m_Health = m_MaxHealth;
 	SetProximityRadius(HitRadius());
-	m_aCenterId = Server()->SnapNewID(GameServer()->GetWorldID());
-	for(int i = 0; i < NUM_RING_LASERS; i++)
-		m_aRingIds[i] = Server()->SnapNewID(GameServer()->GetWorldID());
+	AddSnappingGroupIds(SNAP_GROUP_CENTER, 1);
+	AddSnappingGroupIds(SNAP_GROUP_RING, NUM_RING_LASERS);
 	GameWorld()->InsertEntity(this);
-}
-
-CTurret::~CTurret()
-{
-	Server()->SnapFreeID(m_aCenterId, GameWorld()->GameServer()->GetWorldID());
-	for(int i = 0; i < NUM_RING_LASERS; i++)
-		Server()->SnapFreeID(m_aRingIds[i], GameWorld()->GameServer()->GetWorldID());
 }
 
 int CTurret::GetVisualLevel() const
@@ -103,7 +95,7 @@ bool CTurret::TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, int Weap
 
 void CTurret::Tick()
 {
-	if(!GameServer()->m_apPlayers[m_Owner])
+	if(m_Owner < 0 || m_Owner >= MAX_CLIENTS || !GameServer()->m_apPlayers[m_Owner])
 	{
 		MarkForDestroy();
 		return;
@@ -226,10 +218,11 @@ void CTurret::Snap(int SnappingClient)
 	const float Radius = BaseRadius + (float)(GetVisualLevel() * Config()->m_SvTurretRadius);
 	const float AngleStep = 2.0f * pi / (float)NUM_RING_LASERS;
 	const int Subtype = GetVisualLevel();
+	const int CenterId = SnapGroupId(SNAP_GROUP_CENTER, 0);
 
 	if(GameServer()->ClientUsesDDNetLaser(SnappingClient))
 	{
-		CNetObj_DDNetLaser *pCenter = static_cast<CNetObj_DDNetLaser *>(Server()->SnapNewItem(NETOBJTYPE_DDNETLASER, m_aCenterId, sizeof(CNetObj_DDNetLaser)));
+		CNetObj_DDNetLaser *pCenter = static_cast<CNetObj_DDNetLaser *>(Server()->SnapNewItem(NETOBJTYPE_DDNETLASER, CenterId, sizeof(CNetObj_DDNetLaser)));
 		if(pCenter)
 		{
 			pCenter->m_FromX = (int)m_Pos.x;
@@ -246,7 +239,7 @@ void CTurret::Snap(int SnappingClient)
 	}
 	else
 	{
-		CNetObj_Laser *pCenter = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, m_aCenterId, sizeof(CNetObj_Laser)));
+		CNetObj_Laser *pCenter = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, CenterId, sizeof(CNetObj_Laser)));
 		if(pCenter)
 		{
 			pCenter->m_X = (int)m_Pos.x;
@@ -259,9 +252,12 @@ void CTurret::Snap(int SnappingClient)
 
 	for(int i = 0; i < NUM_RING_LASERS; i++)
 	{
+		const int RingId = SnapGroupId(SNAP_GROUP_RING, i);
+		if(RingId < 0)
+			continue;
 		vec2 PartPosStart = m_Pos + vec2(Radius * cosf(AngleStep * (float)i), Radius * sinf(AngleStep * (float)i));
 		vec2 PartPosEnd = m_Pos + vec2(Radius * cosf(AngleStep * (float)(i + 1)), Radius * sinf(AngleStep * (float)(i + 1)));
-		CNetObj_Laser *pObj = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, m_aRingIds[i], sizeof(CNetObj_Laser)));
+		CNetObj_Laser *pObj = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, RingId, sizeof(CNetObj_Laser)));
 		if(!pObj)
 			return;
 		pObj->m_X = (int)PartPosStart.x;
@@ -278,17 +274,9 @@ CTurretPreview::CTurretPreview(CGameWorld *pGameWorld, vec2 Pos, int Owner, int 
 	m_Owner = Owner;
 	m_ItemDefId = ItemDefId;
 	m_Valid = Valid;
-	m_aCenterId = Server()->SnapNewID(GameWorld()->GameServer()->GetWorldID());
-	for(int i = 0; i < NUM_RING_LASERS; i++)
-		m_aRingIds[i] = Server()->SnapNewID(GameWorld()->GameServer()->GetWorldID());
+	AddSnappingGroupIds(SNAP_GROUP_CENTER, 1);
+	AddSnappingGroupIds(SNAP_GROUP_RING, NUM_RING_LASERS);
 	GameWorld()->InsertEntity(this);
-}
-
-CTurretPreview::~CTurretPreview()
-{
-	Server()->SnapFreeID(m_aCenterId, GameWorld()->GameServer()->GetWorldID());
-	for(int i = 0; i < NUM_RING_LASERS; i++)
-		Server()->SnapFreeID(m_aRingIds[i], GameWorld()->GameServer()->GetWorldID());
 }
 
 void CTurretPreview::SetPreviewPos(vec2 Pos)
@@ -319,10 +307,11 @@ void CTurretPreview::Snap(int SnappingClient)
 	const float Radius = BaseRadius + (float)(GetVisualLevel() * Config()->m_SvTurretRadius);
 	const float AngleStep = 2.0f * pi / (float)NUM_RING_LASERS;
 	const int Subtype = GetVisualLevel() + (m_Valid ? 0 : 8);
+	const int CenterId = SnapGroupId(SNAP_GROUP_CENTER, 0);
 
 	if(GameServer()->ClientUsesDDNetLaser(SnappingClient))
 	{
-		CNetObj_DDNetLaser *pCenter = static_cast<CNetObj_DDNetLaser *>(Server()->SnapNewItem(NETOBJTYPE_DDNETLASER, m_aCenterId, sizeof(CNetObj_DDNetLaser)));
+		CNetObj_DDNetLaser *pCenter = static_cast<CNetObj_DDNetLaser *>(Server()->SnapNewItem(NETOBJTYPE_DDNETLASER, CenterId, sizeof(CNetObj_DDNetLaser)));
 		if(pCenter)
 		{
 			pCenter->m_FromX = (int)m_Pos.x;
@@ -339,7 +328,7 @@ void CTurretPreview::Snap(int SnappingClient)
 	}
 	else
 	{
-		CNetObj_Laser *pCenter = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, m_aCenterId, sizeof(CNetObj_Laser)));
+		CNetObj_Laser *pCenter = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, CenterId, sizeof(CNetObj_Laser)));
 		if(pCenter)
 		{
 			pCenter->m_X = (int)m_Pos.x;
@@ -352,9 +341,12 @@ void CTurretPreview::Snap(int SnappingClient)
 
 	for(int i = 0; i < NUM_RING_LASERS; i++)
 	{
+		const int RingId = SnapGroupId(SNAP_GROUP_RING, i);
+		if(RingId < 0)
+			continue;
 		vec2 PartPosStart = m_Pos + vec2(Radius * cosf(AngleStep * (float)i), Radius * sinf(AngleStep * (float)i));
 		vec2 PartPosEnd = m_Pos + vec2(Radius * cosf(AngleStep * (float)(i + 1)), Radius * sinf(AngleStep * (float)(i + 1)));
-		CNetObj_Laser *pObj = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, m_aRingIds[i], sizeof(CNetObj_Laser)));
+		CNetObj_Laser *pObj = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, RingId, sizeof(CNetObj_Laser)));
 		if(!pObj)
 			return;
 		pObj->m_X = (int)PartPosStart.x;

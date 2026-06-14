@@ -3,6 +3,7 @@
 #include "account.h"
 
 #include "account_crypto.h"
+#include "sql_query.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,7 @@
 
 #include <game/commands.h>
 #include <game/server/core/components/quests/quest_manager.h>
+#include <game/server/core/components/meta/meta_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/core/components/skills/skill_manager.h>
@@ -134,21 +136,16 @@ static bool IsUsernameLoggedInElsewhere(CGameContext *pGame, const char *pUserna
 
 #include <mysql.h>
 
-static bool SqlExec(MYSQL *pSql, const char *pQuery)
+static bool SqlExec(MYSQL *pSql, CConfig *pConfig, const char *pQuery)
 {
-	if(mysql_query(pSql, pQuery))
-	{
-		dbg_msg("mysql", "error: %s | %s", mysql_error(pSql), pQuery);
-		return false;
-	}
-	return true;
+	return SqlExecQuery(pSql, pConfig, pQuery);
 }
 
-static bool ColumnExists(MYSQL *pSql, const char *pTable, const char *pColumn)
+static bool ColumnExists(MYSQL *pSql, CConfig *pConfig, const char *pTable, const char *pColumn)
 {
 	char aQuery[256];
 	str_format(aQuery, sizeof(aQuery), "SHOW COLUMNS FROM `%s` LIKE '%s'", pTable, pColumn);
-	if(!SqlExec(pSql, aQuery))
+	if(!SqlExec(pSql, pConfig, aQuery))
 		return false;
 	MYSQL_RES *pRes = mysql_store_result(pSql);
 	const bool Exists = pRes && mysql_num_rows(pRes) > 0;
@@ -160,22 +157,26 @@ static bool ColumnExists(MYSQL *pSql, const char *pTable, const char *pColumn)
 static void SerializeHolding(const int *pHolding, char *pOut, int OutLen)
 {
 	str_format(pOut, OutLen,
-		"{\"pickaxe\":%d,\"axe\":%d,\"sword\":%d,\"turret\":%d}",
-		pHolding[ITYPE_PICKAXE], pHolding[ITYPE_AXE], pHolding[ITYPE_SWORD], pHolding[ITYPE_TURRET]);
+		"{\"pickaxe\":%d,\"axe\":%d,\"sword\":%d,\"turret\":%d,\"helmet\":%d,\"chest\":%d,\"legs\":%d}",
+		pHolding[ITYPE_PICKAXE], pHolding[ITYPE_AXE], pHolding[ITYPE_SWORD], pHolding[ITYPE_TURRET],
+		pHolding[ITYPE_HELMET], pHolding[ITYPE_CHEST], pHolding[ITYPE_LEGS]);
 }
 
 static bool ParseHoldingJson(const char *pJson, int *pHolding)
 {
 	if(!pJson || !pJson[0])
 		return false;
-	int aVals[4] = {0};
-	const int n = sscanf(pJson, "{\"pickaxe\":%d,\"axe\":%d,\"sword\":%d,\"turret\":%d}", &aVals[0], &aVals[1], &aVals[2], &aVals[3]);
-	if(n != 4)
+	int aVals[7] = {0};
+	const int n = sscanf(pJson, "{\"pickaxe\":%d,\"axe\":%d,\"sword\":%d,\"turret\":%d,\"helmet\":%d,\"chest\":%d,\"legs\":%d}", &aVals[0], &aVals[1], &aVals[2], &aVals[3], &aVals[4], &aVals[5], &aVals[6]);
+	if(n < 4)
 		return false;
 	pHolding[ITYPE_PICKAXE] = aVals[0];
 	pHolding[ITYPE_AXE] = aVals[1];
 	pHolding[ITYPE_SWORD] = aVals[2];
 	pHolding[ITYPE_TURRET] = aVals[3];
+	pHolding[ITYPE_HELMET] = n >= 7 ? aVals[4] : 0;
+	pHolding[ITYPE_CHEST] = n >= 7 ? aVals[5] : 0;
+	pHolding[ITYPE_LEGS] = n >= 7 ? aVals[6] : 0;
 	return true;
 }
 
@@ -197,28 +198,33 @@ static bool LoadHoldingFromRow(MYSQL_ROW Row, int SwordCol, int PickaxeCol, int 
 	return false;
 }
 
-static bool MigrateAccountsTable(MYSQL *pSql)
+static bool MigrateAccountsTable(MYSQL *pSql, CConfig *pConfig)
 {
-	if(!ColumnExists(pSql, "tw_Accounts", "Holding"))
+	if(!ColumnExists(pSql, pConfig, "tw_Accounts", "Holding"))
 	{
-		if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` ADD COLUMN `Holding` JSON DEFAULT NULL"))
+		if(!SqlExec(pSql, pConfig, "ALTER TABLE `tw_Accounts` ADD COLUMN `Holding` JSON DEFAULT NULL"))
 			return false;
 	}
-	if(!ColumnExists(pSql, "tw_Accounts", "QuestData"))
+	if(!ColumnExists(pSql, pConfig, "tw_Accounts", "QuestData"))
 	{
-		if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` ADD COLUMN `QuestData` TEXT DEFAULT NULL"))
+		if(!SqlExec(pSql, pConfig, "ALTER TABLE `tw_Accounts` ADD COLUMN `QuestData` TEXT DEFAULT NULL"))
 			return false;
 	}
-	if(!ColumnExists(pSql, "tw_Accounts", "SkillBinds"))
+	if(!ColumnExists(pSql, pConfig, "tw_Accounts", "SkillBinds"))
 	{
-		if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` ADD COLUMN `SkillBinds` TEXT DEFAULT NULL"))
+		if(!SqlExec(pSql, pConfig, "ALTER TABLE `tw_Accounts` ADD COLUMN `SkillBinds` TEXT DEFAULT NULL"))
 			return false;
 	}
-	if(!SqlExec(pSql, "ALTER TABLE `tw_Accounts` MODIFY COLUMN `Password` varchar(128) NOT NULL"))
+	if(!ColumnExists(pSql, pConfig, "tw_Accounts", "MetaData"))
+	{
+		if(!SqlExec(pSql, pConfig, "ALTER TABLE `tw_Accounts` ADD COLUMN `MetaData` TEXT DEFAULT NULL"))
+			return false;
+	}
+	if(!SqlExec(pSql, pConfig, "ALTER TABLE `tw_Accounts` MODIFY COLUMN `Password` varchar(128) NOT NULL"))
 		return false;
-	if(ColumnExists(pSql, "tw_Accounts", "Sword"))
+	if(ColumnExists(pSql, pConfig, "tw_Accounts", "Sword"))
 	{
-		if(!SqlExec(pSql,
+		if(!SqlExec(pSql, pConfig,
 			"UPDATE `tw_Accounts` SET `Holding`=JSON_OBJECT("
 			"'pickaxe', IFNULL(`Pickaxe`,0), 'axe', IFNULL(`Axe`,0), 'sword', IFNULL(`Sword`,0), 'turret', 0) "
 			"WHERE `Holding` IS NULL"))
@@ -227,7 +233,7 @@ static bool MigrateAccountsTable(MYSQL *pSql)
 	return true;
 }
 
-static bool EnsureSchema(MYSQL *pSql)
+static bool EnsureSchema(MYSQL *pSql, CConfig *pConfig)
 {
 	const char *pAccounts =
 		"CREATE TABLE IF NOT EXISTS `tw_Accounts` ("
@@ -239,9 +245,9 @@ static bool EnsureSchema(MYSQL *pSql)
 		"  PRIMARY KEY (`UserID`),"
 		"  UNIQUE KEY `idx_username` (`Username`)"
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
-	if(!SqlExec(pSql, pAccounts))
+	if(!SqlExec(pSql, pConfig, pAccounts))
 		return false;
-	if(!MigrateAccountsTable(pSql))
+	if(!MigrateAccountsTable(pSql, pConfig))
 		return false;
 
 	const char *pItems =
@@ -252,25 +258,25 @@ static bool EnsureSchema(MYSQL *pSql)
 		"  `Extra` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`Extra`)),"
 		"  PRIMARY KEY (`UserID`, `ItemID`)"
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
-	return SqlExec(pSql, pItems);
+	return SqlExec(pSql, pConfig, pItems);
 }
 
-static void DeleteAccountByUserId(MYSQL *pSql, int64 UserId)
+static void DeleteAccountByUserId(MYSQL *pSql, CConfig *pConfig, int64 UserId)
 {
 	if(UserId <= 0)
 		return;
 	char aQuery[256];
 	str_format(aQuery, sizeof(aQuery), "DELETE FROM tw_Items WHERE UserID=%lld", (long long)UserId);
-	SqlExec(pSql, aQuery);
+	SqlExec(pSql, pConfig, aQuery);
 	str_format(aQuery, sizeof(aQuery), "DELETE FROM tw_Accounts WHERE UserID=%lld", (long long)UserId);
-	SqlExec(pSql, aQuery);
+	SqlExec(pSql, pConfig, aQuery);
 }
 
-static bool VerifyAccountExists(MYSQL *pSql, int64 UserId)
+static bool VerifyAccountExists(MYSQL *pSql, CConfig *pConfig, int64 UserId)
 {
 	char aQuery[128];
 	str_format(aQuery, sizeof(aQuery), "SELECT UserID FROM tw_Accounts WHERE UserID=%lld LIMIT 1", (long long)UserId);
-	if(!SqlExec(pSql, aQuery))
+	if(!SqlExec(pSql, pConfig, aQuery))
 		return false;
 	MYSQL_RES *pRes = mysql_store_result(pSql);
 	const bool Exists = pRes && mysql_num_rows(pRes) > 0;
@@ -279,12 +285,12 @@ static bool VerifyAccountExists(MYSQL *pSql, int64 UserId)
 	return Exists;
 }
 
-static bool LoadItemsForUser(MYSQL *pSql, int UserId, SAccSyncData *pSync)
+static bool LoadItemsForUser(MYSQL *pSql, CConfig *pConfig, int UserId, SAccSyncData *pSync)
 {
 	ClearItemsInSync(pSync);
 	char aQuery[256];
 	str_format(aQuery, sizeof(aQuery), "SELECT ItemID, Num, IFNULL(Extra,'') FROM tw_Items WHERE UserID=%d", UserId);
-	if(!SqlExec(pSql, aQuery))
+	if(!SqlExec(pSql, pConfig, aQuery))
 		return false;
 	MYSQL_RES *pRes = mysql_store_result(pSql);
 	if(!pRes)
@@ -307,13 +313,13 @@ static bool LoadItemsForUser(MYSQL *pSql, int UserId, SAccSyncData *pSync)
 	return true;
 }
 
-static void SaveItems(MYSQL *pSql, int UserId, const SAccSyncData *pSync)
+static void SaveItems(MYSQL *pSql, CConfig *pConfig, int UserId, const SAccSyncData *pSync)
 {
 	for(int i = 0; i < NUM_ITEM; i++)
 	{
 		char aQuery[4096];
 		str_format(aQuery, sizeof(aQuery), "SELECT Num FROM tw_Items WHERE UserID=%d AND ItemID=%d LIMIT 1", UserId, i);
-		if(!SqlExec(pSql, aQuery))
+		if(!SqlExec(pSql, pConfig, aQuery))
 			continue;
 
 		char aEscExtra[2048];
@@ -331,19 +337,19 @@ static void SaveItems(MYSQL *pSql, int UserId, const SAccSyncData *pSync)
 			{
 				str_format(aQuery, sizeof(aQuery), "UPDATE tw_Items SET Num=%d, Extra='%s' WHERE UserID=%d AND ItemID=%d",
 					pSync->m_aItems[i].m_Num, aEscExtra, UserId, i);
-				SqlExec(pSql, aQuery);
+				SqlExec(pSql, pConfig, aQuery);
 			}
 			else
 			{
 				str_format(aQuery, sizeof(aQuery), "DELETE FROM tw_Items WHERE UserID=%d AND ItemID=%d", UserId, i);
-				SqlExec(pSql, aQuery);
+				SqlExec(pSql, pConfig, aQuery);
 			}
 		}
 		else if(pSync->m_aItems[i].m_Num > 0)
 		{
 			str_format(aQuery, sizeof(aQuery), "INSERT INTO tw_Items(UserID, ItemID, Num, Extra) VALUES (%d,%d,%d,'%s')",
 				UserId, i, pSync->m_aItems[i].m_Num, aEscExtra);
-			SqlExec(pSql, aQuery);
+			SqlExec(pSql, pConfig, aQuery);
 		}
 	}
 }
@@ -376,6 +382,7 @@ CAccountSystem::CAccountSystem()
 	mem_zero(m_aPendingAccountSave, sizeof(m_aPendingAccountSave));
 	mem_zero(m_aPendingAuthUser, sizeof(m_aPendingAuthUser));
 	mem_zero(m_aaQuestData, sizeof(m_aaQuestData));
+	mem_zero(m_aaMetaData, sizeof(m_aaMetaData));
 }
 
 bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pConsole, CConfig *pConfig)
@@ -415,7 +422,7 @@ bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pCons
 		return false;
 	}
 	MYSQL *pSql = (MYSQL *)pRaw;
-	if(!EnsureSchema(pSql))
+	if(!EnsureSchema(pSql, pConfig))
 	{
 		m_Pool.Release(pRaw);
 		m_Pool.Shutdown();
@@ -577,6 +584,7 @@ int CAccountSystem::JobRunner(void *pData)
 {
 	SJob *pSlot = (SJob *)pData;
 	CAccountSystem *pSys = (CAccountSystem *)pSlot->m_pSys;
+	CConfig *pCfg = pSys->m_pConfig;
 	MYSQL *pSql = (MYSQL *)pSys->m_Pool.Acquire();
 	if(!pSql)
 	{
@@ -600,7 +608,7 @@ int CAccountSystem::JobRunner(void *pData)
 
 		char aQuery[512];
 		str_format(aQuery, sizeof(aQuery), "SELECT UserID FROM tw_Accounts WHERE Username='%s' LIMIT 1", aEscUser);
-		if(!SqlExec(pSql, aQuery))
+		if(!SqlExec(pSql, pCfg, aQuery))
 		{
 			pSlot->m_Error = 102;
 			pSys->m_Pool.Release(pSql);
@@ -619,17 +627,17 @@ int CAccountSystem::JobRunner(void *pData)
 			mysql_free_result(pRes);
 
 		str_format(aQuery, sizeof(aQuery), "INSERT INTO tw_Accounts(Username, Password) VALUES ('%s','%s')", aEscUser, aEscHash);
-		if(!SqlExec(pSql, aQuery))
+		if(!SqlExec(pSql, pCfg, aQuery))
 		{
 			pSlot->m_Error = 102;
 			pSys->m_Pool.Release(pSql);
 			return -1;
 		}
 		pSlot->m_AccountId = (int64)mysql_insert_id(pSql);
-		if(pSlot->m_AccountId <= 0 || !VerifyAccountExists(pSql, pSlot->m_AccountId))
+		if(pSlot->m_AccountId <= 0 || !VerifyAccountExists(pSql, pCfg, pSlot->m_AccountId))
 		{
 			if(pSlot->m_AccountId > 0)
-				DeleteAccountByUserId(pSql, pSlot->m_AccountId);
+				DeleteAccountByUserId(pSql, pCfg, pSlot->m_AccountId);
 			pSlot->m_AccountId = 0;
 			pSlot->m_Error = 102;
 			pSys->m_Pool.Release(pSql);
@@ -642,7 +650,7 @@ int CAccountSystem::JobRunner(void *pData)
 		char aEscUser[128];
 		mysql_real_escape_string(pSql, aEscUser, pSlot->m_Sync.m_aUsername, str_length(pSlot->m_Sync.m_aUsername));
 
-		const bool HasLegacyCols = ColumnExists(pSql, "tw_Accounts", "Sword");
+		const bool HasLegacyCols = ColumnExists(pSql, pCfg, "tw_Accounts", "Sword");
 		char aQuery[768];
 		if(HasLegacyCols)
 			str_format(aQuery, sizeof(aQuery),
@@ -653,7 +661,7 @@ int CAccountSystem::JobRunner(void *pData)
 				"SELECT UserID,Username,Password,Language,IFNULL(Holding,'') FROM tw_Accounts WHERE Username='%s' LIMIT 1",
 				aEscUser);
 
-		if(!SqlExec(pSql, aQuery))
+		if(!SqlExec(pSql, pCfg, aQuery))
 		{
 			pSlot->m_Error = 103;
 			pSys->m_Pool.Release(pSql);
@@ -700,6 +708,16 @@ int CAccountSystem::JobRunner(void *pData)
 		else
 			LoadHoldingFromRow(Row, -1, -1, -1, 4, pSlot->m_Sync.m_Holding);
 
+		dbg_msg("acc", "loaded holding for user %lld: pickaxe=%d axe=%d sword=%d turret=%d helmet=%d chest=%d legs=%d",
+			(long long)pSlot->m_AccountId,
+			pSlot->m_Sync.m_Holding[ITYPE_PICKAXE],
+			pSlot->m_Sync.m_Holding[ITYPE_AXE],
+			pSlot->m_Sync.m_Holding[ITYPE_SWORD],
+			pSlot->m_Sync.m_Holding[ITYPE_TURRET],
+			pSlot->m_Sync.m_Holding[ITYPE_HELMET],
+			pSlot->m_Sync.m_Holding[ITYPE_CHEST],
+			pSlot->m_Sync.m_Holding[ITYPE_LEGS]);
+
 		mysql_free_result(pRes);
 
 		if(aUpgradeHash[0])
@@ -707,7 +725,7 @@ int CAccountSystem::JobRunner(void *pData)
 			char aEscHash[256];
 			mysql_real_escape_string(pSql, aEscHash, aUpgradeHash, str_length(aUpgradeHash));
 			str_format(aQuery, sizeof(aQuery), "UPDATE tw_Accounts SET Password='%s' WHERE UserID=%lld", aEscHash, (long long)pSlot->m_AccountId);
-			SqlExec(pSql, aQuery);
+			SqlExec(pSql, pCfg, aQuery);
 		}
 
 		char aHoldingJson[128];
@@ -715,7 +733,7 @@ int CAccountSystem::JobRunner(void *pData)
 		char aEscHolding[256];
 		mysql_real_escape_string(pSql, aEscHolding, aHoldingJson, str_length(aHoldingJson));
 		str_format(aQuery, sizeof(aQuery), "UPDATE tw_Accounts SET Holding='%s' WHERE UserID=%lld AND Holding IS NULL", aEscHolding, (long long)pSlot->m_AccountId);
-		SqlExec(pSql, aQuery);
+		SqlExec(pSql, pCfg, aQuery);
 
 		pSlot->m_Error = 0;
 	}
@@ -723,13 +741,14 @@ int CAccountSystem::JobRunner(void *pData)
 	{
 		pSlot->m_aQuestData[0] = 0;
 		pSlot->m_aSkillBinds[0] = 0;
-		if(!LoadItemsForUser(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync))
+		pSlot->m_aMetaData[0] = 0;
+		if(!LoadItemsForUser(pSql, pCfg, (int)pSlot->m_AccountId, &pSlot->m_Sync))
 			pSlot->m_Error = 104;
 		else
 		{
 			char aQuery[256];
-			str_format(aQuery, sizeof(aQuery), "SELECT IFNULL(QuestData,''),IFNULL(SkillBinds,'') FROM tw_Accounts WHERE UserID=%lld LIMIT 1", (long long)pSlot->m_AccountId);
-			if(SqlExec(pSql, aQuery))
+			str_format(aQuery, sizeof(aQuery), "SELECT IFNULL(QuestData,''),IFNULL(SkillBinds,''),IFNULL(MetaData,'') FROM tw_Accounts WHERE UserID=%lld LIMIT 1", (long long)pSlot->m_AccountId);
+			if(SqlExec(pSql, pCfg, aQuery))
 			{
 				MYSQL_RES *pRes = mysql_store_result(pSql);
 				if(pRes)
@@ -739,6 +758,8 @@ int CAccountSystem::JobRunner(void *pData)
 						str_copy(pSlot->m_aQuestData, Row[0], sizeof(pSlot->m_aQuestData));
 					if(Row && Row[1] && Row[1][0])
 						str_copy(pSlot->m_aSkillBinds, Row[1], sizeof(pSlot->m_aSkillBinds));
+					if(Row && Row[2] && Row[2][0])
+						str_copy(pSlot->m_aMetaData, Row[2], sizeof(pSlot->m_aMetaData));
 					mysql_free_result(pRes);
 				}
 			}
@@ -751,8 +772,19 @@ int CAccountSystem::JobRunner(void *pData)
 		mysql_real_escape_string(pSql, aEsc, pSlot->m_aQuestData, str_length(pSlot->m_aQuestData));
 		char aQuery[8704];
 		str_format(aQuery, sizeof(aQuery), "UPDATE tw_Accounts SET QuestData='%s' WHERE UserID=%lld", aEsc, (long long)pSlot->m_AccountId);
-		if(!SqlExec(pSql, aQuery))
+		if(!SqlExec(pSql, pCfg, aQuery))
 			pSlot->m_Error = 106;
+		else
+			pSlot->m_Error = 0;
+	}
+	else if(pSlot->m_Type == JOB_SAVE_META)
+	{
+		char aEsc[8192];
+		mysql_real_escape_string(pSql, aEsc, pSlot->m_aMetaData, str_length(pSlot->m_aMetaData));
+		char aQuery[8704];
+		str_format(aQuery, sizeof(aQuery), "UPDATE tw_Accounts SET MetaData='%s' WHERE UserID=%lld", aEsc, (long long)pSlot->m_AccountId);
+		if(!SqlExec(pSql, pCfg, aQuery))
+			pSlot->m_Error = 107;
 		else
 			pSlot->m_Error = 0;
 	}
@@ -774,17 +806,17 @@ int CAccountSystem::JobRunner(void *pData)
 		str_format(aQuery, sizeof(aQuery),
 			"UPDATE tw_Accounts SET Username='%s',Language='%s',Holding='%s',SkillBinds='%s' WHERE UserID=%lld",
 			aEscUser, aEscLang, aEscHolding, aEscSkillBinds, (long long)pSlot->m_AccountId);
-		if(!SqlExec(pSql, aQuery))
+		if(!SqlExec(pSql, pCfg, aQuery))
 			pSlot->m_Error = 105;
 		else
 		{
-			SaveItems(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync);
+			SaveItems(pSql, pCfg, (int)pSlot->m_AccountId, &pSlot->m_Sync);
 			pSlot->m_Error = 0;
 		}
 	}
 	else if(pSlot->m_Type == JOB_SAVE_ITEMS)
 	{
-		SaveItems(pSql, (int)pSlot->m_AccountId, &pSlot->m_Sync);
+		SaveItems(pSql, pCfg, (int)pSlot->m_AccountId, &pSlot->m_Sync);
 		pSlot->m_Error = 0;
 	}
 
@@ -838,6 +870,26 @@ void CAccountSystem::ApplyLogin(int ClientId, int64 AccountId, const SAccSyncDat
 	pP->SetAccountId(AccountId);
 	mem_copy(&pP->m_AccData, pSync, sizeof(pP->m_AccData));
 	pP->m_AccData.m_aPassword[0] = 0;
+
+	{
+		bool HasEquip = false;
+		for(int i = 0; i < NUM_ITYPE; i++)
+			if(pP->m_AccData.m_Holding[i] > 0)
+				HasEquip = true;
+		dbg_msg("acc", "apply login client %d (account %lld): holding=%s pick=%d axe=%d sword=%d turret=%d helm=%d chest=%d legs=%d",
+			ClientId, (long long)AccountId,
+			HasEquip ? "yes" : "no",
+			pP->m_AccData.m_Holding[ITYPE_PICKAXE],
+			pP->m_AccData.m_Holding[ITYPE_AXE],
+			pP->m_AccData.m_Holding[ITYPE_SWORD],
+			pP->m_AccData.m_Holding[ITYPE_TURRET],
+			pP->m_AccData.m_Holding[ITYPE_HELMET],
+			pP->m_AccData.m_Holding[ITYPE_CHEST],
+			pP->m_AccData.m_Holding[ITYPE_LEGS]);
+		if(!HasEquip)
+			dbg_msg("acc", "WARNING: login with zero holding for client %d — possible data loss", ClientId);
+	}
+
 	pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
 	pCtx->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
 	pCtx->SendCommunityInfo(ClientId);
@@ -960,6 +1012,7 @@ void CAccountSystem::PumpCompletedJobs()
 					SetQuestData(ClientId, Slot.m_aQuestData);
 					if(Slot.m_aSkillBinds[0])
 						str_copy(m_aaSkillBinds[ClientId], Slot.m_aSkillBinds, sizeof(m_aaSkillBinds[ClientId]));
+					SetMetaData(ClientId, Slot.m_aMetaData);
 					ApplyLogin(ClientId, Slot.m_AccountId, &Slot.m_Sync);
 				}
 			}
@@ -1073,24 +1126,42 @@ void CAccountSystem::OnClientDisconnect(int ClientId)
 	ClearPendingAuth(ClientId);
 	if(!m_Enabled || !m_pGame)
 		return;
-	CPlayer *pP = PlayerAt(m_pGame, ClientId);
+	CGameContext *pCtx = PlayerGameContext(m_pGame, ClientId);
+	CPlayer *pP = pCtx ? pCtx->m_apPlayers[ClientId] : nullptr;
 	if(!pP || pP->GetAccountId() < 0)
 	{
 		ClearSaveThrottle(ClientId);
 		return;
 	}
 
-	if(m_pGame->Core() && m_pGame->Core()->QuestManager())
-		m_pGame->Core()->QuestManager()->RequestPersist(ClientId);
+	if(pCtx->Core() && pCtx->Core()->QuestManager())
+		pCtx->Core()->QuestManager()->RequestPersist(ClientId);
 	else
 		RequestSaveQuestData(ClientId);
+
+	if(pCtx->Core() && pCtx->Core()->MetaManager())
+		pCtx->Core()->MetaManager()->Persist(ClientId);
 
 	const int UserId = (int)pP->GetAccountId();
 	SAccSyncData Sync;
 	mem_copy(&Sync, &pP->m_AccData, sizeof(Sync));
 	pP->ClearAccount();
-	StartSaveJob(ClientId, UserId, &Sync);
+
+	bool Saved = false;
+	for(int Retry = 0; Retry < 50; Retry++)
+	{
+		if(StartSaveJob(ClientId, UserId, &Sync))
+		{
+			Saved = true;
+			break;
+		}
+		PumpCompletedJobs();
+	}
+	if(!Saved)
+		dbg_msg("acc", "FATAL: failed to save account on disconnect for client %d (user %d)", ClientId, UserId);
+
 	m_aaQuestData[ClientId][0] = 0;
+	m_aaMetaData[ClientId][0] = 0;
 	ClearSaveThrottle(ClientId);
 }
 
@@ -1120,6 +1191,52 @@ void CAccountSystem::SetQuestData(int ClientId, const char *pJson)
 		m_aaQuestData[ClientId][0] = 0;
 	else
 		str_copy(m_aaQuestData[ClientId], pJson, sizeof(m_aaQuestData[ClientId]));
+}
+
+bool CAccountSystem::GetMetaData(int ClientId, char *pOut, int OutSize) const
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS || !pOut || OutSize <= 0)
+		return false;
+	str_copy(pOut, m_aaMetaData[ClientId], OutSize);
+	return m_aaMetaData[ClientId][0] != 0;
+}
+
+void CAccountSystem::SetMetaData(int ClientId, const char *pJson)
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return;
+	if(!pJson)
+		m_aaMetaData[ClientId][0] = 0;
+	else
+		str_copy(m_aaMetaData[ClientId], pJson, sizeof(m_aaMetaData[ClientId]));
+}
+
+void CAccountSystem::RequestSaveMetaData(int ClientId)
+{
+	if(!m_Enabled || !m_pGame || ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return;
+	CPlayer *pP = PlayerAt(m_pGame, ClientId);
+	if(!pP || pP->GetAccountId() < 0)
+		return;
+
+	for(int i = FIRST_SAVE_JOB; i < MAX_ACCOUNT_JOBS; i++)
+	{
+		SJob &Slot = m_aJobs[i];
+		if(!JobSlotIdle(Slot))
+			continue;
+
+		mem_zero(&Slot, sizeof(Slot));
+		Slot.m_pSys = this;
+		Slot.m_Submitted = true;
+		Slot.m_Type = JOB_SAVE_META;
+		Slot.m_ClientId = ClientId;
+		Slot.m_AccountId = pP->GetAccountId();
+		str_copy(Slot.m_aMetaData, m_aaMetaData[ClientId], sizeof(Slot.m_aMetaData));
+		Slot.m_Error = -1;
+
+		m_pEngine->AddJob(&Slot.m_Job, JobRunner, &Slot);
+		return;
+	}
 }
 
 const char *CAccountSystem::GetSkillBinds(int ClientId) const

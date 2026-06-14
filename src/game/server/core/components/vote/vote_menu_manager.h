@@ -1,6 +1,8 @@
 #ifndef GAME_SERVER_COMPONENT_VOTE_MENU_MANAGER_H
 #define GAME_SERVER_COMPONENT_VOTE_MENU_MANAGER_H
 
+#include <engine/shared/protocol.h>
+
 #include <game/server/core/components/vote/vote_menu_types.h>
 #include <game/server/core/tworld_component.h>
 
@@ -25,6 +27,14 @@ public:
 	void AddVote_Goto(int Page, const char *pDesc);
 	void AddVote_TextLine(const char *pText);
 	void SetVoteLastPage(int Page);
+
+	void AddVote_PageHeader(const char *pTitle);
+	void AddVote_PageSubtitle(const char *pText);
+	void AddVote_Separator();
+	void AddVote_Section(const char *pLabel);
+	void AddVote_ProgressLine(int Current, int Max);
+	void AddVote_PageFooter();
+	void AddVote_EmptyHint(const char *pText);
 
 	void InitVotes(int ClientID);
 	void ClearVotes(int ClientID);

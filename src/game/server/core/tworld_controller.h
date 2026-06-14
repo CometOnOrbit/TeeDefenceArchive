@@ -3,6 +3,9 @@
 
 #include "tworld_component.h"
 
+#include <game/server/core/tools/event_listener.h>
+#include <game/server/entity_manager.h>
+
 class CAccountManager;
 class CAccountSystem;
 class CBotEngine;
@@ -21,6 +24,11 @@ class CEnemyRegistry;
 class CStatusManager;
 class CTraitManager;
 class CVoteMenuManager;
+class CMetaManager;
+class CAchievementManager;
+class CDutiesManager;
+class CMiniEventsManager;
+class CDurabilityManager;
 class CPlayer;
 class IConsole;
 class IEngine;
@@ -32,6 +40,8 @@ class TWorldController
 {
 	CGameContext *m_pGameServer;
 	TWorldComponent::CStack m_System;
+	CEventListenerHub m_Events;
+	CEntityManager m_EntityManager;
 
 	CLocalizationManager *m_pLocalizationManager;
 	CAccountManager *m_pAccountManager;
@@ -47,6 +57,11 @@ class TWorldController
 	CSkillManager *m_pSkillManager;
 	CTraitManager *m_pTraitManager;
 	CEnemyRegistry *m_pEnemyRegistry;
+	CMetaManager *m_pMetaManager;
+	CAchievementManager *m_pAchievementManager;
+	CDutiesManager *m_pDutiesManager;
+	CMiniEventsManager *m_pMiniEventsManager;
+	CDurabilityManager *m_pDurabilityManager;
 
 public:
 	explicit TWorldController(CGameContext *pGameServer);
@@ -57,14 +72,19 @@ public:
 	void OnTick() const;
 	void OnShutdown();
 	void OnResetClientData(int ClientID) const;
-	void OnCharacterSpawn(CPlayer *pPlayer) const;
-	void OnPlayerLogin(CPlayer *pPlayer) const;
+	void OnCharacterSpawn(CPlayer *pPlayer);
+	void OnPlayerLogin(CPlayer *pPlayer);
+	bool DispatchPlayerVoteCommand(int ClientID, const char *pCmd, const char *pArgs) const;
 
 	CGameContext *GS() const { return m_pGameServer; }
 	IServer *Server() const;
 	CAccountSystem *Account() const;
 	CItemHelper *Items() const;
 	CBotEngine *BotEngine() const;
+
+	CEventListenerHub &Events() { return m_Events; }
+	const CEntityManager *EntityManager() const { return &m_EntityManager; }
+	CEntityManager *EntityManager() { return &m_EntityManager; }
 
 	CLocalizationManager *LocalizationManager() const { return m_pLocalizationManager; }
 	CAccountManager *AccountManager() const { return m_pAccountManager; }
@@ -80,6 +100,11 @@ public:
 	CSkillManager *SkillManager() const { return m_pSkillManager; }
 	CTraitManager *TraitManager() const { return m_pTraitManager; }
 	CEnemyRegistry *EnemyRegistry() const { return m_pEnemyRegistry; }
+	CMetaManager *MetaManager() const { return m_pMetaManager; }
+	CAchievementManager *AchievementManager() const { return m_pAchievementManager; }
+	CDutiesManager *DutiesManager() const { return m_pDutiesManager; }
+	CMiniEventsManager *MiniEventsManager() const { return m_pMiniEventsManager; }
+	CDurabilityManager *DurabilityManager() const { return m_pDurabilityManager; }
 
 	CLocalizationManager &Loc() const { return *m_pLocalizationManager; }
 	CWorldManager &Worlds() const { return *m_pWorldManager; }

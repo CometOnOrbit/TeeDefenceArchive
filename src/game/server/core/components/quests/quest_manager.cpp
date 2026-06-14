@@ -121,6 +121,20 @@ void CQuestManager::OnInitWorld(const char *pWhereLocalWorld)
 {
 	(void)pWhereLocalWorld;
 	LoadQuests();
+	if(Core())
+		Core()->Events().Register(this);
+}
+
+void CQuestManager::OnShutdown()
+{
+	if(Core())
+		Core()->Events().Unregister(this);
+}
+
+void CQuestManager::OnPlayerKill(CPlayer *pKiller, int ZombId)
+{
+	(void)ZombId;
+	TryKillProgress(pKiller);
 }
 
 void CQuestManager::OnClientReset(int ClientID)
@@ -552,8 +566,8 @@ void CQuestManager::BuildQuestListPage(int ClientID)
 
 	CVoteMenuManager *pVote = Core()->VoteMenuManager();
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "quest.menu.title", u8"☪ 任务"));
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.short", "---"));
+	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "quest.menu.title", u8"任务"));
+	pVote->AddVote_Separator();
 
 	for(int i = 0; i < m_NumQuests; i++)
 	{
@@ -571,8 +585,7 @@ void CQuestManager::BuildQuestListPage(int ClientID)
 		str_format(aCmd, sizeof(aCmd), "ccv_menuquestsel %d", i);
 		pVote->AddVote(aLine, aCmd, ClientID);
 	}
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.long", "---------------------"));
-	pVote->AddVote_Back();
+	pVote->AddVote_PageFooter();
 }
 
 void CQuestManager::BuildQuestDetailPage(int ClientID, int QuestIdx)
@@ -586,20 +599,22 @@ void CQuestManager::BuildQuestDetailPage(int ClientID, int QuestIdx)
 	str_format(aDescKey, sizeof(aDescKey), "%s.desc", Def.m_aTitleKey);
 
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, Def.m_aTitleKey, Def.m_aId));
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, aDescKey, Def.m_aId));
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.short", "---"));
+	pVote->AddVote_PageHeader(GS()->Loc(ClientID, Def.m_aTitleKey, Def.m_aId));
+	pVote->AddVote_PageSubtitle(GS()->Loc(ClientID, aDescKey, Def.m_aId));
+	pVote->AddVote_Separator();
 
 	if(!m_aaState[ClientID][QuestIdx].m_Completed && m_aaState[ClientID][QuestIdx].m_Step < Def.m_NumSteps)
 	{
 		const SQuestStepDef &Step = Def.m_aSteps[m_aaState[ClientID][QuestIdx].m_Step];
 		char aStepKey[64];
 		str_format(aStepKey, sizeof(aStepKey), "quest.step.%s", Step.m_aType);
+		pVote->AddVote_Section(GS()->Loc(ClientID, "quest.current_step", u8"当前步骤"));
 		pVote->AddVote_TextLine(GS()->Loc(ClientID, aStepKey, Step.m_aType));
+		if(Step.m_Count > 1)
+			pVote->AddVote_ProgressLine(m_aaState[ClientID][QuestIdx].m_SubProgress, Step.m_Count);
 	}
 
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.long", "---------------------"));
-	pVote->AddVote_Back();
+	pVote->AddVote_PageFooter();
 }
 
 static void ComChatTalk(IConsole::IResult *pResult, void *pUser)

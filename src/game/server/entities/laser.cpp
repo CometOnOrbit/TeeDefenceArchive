@@ -33,10 +33,11 @@ bool CLaser::HitCharacter(vec2 From, vec2 To)
 {
 	vec2 At;
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
-	CHitableEntity *pHit = (CHitableEntity *) GameWorld()->IntersectFlagEntity(From, To, 0.f, At, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
+	CEntity *pIntersect = GameWorld()->IsHumanDefenderOwner(m_Owner)
+		? GameWorld()->IntersectFlagEntitySkippingTurrets(From, To, 0.f, At, CGameWorld::ENTFLAG_HITABLE, pOwnerChar)
+		: GameWorld()->IntersectFlagEntity(From, To, 0.f, At, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
+	CHitableEntity *pHit = static_cast<CHitableEntity *>(pIntersect);
 	if(!pHit)
-		return false;
-	if(pHit->ObjType() == CGameWorld::ENTTYPE_TURRET && GameWorld()->IsHumanDefenderOwner(m_Owner))
 		return false;
 
 	m_From = From;

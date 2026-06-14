@@ -488,8 +488,8 @@ void CSkillManager::BuildSkillsListPage(int ClientID)
 	CVoteMenuManager *pVote = Core()->VoteMenuManager();
 	CPlayer *pP = GS()->m_apPlayers[ClientID];
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "skill.menu.title", u8"☪ 技能"));
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.short", "---"));
+	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "skill.menu.title", u8"技能"));
+	pVote->AddVote_Separator();
 
 	for(int i = 0; i < m_NumSkills; i++)
 	{
@@ -507,8 +507,7 @@ void CSkillManager::BuildSkillsListPage(int ClientID)
 		str_format(aCmd, sizeof(aCmd), "ccv_menuskillsel %d", Def.m_Id);
 		pVote->AddVote(aLine, aCmd, ClientID);
 	}
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.long", "---------------------"));
-	pVote->AddVote_Back();
+	pVote->AddVote_PageFooter();
 }
 
 void CSkillManager::BuildSkillDetailPage(int ClientID, int SkillId)
@@ -531,15 +530,15 @@ void CSkillManager::BuildSkillDetailPage(int ClientID, int SkillId)
 	str_format(aDescKey, sizeof(aDescKey), "skill.%s.desc", pDef->m_aKey);
 
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, aKey, pDef->m_aKey));
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, aDescKey, pDef->m_aKey));
+	pVote->AddVote_PageHeader(GS()->Loc(ClientID, aKey, pDef->m_aKey));
+	pVote->AddVote_PageSubtitle(GS()->Loc(ClientID, aDescKey, pDef->m_aKey));
 	if(!pDef->m_Passive && pInst && pInst->m_Learned)
 	{
 		char aMana[64];
 		str_format(aMana, sizeof(aMana), GS()->Loc(ClientID, "skill.mana_pct", u8"法力消耗：%d%%"), pDef->m_ManaCostPct);
 		pVote->AddVote_TextLine(aMana);
 	}
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.short", "---"));
+	pVote->AddVote_Separator();
 
 	if(pInst && pInst->m_Learned)
 	{
@@ -573,11 +572,10 @@ void CSkillManager::BuildSkillDetailPage(int ClientID, int SkillId)
 	}
 	else
 	{
-		pVote->AddVote_TextLine(GS()->Loc(ClientID, "skill.auto_learn", u8"登录后自动习得"));
+		pVote->AddVote_EmptyHint(GS()->Loc(ClientID, "skill.auto_learn", u8"登录后自动习得"));
 	}
 
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.long", "---------------------"));
-	pVote->AddVote_Back();
+	pVote->AddVote_PageFooter();
 }
 
 static void ComChatUseSkill(IConsole::IResult *pResult, void *pUser)

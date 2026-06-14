@@ -1,0 +1,95 @@
+{
+    "item": {
+        "type": 7,
+        "multiple": [
+            {
+                "id": 58,
+                "name": "Wooden Chestplate",
+                "desc": "A chestplate made of wood.",
+                "defense": 1,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Log": 35
+                }
+            },
+            {
+                "id": 59,
+                "name": "Iron Chestplate",
+                "desc": "A chestplate made of iron.",
+                "defense": 2,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Iron": 25
+                }
+            },
+            {
+                "id": 60,
+                "name": "Copper Chestplate",
+                "desc": "A chestplate made of copper.",
+                "defense": 3,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Copper": 25
+                }
+            },
+            {
+                "id": 61,
+                "name": "Titanium Chestplate",
+                "desc": "A chestplate made of titanium alloy.",
+                "defense": 4,
+                "capacity": 0,
+                "proba": 85,
+                "max": 0,
+                "formula": {
+                    "Iron": 15,
+                    "Copper": 15,
+                    "Coal": 15
+                }
+            },
+            {
+                "id": 62,
+                "name": "Diamond Chestplate",
+                "desc": "A chestplate made of diamond.",
+                "defense": 5,
+                "capacity": 0,
+                "proba": 80,
+                "max": 0,
+                "formula": {
+                    "Diamond": 15
+                }
+            },
+            {
+                "id": 63,
+                "name": "Energy Chestplate",
+                "desc": "A chestplate made of pure energy.",
+                "defense": 6,
+                "capacity": 0,
+                "proba": 80,
+                "max": 0,
+                "formula": {
+                    "Enegry": 15
+                }
+            },
+            {
+                "id": 64,
+                "name": "Void Shard Chestplate",
+                "desc": "A chestplate forged from void shards.",
+                "defense": 7,
+                "capacity": 0,
+                "proba": 70,
+                "max": 0,
+                "formula": {
+                    "Diamond": 15,
+                    "Enegry": 15,
+                    "Golden": 8
+                }
+            }
+        ]
+    }
+}

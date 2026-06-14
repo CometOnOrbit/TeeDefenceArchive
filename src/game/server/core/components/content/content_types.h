@@ -152,6 +152,7 @@ struct CEffectContext
 	int m_AmmoRegenTime;
 	int m_MiningCritBonus;
 	int m_ChainLightningStacks;
+	int m_OutAmmoBonus;
 	vec2 m_Source;
 	vec2 m_Force;
 	bool m_ManualTurret;

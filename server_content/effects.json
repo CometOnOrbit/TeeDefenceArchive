@@ -137,6 +137,67 @@
             "triggers": ["OnTakeDamage", "OnTick"],
             "status": true,
             "params": { "dot_per_stack": 1, "duration_ticks": 200, "tick_interval": 25 }
+        },
+        {
+            "id": "max_health_bonus",
+            "triggers": [],
+            "legacy_item": 50,
+            "params": { "health_per_stack": 2 }
+        },
+        {
+            "id": "thorns",
+            "triggers": ["OnTakeDamage"],
+            "legacy_item": 72,
+            "params": { "reflect_pct_per_stack": 7 }
+        },
+        {
+            "id": "regeneration",
+            "triggers": ["OnTick"],
+            "legacy_item": 73,
+            "params": { "heal_per_stack": 1, "tick_interval": 75 }
+        },
+        {
+            "id": "fortification",
+            "triggers": ["OnTakeDamage"],
+            "legacy_item": 74,
+            "params": { "reduction_per_stack": 2 }
+        },
+        {
+            "id": "absorption_shield",
+            "triggers": ["OnTakeDamage"],
+            "legacy_item": 75,
+            "status": true,
+            "params": { "chance_pct": 25, "absorb_per_stack": 5, "duration_ticks": 300 }
+        },
+        {
+            "id": "fortune",
+            "triggers": [],
+            "legacy_item": 76,
+            "params": { "chance_per_stack": 10 }
+        },
+        {
+            "id": "swiftness",
+            "triggers": ["OnTick"],
+            "legacy_item": 77,
+            "params": { "speed_pct_per_stack": 8 }
+        },
+        {
+            "id": "retribution",
+            "triggers": ["OnTakeDamage"],
+            "legacy_item": 78,
+            "params": { "damage_pct_per_stack": 15, "duration_ticks": 225 }
+        },
+        {
+            "id": "resilience",
+            "triggers": ["OnTakeDamage"],
+            "legacy_item": 79,
+            "params": { "reduction_pct_per_stack": 25 }
+        },
+        {
+            "id": "self_harm_immunity",
+            "triggers": [],
+            "legacy_item": 80,
+            "params": { "reduction_pct_per_stack": 30 }
         }
     ]
 }

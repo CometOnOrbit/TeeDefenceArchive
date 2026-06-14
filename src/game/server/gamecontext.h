@@ -173,6 +173,7 @@ public:
 	const char *Loc(int ClientID, const char *pKey, const char *pDefault) const;
 	void LocFormat(char *pBuf, int BufSize, int ClientID, const char *pKey, const char *pDefault, ...) const;
 	const char *LocItemName(int ClientID, int ID, bool IncludeZero = true) const;
+	const char *LocItemDesc(int ClientID, int ID) const;
 	int ResolveItemId(int ClientID, const char *pToken) const;
 
 	// ----- send functions -----

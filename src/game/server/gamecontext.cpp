@@ -191,6 +191,19 @@ const char *CGameContext::LocItemName(int ClientID, int ID, bool IncludeZero) co
 	return Loc(ClientID, aKey, pH->GetItemName(ID, IncludeZero));
 }
 
+const char *CGameContext::LocItemDesc(int ClientID, int ID) const
+{
+	const CItemHelper *pH = ItemHelper();
+	if(!pH || !pH->CheckItemValid(ID) || !pH->HasItemDefinition(ID))
+		return "";
+	char aKey[40];
+	str_format(aKey, sizeof(aKey), "item.id.%d.desc", ID);
+	const char *pDefault = pH->GetItemDesc(ID);
+	if(!pDefault || !pDefault[0])
+		return "";
+	return Loc(ClientID, aKey, pDefault);
+}
+
 int CGameContext::ResolveItemId(int ClientID, const char *pToken) const
 {
 	const CItemHelper *pH = ItemHelper();

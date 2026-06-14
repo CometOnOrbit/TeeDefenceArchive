@@ -8,7 +8,7 @@
                 "desc": "Haste makes apple.(Reload Timer)",
                 "effects": ["reload_haste"],
                 "capacity": 10,
-                "placeable": [0, 1, 2, 3],
+                "placeable": [0, 1, 2, 3, 7, 8, 9],
                 "max": 0,
                 "max_place": 5,
                 "formula": {
@@ -23,7 +23,7 @@
                 "desc": "Haste makes apple.(Ammo Regen)",
                 "effects": ["ammo_regen"],
                 "capacity": 10,
-                "placeable": [0, 1, 2, 3],
+                "placeable": [0, 1, 2, 3, 7, 8, 9],
                 "max": 0,
                 "max_place": 5,
                 "formula": {
@@ -38,7 +38,7 @@
                 "desc": "Oh, that hurt!",
                 "effects": ["damage_bonus"],
                 "capacity": 10,
-                "placeable": [0, 1, 2, 3],
+                "placeable": [0, 1, 2, 3, 7, 8, 9],
                 "max": 0,
                 "max_place": 5,
                 "formula": {
@@ -54,7 +54,7 @@
                 "effects": ["explosive"],
                 "capacity": 15,
                 "max_place": 2,
-                "placeable": [2, 3],
+                "placeable": [2, 3, 8],
                 "max": 0,
                 "formula": {
                     "Log": 70,
@@ -85,7 +85,7 @@
                 "name": "Card: Fusion",
                 "desc": "World War III",
                 "effects": ["fusion_bloom"],
-                "capacity": 55,
+                "capacity": 60,
                 "placeable": [2, 3],
                 "max": 0,
                 "max_place": 2,
@@ -104,7 +104,7 @@
                 "desc": "Fly away.",
                 "effects": ["knockback"],
                 "capacity": 10,
-                "placeable": [2, 3],
+                "placeable": [2, 3, 8],
                 "max": 0,
                 "max_place": 2,
                 "formula": {
@@ -137,7 +137,7 @@
                 "name": "Card: Lifesteal",
                 "desc": "Heal on hit",
                 "capacity": 20,
-                "placeable": [2],
+                "placeable": [2, 7, 8, 9],
                 "max": 0,
                 "max_place": 3,
                 "effects": ["lifesteal"],
@@ -152,7 +152,7 @@
                 "name": "Card: Armor Shred",
                 "desc": "Strip enemy armor",
                 "capacity": 15,
-                "placeable": [2],
+                "placeable": [2, 7, 8, 9],
                 "max": 0,
                 "max_place": 2,
                 "effects": ["armor_shred"],
@@ -181,7 +181,7 @@
                 "name": "Card: Mining Luck",
                 "desc": "Better mining crit chance",
                 "capacity": 10,
-                "placeable": [0, 1],
+                "placeable": [0, 1, 7, 8, 9],
                 "max": 0,
                 "max_place": 3,
                 "effects": ["mining_luck"],
@@ -195,15 +195,169 @@
                 "id": 45,
                 "name": "Card: Haste",
                 "desc": "General attack speed (lighter than Quickly-Fire)",
-                "capacity": 8,
-                "placeable": [0, 1, 2, 3],
+                "capacity": 20,
+                "placeable": [0, 1, 2, 3, 7, 8, 9],
                 "max": 0,
-                "max_place": 4,
+                "max_place": 3,
                 "effects": ["haste"],
                 "formula": {
                     "Log": 100,
                     "Iron": 30,
                     "Titanium": 3
+                }
+            },
+            {
+                "id": 50,
+                "name": "Card: Vitality",
+                "desc": "Increases max health",
+                "capacity": 5,
+                "placeable": [7, 8, 9],
+                "max": 0,
+                "max_place": 20,
+                "effects": ["max_health_bonus"],
+                "formula": {
+                    "Log": 200,
+                    "Zombie's Heart": 20,
+                    "Iron": 100,
+                    "Void Shard": 20
+                }
+            },
+            {
+                "id": 72,
+                "name": "Card: Thorns",
+                "desc": "Reflect damage to attackers",
+                "capacity": 10,
+                "placeable": [7, 8, 9],
+                "max": 0,
+                "max_place": 3,
+                "effects": ["thorns"],
+                "formula": {
+                    "Log": 150,
+                    "Iron": 80,
+                    "Zombie's Heart": 30
+                }
+            },
+            {
+                "id": 73,
+                "name": "Card: Regeneration",
+                "desc": "Heal over time",
+                "capacity": 8,
+                "placeable": [7, 8, 9],
+                "max": 0,
+                "max_place": 5,
+                "effects": ["regeneration"],
+                "formula": {
+                    "Log": 120,
+                    "Zombie's Heart": 40,
+                    "Golden": 20
+                }
+            },
+            {
+                "id": 74,
+                "name": "Card: Fortification",
+                "desc": "Flat damage reduction",
+                "capacity": 12,
+                "placeable": [8, 9],
+                "max": 0,
+                "max_place": 3,
+                "effects": ["fortification"],
+                "formula": {
+                    "Iron": 150,
+                    "Titanium": 15,
+                    "Coal": 80
+                }
+            },
+            {
+                "id": 75,
+                "name": "Card: Absorption Shield",
+                "desc": "Chance to gain shield on hit",
+                "capacity": 15,
+                "placeable": [7, 8, 9],
+                "max": 0,
+                "max_place": 2,
+                "effects": ["absorption_shield"],
+                "formula": {
+                    "Copper": 200,
+                    "Iron": 100,
+                    "Enegry": 10,
+                    "Zombie's Heart": 50
+                }
+            },
+            {
+                "id": 76,
+                "name": "Card: Fortune",
+                "desc": "Chance to double item pickups",
+                "capacity": 10,
+                "placeable": [7, 9],
+                "max": 0,
+                "max_place": 3,
+                "effects": ["fortune"],
+                "proba": 10,
+                "formula": {
+                    "Log": 250,
+                    "Golden": 80,
+                    "Diamond": 5
+                }
+            },
+            {
+                "id": 77,
+                "name": "Card: Swiftness",
+                "desc": "Increases movement speed",
+                "capacity": 6,
+                "placeable": [9],
+                "max": 0,
+                "max_place": 5,
+                "effects": ["swiftness"],
+                "formula": {
+                    "Log": 100,
+                    "Iron": 50,
+                    "Golden": 30
+                }
+            },
+            {
+                "id": 78,
+                "name": "Card: Retribution",
+                "desc": "Gain attack power after taking damage",
+                "capacity": 12,
+                "placeable": [7, 8],
+                "max": 0,
+                "max_place": 3,
+                "effects": ["retribution"],
+                "formula": {
+                    "Iron": 120,
+                    "Zombie's Heart": 60,
+                    "Void Shard": 3
+                }
+            },
+            {
+                "id": 79,
+                "name": "Card: Resilience",
+                "desc": "Reduce damage when below half health",
+                "capacity": 15,
+                "placeable": [8, 9],
+                "max": 0,
+                "max_place": 2,
+                "effects": ["resilience"],
+                "formula": {
+                    "Iron": 200,
+                    "Titanium": 20,
+                    "Zombie's Heart": 80
+                }
+            },
+            {
+                "id": 80,
+                "name": "Card: Self-Harm Immunity",
+                "desc": "Reduce self-inflicted damage; full immunity on all armor",
+                "capacity": 0,
+                "placeable": [7, 8, 9],
+                "max": 0,
+                "max_place": 1,
+                "effects": ["self_harm_immunity"],
+                "formula": {
+                    "Log": 300,
+                    "Iron": 150,
+                    "Diamond": 15,
+                    "Void Shard": 10
                 }
             }
         ]

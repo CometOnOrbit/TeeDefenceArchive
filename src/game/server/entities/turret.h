@@ -10,8 +10,6 @@ class CTurret : public CHitableEntity
 
 	int m_Owner;
 	int m_ItemDefId;
-	int m_aCenterId;
-	int m_aRingIds[NUM_RING_LASERS];
 	int m_LastShotTick;
 	int m_LastAmmoWarnTick;
 	int m_LastBrokenWarnTick;
@@ -22,7 +20,6 @@ class CTurret : public CHitableEntity
 
 public:
 	CTurret(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId);
-	~CTurret() override;
 
 	void Tick() override;
 	void Snap(int SnappingClient) override;
@@ -46,12 +43,9 @@ class CTurretPreview : public CEntity
 	int m_Owner;
 	int m_ItemDefId;
 	bool m_Valid;
-	int m_aCenterId;
-	int m_aRingIds[NUM_RING_LASERS];
 
 public:
 	CTurretPreview(CGameWorld *pGameWorld, vec2 Pos, int Owner, int ItemDefId, bool Valid);
-	~CTurretPreview() override;
 
 	void SetPreviewPos(vec2 Pos);
 	void SetValid(bool Valid);

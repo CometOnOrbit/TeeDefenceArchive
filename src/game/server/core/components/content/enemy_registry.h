@@ -18,6 +18,9 @@ class CEnemyRegistry : public TWorldComponent
 public:
 	CEnemyRegistry();
 
+	int NumEnemies() const { return m_NumEnemies; }
+	const SEnemyDef *GetEnemy(int Idx) const { return (Idx >= 0 && Idx < m_NumEnemies) ? &m_aEnemies[Idx] : nullptr; }
+
 	void OnInitWorld(const char *pWhereLocalWorld) override;
 	void OnTick() override;
 

@@ -72,6 +72,38 @@ enum
 	ITEM_TURRET_SPLASH = 47,
 	ITEM_SWORD_FLAME = 48,
 	ITEM_PICKAXE_FORTUNE = 49,
+	ITEM_CARD_MAX_HEALTH = 50,
+	ITEM_HELMET_LOG = 51,
+	ITEM_HELMET_IRON,
+	ITEM_HELMET_COPPER,
+	ITEM_HELMET_TITANIUM,
+	ITEM_HELMET_DIAMOND,
+	ITEM_HELMET_ENEGRY,
+	ITEM_HELMET_VOID,
+	ITEM_CHEST_LOG = 58,
+	ITEM_CHEST_IRON,
+	ITEM_CHEST_COPPER,
+	ITEM_CHEST_TITANIUM,
+	ITEM_CHEST_DIAMOND,
+	ITEM_CHEST_ENEGRY,
+	ITEM_CHEST_VOID,
+	ITEM_LEGS_LOG = 65,
+	ITEM_LEGS_IRON,
+	ITEM_LEGS_COPPER,
+	ITEM_LEGS_TITANIUM,
+	ITEM_LEGS_DIAMOND,
+	ITEM_LEGS_ENEGRY,
+	ITEM_LEGS_VOID,
+
+	ITEM_CARD_THORNS = 72,
+	ITEM_CARD_REGENERATION,
+	ITEM_CARD_FORTIFICATION,
+	ITEM_CARD_ABSORPTION_SHIELD,
+	ITEM_CARD_FORTUNE,
+	ITEM_CARD_SWIFTNESS,
+	ITEM_CARD_RETRIBUTION,
+	ITEM_CARD_RESILIENCE,
+	ITEM_CARD_SELF_HARM_IMMUNITY,
 	NUM_ITEM,
 };
 
@@ -85,6 +117,9 @@ enum
 	ITYPE_TURRET,
 	ITYPE_MATERIAL,
 	ITYPE_CARD,
+	ITYPE_HELMET,
+	ITYPE_CHEST,
+	ITYPE_LEGS,
 	NUM_ITYPE,
 };
 
@@ -121,6 +156,7 @@ struct SToolStat
 {
 	int m_Damage;
 	int m_Capacity;
+	int m_Defense;
 };
 
 class CItemHelper
@@ -129,6 +165,7 @@ class CItemHelper
 	SToolStat m_aToolDmg[NUM_ITEM];
 	int m_aMatHealth[NUM_ITEM];
 	char m_aaItemName[NUM_ITEM][64];
+	char m_aaItemDesc[NUM_ITEM][128];
 	int m_aItemType[NUM_ITEM];
 	int m_aItemMaxStack[NUM_ITEM];
 	int m_aFormula[NUM_ITEM][NUM_ITEM];
@@ -150,6 +187,7 @@ public:
 
 	int FindItemByName(const char *pName) const;
 	int GetDmg(int ID) const;
+	int GetDefense(int ID) const;
 	int GetMaxHealth(int MatID) const;
 	int GetMax(int ID) const;
 	int GetMaxCapacity(int ID) const;
@@ -157,12 +195,14 @@ public:
 	/**  max_place 0 in JSON -> effective limit 999. **/
 	int GetMaxPlace(int CardOrPartId) const;
 	bool IsPlaceableOnItemType(int CardOrPartId, int HostItemType) const;
+	bool IsPartItem(int ID) const;
 	int GetType(int ID) const;
 	bool HasFormula(int ID) const { return CheckItemValid(ID) && m_aHasFormula[ID]; }
 	int GetFormulaNeed(int CraftId, int MatId) const;
 	bool ItemExtraBlocksCraftConsume(const char *pExtraJson) const;
 
 	const char *GetItemName(int ID, bool IncludeZero = true) const;
+	const char *GetItemDesc(int ID) const;
 	bool HasItemDefinition(int ID) const { return CheckItemValid(ID) && m_aaItemName[ID][0] != 0; }
 	void FormatItemLocKey(int ID, char *pBuf, int BufSize) const;
 
@@ -175,6 +215,8 @@ public:
 	int GetNumItemEffects(int ItemId) const;
 	const char *GetItemEffectKey(int ItemId, int EffectIdx) const;
 	int GetEffectStacksFromExtra(const char *pExtraJson, int ItemId, const char *pEffectKey) const;
+	int SumArmorEffectStacks(class CPlayer *pP, int CardItemId, const char *pEffectKey) const;
+	int CountArmorWithCard(class CPlayer *pP, int CardItemId) const;
 
 private:
 	int GetExtraSlotNum(const char *pExtraJson, const char *pArrayName, int ItemId) const;

@@ -1,0 +1,95 @@
+{
+    "item": {
+        "type": 6,
+        "multiple": [
+            {
+                "id": 51,
+                "name": "Wooden Helmet",
+                "desc": "A helmet made of wood.",
+                "defense": 1,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Log": 20
+                }
+            },
+            {
+                "id": 52,
+                "name": "Iron Helmet",
+                "desc": "A helmet made of iron.",
+                "defense": 2,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Iron": 15
+                }
+            },
+            {
+                "id": 53,
+                "name": "Copper Helmet",
+                "desc": "A helmet made of copper.",
+                "defense": 3,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Copper": 15
+                }
+            },
+            {
+                "id": 54,
+                "name": "Titanium Helmet",
+                "desc": "A helmet made of titanium alloy.",
+                "defense": 4,
+                "capacity": 0,
+                "proba": 85,
+                "max": 0,
+                "formula": {
+                    "Iron": 10,
+                    "Copper": 10,
+                    "Coal": 10
+                }
+            },
+            {
+                "id": 55,
+                "name": "Diamond Helmet",
+                "desc": "A helmet made of diamond.",
+                "defense": 5,
+                "capacity": 0,
+                "proba": 80,
+                "max": 0,
+                "formula": {
+                    "Diamond": 10
+                }
+            },
+            {
+                "id": 56,
+                "name": "Energy Helmet",
+                "desc": "A helmet made of pure energy.",
+                "defense": 6,
+                "capacity": 0,
+                "proba": 80,
+                "max": 0,
+                "formula": {
+                    "Enegry": 10
+                }
+            },
+            {
+                "id": 57,
+                "name": "Void Shard Helmet",
+                "desc": "A helmet forged from void shards.",
+                "defense": 7,
+                "capacity": 0,
+                "proba": 70,
+                "max": 0,
+                "formula": {
+                    "Diamond": 10,
+                    "Enegry": 10,
+                    "Golden": 5
+                }
+            }
+        ]
+    }
+}

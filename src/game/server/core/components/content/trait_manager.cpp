@@ -3,6 +3,8 @@
 #include <game/commands.h>
 #include <game/server/account.h>
 #include <game/server/core/components/content/trait_manager.h>
+#include <game/server/core/components/content/status_manager.h>
+#include <game/server/core/components/meta/meta_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/components/vote/vote_menu_types.h>
 #include <game/server/core/tworld_controller.h>
@@ -96,6 +98,34 @@ const STraitDef *CTraitManager::FindTrait(const char *pId) const
 	return nullptr;
 }
 
+void CTraitManager::SaveTraitToMeta(CPlayer *pPlayer)
+{
+	if(!pPlayer || !Core() || !Core()->MetaManager())
+		return;
+	const int CID = pPlayer->GetCID();
+	if(CID < 0 || CID >= MAX_CLIENTS)
+		return;
+	const char *pTrait = m_aaPlayerTrait[CID][0] ? m_aaPlayerTrait[CID] : nullptr;
+	Core()->MetaManager()->SetTrait(CID, pTrait, m_aTraitLocked[CID]);
+}
+
+void CTraitManager::SyncTraitFromMeta(CPlayer *pPlayer)
+{
+	if(!pPlayer || pPlayer->IsDummy() || !Core() || !Core()->MetaManager())
+		return;
+	const int CID = pPlayer->GetCID();
+	if(CID < 0 || CID >= MAX_CLIENTS)
+		return;
+
+	CMetaManager *pMeta = Core()->MetaManager();
+	const char *pTrait = pMeta->GetTraitId(CID);
+	if(pTrait && pTrait[0] && FindTrait(pTrait))
+	{
+		str_copy(m_aaPlayerTrait[CID], pTrait, sizeof(m_aaPlayerTrait[CID]));
+		m_aTraitLocked[CID] = pMeta->GetTraitLocked(CID);
+	}
+}
+
 void CTraitManager::AssignTrait(CPlayer *pPlayer)
 {
 	if(!pPlayer || pPlayer->IsDummy())
@@ -112,11 +142,16 @@ void CTraitManager::AssignTrait(CPlayer *pPlayer)
 
 	const int Pick = CID % m_NumTraits;
 	str_copy(m_aaPlayerTrait[CID], m_aTraits[Pick].m_aId, sizeof(m_aaPlayerTrait[CID]));
+	SaveTraitToMeta(pPlayer);
 }
 
 void CTraitManager::OnPlayerLogin(CPlayer *pPlayer)
 {
-	AssignTrait(pPlayer);
+	if(!pPlayer || pPlayer->IsDummy())
+		return;
+	SyncTraitFromMeta(pPlayer);
+	if(m_aaPlayerTrait[pPlayer->GetCID()][0] == 0)
+		AssignTrait(pPlayer);
 }
 
 void CTraitManager::OnClientReset(int ClientID)
@@ -157,6 +192,7 @@ bool CTraitManager::SelectTrait(CPlayer *pPlayer, const char *pTraitId)
 
 	str_copy(m_aaPlayerTrait[CID], pDef->m_aId, sizeof(m_aaPlayerTrait[CID]));
 	m_aTraitLocked[CID] = true;
+	SaveTraitToMeta(pPlayer);
 
 	char aKey[48];
 	str_format(aKey, sizeof(aKey), "trait.%s", pDef->m_aId);
@@ -174,8 +210,9 @@ void CTraitManager::BuildTraitVotePage(int ClientID)
 	const char *pCurrent = GetPlayerTrait(ClientID);
 
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "trait.menu.title", u8"☪ 特质（职业倾向）"));
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.short", "---"));
+	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "trait.menu.title", u8"特质"));
+	pVote->AddVote_EmptyHint(GS()->Loc(ClientID, "trait.change.hint", u8"首次选择免费；更换需 100 僵尸之心"));
+	pVote->AddVote_Separator();
 
 	for(int i = 0; i < m_NumTraits; i++)
 	{
@@ -197,12 +234,11 @@ void CTraitManager::BuildTraitVotePage(int ClientID)
 	{
 		char aDescKey[56];
 		str_format(aDescKey, sizeof(aDescKey), "trait.%s.desc", pCurrent);
-		pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.short", "---"));
+		pVote->AddVote_Separator();
+		pVote->AddVote_Section(GS()->Loc(ClientID, "trait.current", u8"当前特质"));
 		pVote->AddVote_TextLine(GS()->Loc(ClientID, aDescKey, pCurrent));
 	}
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "trait.change.hint", u8"首次选择免费；更换需 100 僵尸之心"));
-	pVote->AddVote_TextLine(GS()->Loc(ClientID, "menu.sep.long", "---------------------"));
-	pVote->AddVote_Back();
+	pVote->AddVote_PageFooter();
 	(void)pP;
 }
 
@@ -234,15 +270,21 @@ void CTraitManager::OnCharacterSpawn(CPlayer *pPlayer)
 {
 	if(!pPlayer || pPlayer->IsDummy())
 		return;
-	if(m_aaPlayerTrait[pPlayer->GetCID()][0] == 0)
-		AssignTrait(pPlayer);
+	const int CID = pPlayer->GetCID();
+	if(m_aaPlayerTrait[CID][0] == 0)
+	{
+		SyncTraitFromMeta(pPlayer);
+		if(m_aaPlayerTrait[CID][0] == 0)
+			AssignTrait(pPlayer);
+	}
 
 	int ExtraHp = 0;
 	int ShieldBonus = 0;
 	GetSpawnBonuses(pPlayer, ExtraHp, ShieldBonus);
 	if(ExtraHp > 0 && pPlayer->GetCharacter())
 		pPlayer->GetCharacter()->IncreaseHealth(ExtraHp);
-	(void)ShieldBonus;
+	if(ShieldBonus > 0 && pPlayer->GetCharacter() && Core() && Core()->StatusManager())
+		Core()->StatusManager()->ApplyStatus(pPlayer->GetCharacter(), "shield", 1, 300, 0.f, ShieldBonus);
 }
 
 const char *CTraitManager::GetPlayerTrait(int ClientID) const

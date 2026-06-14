@@ -137,11 +137,10 @@ CSpiderBoss::CSpiderBoss(CGameWorld *pGameWorld, CCharacter *pCore, CGameControl
 		m_aSwingT[i] = 1.0f;
 		m_aFootKnock[i] = vec2(0.0f, 0.0f);
 		for(int s = 0; s < NUM_SPIDER_SEGS; s++)
-		{
-			m_aLaserIds[i][s] = Server()->SnapNewID(GameServer()->GetWorldID());
 			m_apSeg[i][s] = new CSpiderLegPart(pGameWorld, this, i, s);
-		}
 	}
+
+	AddSnappingGroupIds(SNAP_GROUP_SPIDER_LEGS, NUM_SPIDER_LEGS * NUM_SPIDER_SEGS);
 
 	GameWorld()->InsertEntity(this);
 
@@ -176,7 +175,6 @@ CSpiderBoss::~CSpiderBoss()
 				GameWorld()->DestroyEntity(m_apSeg[i][s]);
 				m_apSeg[i][s] = nullptr;
 			}
-			Server()->SnapFreeID(m_aLaserIds[i][s], GameWorld()->GameServer()->GetWorldID());
 		}
 	}
 }
@@ -1232,7 +1230,7 @@ void CSpiderBoss::Snap(int SnappingClient)
 		const vec2 Seg[2][2] = {{Hip, m_aKnee[i]}, {m_aKnee[i], m_aFoot[i]}};
 		for(int s = 0; s < NUM_SPIDER_SEGS; s++)
 		{
-			CNetObj_Laser *pObj = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, m_aLaserIds[i][s], sizeof(CNetObj_Laser)));
+			CNetObj_Laser *pObj = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, SnapGroupId(SNAP_GROUP_SPIDER_LEGS, i * NUM_SPIDER_SEGS + s), sizeof(CNetObj_Laser)));
 			if(!pObj)
 				return;
 			pObj->m_X = (int)Seg[s][0].x;

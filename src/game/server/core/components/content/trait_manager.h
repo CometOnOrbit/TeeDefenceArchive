@@ -42,6 +42,8 @@ private:
 	void LoadTraits();
 	const STraitDef *FindTrait(const char *pId) const;
 	void AssignTrait(CPlayer *pPlayer);
+	void SyncTraitFromMeta(CPlayer *pPlayer);
+	void SaveTraitToMeta(CPlayer *pPlayer);
 };
 
 #endif

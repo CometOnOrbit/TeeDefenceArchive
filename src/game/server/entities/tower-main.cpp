@@ -16,13 +16,8 @@ CTowerMain::CTowerMain(CGameWorld *pGameWorld, vec2 StandPos)
 {
 	m_Pos = StandPos;
 
-	for(unsigned i = 0; i < sizeof(m_aIDs) / sizeof(int); i++)
-		m_aIDs[i] = Server()->SnapNewID(GameServer()->GetWorldID());
-
-	for(int i = 0; i < s_TowerNumSide; i++)
-		m_alIDs[i] = Server()->SnapNewID(GameServer()->GetWorldID());
-
-	m_FlagID = Server()->SnapNewID(GameServer()->GetWorldID());
+	AddSnappingGroupIds(SNAP_GROUP_TOWER_BODY, 9);
+	AddSnappingGroupIds(SNAP_GROUP_TOWER_SIDE, s_TowerNumSide);
 
 	GameWorld()->InsertEntity(this);
 
@@ -35,22 +30,6 @@ int CTowerMain::GetMaxHealth()
 	if(pCtx && pCtx->m_pController)
 		return static_cast<CGameController *>(pCtx->m_pController)->TdGetDifficultyTowerMaxHealth();
 	return GameWorld()->Config()->m_SvMaxTowerHealth;
-}
-
-CTowerMain::~CTowerMain()
-{
-	for(unsigned i = 0; i < sizeof(m_aIDs) / sizeof(int); i++)
-	{
-		if(m_aIDs[i] >= 0)
-		{
-			Server()->SnapFreeID(m_aIDs[i], GameWorld()->GameServer()->GetWorldID());
-			m_aIDs[i] = -1;
-		}
-	}
-	Server()->SnapFreeID(m_FlagID, GameWorld()->GameServer()->GetWorldID());
-
-	for(int i = 0; i < s_TowerNumSide; i++)
-		Server()->SnapFreeID(m_alIDs[i], GameWorld()->GameServer()->GetWorldID());
 }
 
 void CTowerMain::Tick()
@@ -97,12 +76,17 @@ void CTowerMain::Snap(int SnappingClient)
 {
 	(void)SnappingClient;
 
-	int aSize = sizeof(m_aIDs) / sizeof(int);
+	const array<int> *pBodyIds = FindSnappingGroupIds(SNAP_GROUP_TOWER_BODY);
+	const array<int> *pSideIds = FindSnappingGroupIds(SNAP_GROUP_TOWER_SIDE);
+	if(!pBodyIds || !pSideIds)
+		return;
+
+	int aSize = pBodyIds->size();
 	const float kPi = 3.14159265358979323846f;
 
 	for(int i = 0; i < aSize; i++)
 	{
-		CNetObj_Projectile *pEff = static_cast<CNetObj_Projectile *>(Server()->SnapNewItem(NETOBJTYPE_PROJECTILE, m_aIDs[i], sizeof(CNetObj_Projectile)));
+		CNetObj_Projectile *pEff = static_cast<CNetObj_Projectile *>(Server()->SnapNewItem(NETOBJTYPE_PROJECTILE, (*pBodyIds)[i], sizeof(CNetObj_Projectile)));
 		if(!pEff)
 			continue;
 
@@ -117,10 +101,12 @@ void CTowerMain::Snap(int SnappingClient)
 
 	for(int i = 0; i < s_TowerNumSide; i++)
 	{
+		if(i >= pSideIds->size())
+			break;
 		vec2 PartPosStart = m_Pos + vec2(s_TowerSize * cosf(AngleStep * i), s_TowerSize * sinf(AngleStep * i));
 		vec2 PartPosEnd = m_Pos + vec2(s_TowerSize * cosf(AngleStep * (i + 1)), s_TowerSize * sinf(AngleStep * (i + 1)));
 
-		CNetObj_Laser *pObj = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, m_alIDs[i], sizeof(CNetObj_Laser)));
+		CNetObj_Laser *pObj = static_cast<CNetObj_Laser *>(Server()->SnapNewItem(NETOBJTYPE_LASER, (*pSideIds)[i], sizeof(CNetObj_Laser)));
 		if(!pObj)
 			return;
 

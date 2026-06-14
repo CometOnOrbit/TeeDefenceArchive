@@ -278,8 +278,7 @@ void CEffectRegistry::ApplyOne(const SEffectDef &Def, int Stacks, EEffectTrigger
 	}
 	else if(str_comp(Def.m_aId, "magazine_bonus") == 0 && Trigger == TRIGGER_WEAPON_FIRE)
 	{
-		(void)P;
-		(void)Stacks;
+		Ctx.m_OutAmmoBonus += P.m_AmmoBonusPerStack * Stacks;
 	}
 	else if(str_comp(Def.m_aId, "lifesteal") == 0 && Trigger == TRIGGER_DEAL_DAMAGE && Ctx.m_pAttacker)
 	{

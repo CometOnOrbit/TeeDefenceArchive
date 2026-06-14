@@ -57,7 +57,6 @@ class CSpiderBoss : public CEntity
 	vec2 m_aSwingTo[NUM_SPIDER_LEGS];
 	float m_aSwingT[NUM_SPIDER_LEGS];
 	vec2 m_aFootKnock[NUM_SPIDER_LEGS];
-	int m_aLaserIds[NUM_SPIDER_LEGS][NUM_SPIDER_SEGS];
 	CSpiderLegPart *m_apSeg[NUM_SPIDER_LEGS][NUM_SPIDER_SEGS];
 
 	int m_LastGrenadeTick;

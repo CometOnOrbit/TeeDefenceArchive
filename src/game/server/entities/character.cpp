@@ -91,6 +91,9 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	m_LockedCK = false;
 	m_LockPos = vec2(0.0f, 0.0f);
 	m_CardElectronTicks = 0;
+	m_MaxHealth = GameServer()->Config()->m_SvPlayerMaxHealth;
+	m_RetaliationExpireTick = 0;
+	m_RetaliationStacks = 0;
 
 	for(int i = 0; i < NUM_WEAPONS; i++)
 		m_aWeapons[i].m_Valid = true;
@@ -343,12 +346,43 @@ void CCharacter::HandleWeapons()
 				Ctx.m_pPlayer = m_pPlayer;
 				Ctx.m_pExtraJson = pSx;
 				GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_TICK, Ctx);
+
+				// Aggregate ammo regen from armor items (helm/chest/legs)
+				const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+				for(int a = 0; a < 3; a++)
+				{
+					const int ArmorId = m_pPlayer->GetHolding(ArmorTypes[a]);
+					if(ArmorId <= 0)
+						continue;
+					const char *pArmorExtra = m_pPlayer->GetExtraForItem(ArmorId);
+					if(!pArmorExtra || !pArmorExtra[0])
+						continue;
+					CEffectContext ArmorCtx = {};
+					ArmorCtx.m_pPlayer = m_pPlayer;
+					ArmorCtx.m_pExtraJson = pArmorExtra;
+					GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_TICK, ArmorCtx);
+					if(ArmorCtx.m_AmmoRegenTime > 0 && Ctx.m_AmmoRegenTime <= 0)
+						Ctx.m_AmmoRegenTime = ArmorCtx.m_AmmoRegenTime;
+					else if(ArmorCtx.m_AmmoRegenTime > 0)
+						Ctx.m_AmmoRegenTime = minimum(Ctx.m_AmmoRegenTime, ArmorCtx.m_AmmoRegenTime);
+				}
+
 				if(Ctx.m_AmmoRegenTime > 0)
 					AmmoRegenTime = Ctx.m_AmmoRegenTime;
 			}
 			if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
 			{
-				const int NumCard = pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID);
+				int NumCard = pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID);
+				// Aggregate quickly-loading from armor items
+				const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+				for(int a = 0; a < 3; a++)
+				{
+					const int ArmorId = m_pPlayer->GetHolding(ArmorTypes[a]);
+					if(ArmorId <= 0)
+						continue;
+					const char *pArmorExtra = m_pPlayer->GetExtraForItem(ArmorId);
+					NumCard += pH->GetCard(pArmorExtra, ITEM_CARD_QUICKLY_LOADING_ID);
+				}
 				if(NumCard)
 				{
 					const int MaxPlace = pH->GetMaxPlace(ITEM_CARD_QUICKLY_LOADING_ID);
@@ -366,9 +400,28 @@ void CCharacter::HandleWeapons()
 			const char *pPx = m_pPlayer->GetExtraForItem(m_pPlayer->GetHolding(ITYPE_PICKAXE));
 			int QL = pH->GetCard(pSx, ITEM_CARD_QUICKLY_LOADING_ID);
 			QL += (pH->GetCard(pPx, ITEM_CARD_QUICKLY_LOADING_ID) + 1) / 2;
+			// Aggregate ammo regen speed from armor items
+			const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+			for(int a = 0; a < 3; a++)
+			{
+				const int ArmorId = m_pPlayer->GetHolding(ArmorTypes[a]);
+				if(ArmorId <= 0)
+					continue;
+				const char *pArmorExtra = m_pPlayer->GetExtraForItem(ArmorId);
+				QL += pH->GetCard(pArmorExtra, ITEM_CARD_QUICKLY_LOADING_ID);
+			}
 			if(QL > 0)
 				AmmoRegenTime = maximum(1, AmmoRegenTime - QL * (Server()->TickSpeed() / 25));
-			const int QF = pH->GetCard(pSx, ITEM_CARD_QUICKLY_FIRE_ID);
+			int QF = pH->GetCard(pSx, ITEM_CARD_QUICKLY_FIRE_ID);
+			// Aggregate quickly-fire from armor items
+			for(int a = 0; a < 3; a++)
+			{
+				const int ArmorId = m_pPlayer->GetHolding(ArmorTypes[a]);
+				if(ArmorId <= 0)
+					continue;
+				const char *pArmorExtra = m_pPlayer->GetExtraForItem(ArmorId);
+				QF += pH->GetCard(pArmorExtra, ITEM_CARD_QUICKLY_FIRE_ID);
+			}
 			if(QF > 0 && QL > 0)
 				AmmoRegenTime = maximum(1, AmmoRegenTime - Server()->TickSpeed() / 40);
 		}
@@ -407,6 +460,16 @@ bool CCharacter::GiveWeapon(int Weapon, int Ammo)
 		return true;
 	}
 	return false;
+}
+
+void CCharacter::AddWeaponAmmo(int Weapon, int Bonus)
+{
+	if(Weapon < 0 || Weapon >= NUM_WEAPONS || Bonus <= 0)
+		return;
+	if(!m_aWeapons[Weapon].m_Got || m_aWeapons[Weapon].m_Ammo < 0)
+		return;
+	const int Cap = g_pData->m_Weapons.m_aId[Weapon].m_Maxammo + Bonus;
+	m_aWeapons[Weapon].m_Ammo = minimum(Cap, m_aWeapons[Weapon].m_Ammo + Bonus);
 }
 
 void CCharacter::GiveNinja()
@@ -541,6 +604,19 @@ void CCharacter::Tick()
 
 	m_Core.m_Input = m_Input;
 	m_Core.Tick(true);
+
+	if(m_pPlayer && !m_pPlayer->IsDummy() && GameServer()->ItemHelper())
+	{
+		CItemHelper *pH = GameServer()->ItemHelper();
+		const int LegsId = m_pPlayer->GetHolding(ITYPE_LEGS);
+		const int SwiftStacks = pH->GetEffectStacksFromExtra(m_pPlayer->GetExtraForItem(LegsId), ITEM_CARD_SWIFTNESS, "swiftness");
+		if(SwiftStacks > 0)
+			m_Core.m_Vel.x *= 1.f + 0.08f * (float)SwiftStacks;
+
+		const int RegenStacks = pH->SumArmorEffectStacks(m_pPlayer, ITEM_CARD_REGENERATION, "regeneration");
+		if(RegenStacks > 0 && Server()->Tick() % (Server()->TickSpeed() * 3) == 0)
+			IncreaseHealth(RegenStacks);
+	}
 
 	if(GameServer()->m_pController->IsSpiderBossCore(this))
 	{
@@ -697,11 +773,16 @@ void CCharacter::TickPaused()
 
 bool CCharacter::IncreaseHealth(int Amount)
 {
-	const int Max = GameServer()->Config()->m_SvPlayerMaxHealth;
-	if(m_Health >= Max)
+	if(m_Health >= m_MaxHealth)
 		return false;
-	m_Health = clamp(m_Health + Amount, 0, Max);
+	m_Health = clamp(m_Health + Amount, 0, m_MaxHealth);
 	return true;
+}
+
+void CCharacter::AddMaxHealth(int Amount)
+{
+	m_Health += Amount;
+	m_MaxHealth += Amount;
 }
 
 void CCharacter::SetHealthDirect(int Amount)
@@ -871,16 +952,68 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 			return false;
 	}
 
-	// m_pPlayer only inflicts half damage on self
+	// Self-damage: immunity cards or default halving
 	if(From == m_pPlayer->GetCID())
-		Dmg = maximum(1, Dmg / 2);
+	{
+		CItemHelper *pH = GameServer()->ItemHelper();
+		int ImmunityPct = 0;
+		if(pH && m_pPlayer && !m_pPlayer->IsDummy())
+			ImmunityPct = pH->CountArmorWithCard(m_pPlayer, ITEM_CARD_SELF_HARM_IMMUNITY) * 30;
+		if(ImmunityPct >= 100)
+			return false;
+		if(ImmunityPct > 0)
+			Dmg = maximum(1, Dmg * (100 - ImmunityPct) / 100);
+		else
+			Dmg = maximum(1, Dmg / 2);
+	}
 
 	if(m_pPlayer->GetZomb() == ZOMB_SPIDER_BOSS && From >= 0 && From < MAX_CLIENTS &&
 		GameServer()->m_apPlayers[From] && !GameServer()->m_apPlayers[From]->IsDummy())
 		Dmg *= 4;
 
+	if(Dmg > 0 && m_pPlayer && !m_pPlayer->IsDummy() && GameServer()->ItemHelper())
+	{
+		CItemHelper *pH = GameServer()->ItemHelper();
+
+		const int ShieldStacks = pH->SumArmorEffectStacks(m_pPlayer, ITEM_CARD_ABSORPTION_SHIELD, "absorption_shield");
+		if(ShieldStacks > 0 && Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->StatusManager()
+			&& (random_int() % 100) < 25)
+		{
+			GameServer()->Core()->StatusManager()->ApplyStatus(this, "shield", ShieldStacks, 300, 0.f, 5 * ShieldStacks);
+		}
+
+		const int FortStacks = pH->SumArmorEffectStacks(m_pPlayer, ITEM_CARD_FORTIFICATION, "fortification");
+		if(FortStacks > 0)
+			Dmg = maximum(1, Dmg - 2 * FortStacks);
+
+		if(m_MaxHealth > 0 && m_Health * 2 <= m_MaxHealth)
+		{
+			const int ResStacks = pH->SumArmorEffectStacks(m_pPlayer, ITEM_CARD_RESILIENCE, "resilience");
+			if(ResStacks > 0)
+			{
+				const int Reduction = minimum(90, 25 * ResStacks);
+				Dmg = maximum(1, Dmg * (100 - Reduction) / 100);
+			}
+		}
+	}
+
 	if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->StatusManager())
 		GameServer()->Core()->StatusManager()->AbsorbDamage(this, Dmg);
+
+	// Apply armor defense reduction
+	if(Dmg > 0 && m_pPlayer && !m_pPlayer->IsDummy() && GameServer()->ItemHelper())
+	{
+		const int HelmetId = m_pPlayer->GetHolding(ITYPE_HELMET);
+		const int ChestId = m_pPlayer->GetHolding(ITYPE_CHEST);
+		const int LegsId = m_pPlayer->GetHolding(ITYPE_LEGS);
+		const int Defense = GameServer()->ItemHelper()->GetDefense(HelmetId)
+			+ GameServer()->ItemHelper()->GetDefense(ChestId)
+			+ GameServer()->ItemHelper()->GetDefense(LegsId);
+		if(Defense > 0)
+		{
+			Dmg = maximum(1, Dmg - Defense);
+		}
+	}
 
 	int OldHealth = m_Health, OldArmor = m_Armor;
 	if(Dmg)
@@ -922,6 +1055,48 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 			Ctx.m_Source = Source;
 			Ctx.m_InDamage = Dealt;
 			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_DEAL_DAMAGE, Ctx);
+
+			// Aggregate lifesteal / armor_shred from armor items (helm/chest/legs)
+			const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+			for(int a = 0; a < 3; a++)
+			{
+				const int ArmorId = GameServer()->m_apPlayers[From]->GetHolding(ArmorTypes[a]);
+				if(ArmorId <= 0)
+					continue;
+				const char *pArmorExtra = GameServer()->m_apPlayers[From]->GetExtraForItem(ArmorId);
+				if(!pArmorExtra || !pArmorExtra[0])
+					continue;
+				CEffectContext ArmorCtx = {};
+				ArmorCtx.m_pAttacker = GameServer()->m_apPlayers[From]->GetCharacter();
+				ArmorCtx.m_pVictim = this;
+				ArmorCtx.m_pPlayer = GameServer()->m_apPlayers[From];
+				ArmorCtx.m_pExtraJson = pArmorExtra;
+				ArmorCtx.m_Weapon = Weapon;
+				ArmorCtx.m_Source = Source;
+				ArmorCtx.m_InDamage = Dealt;
+				GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_DEAL_DAMAGE, ArmorCtx);
+			}
+		}
+	}
+
+	if(Dealt > 0 && m_pPlayer && !m_pPlayer->IsDummy() && GameServer()->ItemHelper())
+	{
+		CItemHelper *pH = GameServer()->ItemHelper();
+
+		const int ThornsStacks = pH->SumArmorEffectStacks(m_pPlayer, ITEM_CARD_THORNS, "thorns");
+		if(ThornsStacks > 0 && From >= 0 && From != m_pPlayer->GetCID() && From < MAX_CLIENTS
+			&& GameServer()->m_apPlayers[From] && GameServer()->m_apPlayers[From]->GetCharacter()
+			&& GameServer()->m_apPlayers[From]->GetCharacter()->IsAlive())
+		{
+			const int Reflect = maximum(1, Dealt * 7 * ThornsStacks / 100);
+			GameServer()->m_apPlayers[From]->GetCharacter()->TakeDamage(vec2(0.f, 0.f), m_Pos, Reflect, m_pPlayer->GetCID(), WEAPON_WORLD);
+		}
+
+		const int RetStacks = pH->SumArmorEffectStacks(m_pPlayer, ITEM_CARD_RETRIBUTION, "retribution");
+		if(RetStacks > 0)
+		{
+			m_RetaliationStacks = RetStacks;
+			m_RetaliationExpireTick = Server()->Tick() + Server()->TickSpeed() * 3;
 		}
 	}
 

@@ -1,0 +1,9 @@
+{
+    "roll_interval_sec": 480,
+    "chance_percent": 30,
+    "events": [
+        {"id": "mining_boost", "title": "Mining Frenzy", "type": "mining", "bonus_percent": 50, "duration_sec": 120},
+        {"id": "loot_boost", "title": "Bountiful Loot", "type": "loot", "bonus_percent": 40, "duration_sec": 90},
+        {"id": "repair_discount", "title": "Quick Repair", "type": "repair", "bonus_percent": 50, "duration_sec": 180}
+    ]
+}

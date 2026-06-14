@@ -1,0 +1,95 @@
+{
+    "item": {
+        "type": 8,
+        "multiple": [
+            {
+                "id": 65,
+                "name": "Wooden Leggings",
+                "desc": "Leggings made of wood.",
+                "defense": 1,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Log": 25
+                }
+            },
+            {
+                "id": 66,
+                "name": "Iron Leggings",
+                "desc": "Leggings made of iron.",
+                "defense": 2,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Iron": 20
+                }
+            },
+            {
+                "id": 67,
+                "name": "Copper Leggings",
+                "desc": "Leggings made of copper.",
+                "defense": 3,
+                "capacity": 0,
+                "proba": 90,
+                "max": 0,
+                "formula": {
+                    "Copper": 20
+                }
+            },
+            {
+                "id": 68,
+                "name": "Titanium Leggings",
+                "desc": "Leggings made of titanium alloy.",
+                "defense": 4,
+                "capacity": 0,
+                "proba": 85,
+                "max": 0,
+                "formula": {
+                    "Iron": 12,
+                    "Copper": 12,
+                    "Coal": 12
+                }
+            },
+            {
+                "id": 69,
+                "name": "Diamond Leggings",
+                "desc": "Leggings made of diamond.",
+                "defense": 5,
+                "capacity": 0,
+                "proba": 80,
+                "max": 0,
+                "formula": {
+                    "Diamond": 12
+                }
+            },
+            {
+                "id": 70,
+                "name": "Energy Leggings",
+                "desc": "Leggings made of pure energy.",
+                "defense": 6,
+                "capacity": 0,
+                "proba": 80,
+                "max": 0,
+                "formula": {
+                    "Enegry": 12
+                }
+            },
+            {
+                "id": 71,
+                "name": "Void Shard Leggings",
+                "desc": "Leggings forged from void shards.",
+                "defense": 7,
+                "capacity": 0,
+                "proba": 70,
+                "max": 0,
+                "formula": {
+                    "Diamond": 12,
+                    "Enegry": 12,
+                    "Golden": 5
+                }
+            }
+        ]
+    }
+}

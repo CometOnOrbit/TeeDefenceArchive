@@ -10,7 +10,12 @@
 #include "item_system.h"
 #include "sql_pool.h"
 
+#include <game/server/core/components/meta/player_meta.h>
+
 #include <engine/shared/jobs.h>
+
+#include "item_system.h"
+#include "sql_pool.h"
 
 class CGameContext;
 class IEngine;
@@ -36,6 +41,7 @@ class CAccountSystem
 		JOB_SAVE_ACCOUNT,
 		JOB_SAVE_ITEMS,
 		JOB_SAVE_QUEST,
+		JOB_SAVE_META,
 	};
 
 	CSqlConnectionPool m_Pool;
@@ -57,12 +63,14 @@ class CAccountSystem
 		SAccSyncData m_Sync;
 		char m_aQuestData[4096];
 		char m_aSkillBinds[4096];
+		char m_aMetaData[META_DATA_MAX];
 		int m_Error;
 	};
 
 	SJob m_aJobs[MAX_ACCOUNT_JOBS];
 	char m_aaQuestData[MAX_CLIENTS][4096];
 	char m_aaSkillBinds[MAX_CLIENTS][4096];
+	char m_aaMetaData[MAX_CLIENTS][META_DATA_MAX];
 	int m_aNextItemsSaveTick[MAX_CLIENTS];
 	int m_aNextAccountSaveTick[MAX_CLIENTS];
 	bool m_aPendingItemsSave[MAX_CLIENTS];
@@ -108,6 +116,11 @@ public:
 	void RequestSaveQuestData(int ClientId);
 	bool GetQuestData(int ClientId, char *pOut, int OutSize) const;
 	void SetQuestData(int ClientId, const char *pJson);
+
+	void RequestSaveMetaData(int ClientId);
+	bool GetMetaData(int ClientId, char *pOut, int OutSize) const;
+	void SetMetaData(int ClientId, const char *pJson);
+
 	const char *GetSkillBinds(int ClientId) const;
 	void SetSkillBinds(int ClientId, const char *pJson);
 

@@ -5,5 +5,8 @@
     "enemies": "server_content/enemies.json",
     "portals": "server_content/portals.json",
     "quests": "server_content/quests.json",
-    "npcs": "server_content/npcs.json"
+    "npcs": "server_content/npcs.json",
+    "achievements": "server_content/achievements.json",
+    "duties": "server_content/duties.json",
+    "mini_events": "server_content/mini_events.json"
 }

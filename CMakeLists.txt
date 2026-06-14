@@ -647,6 +647,8 @@ set_src(ENGINE_SERVER GLOB src/engine/server
   register.h
   server.cpp
   server.h
+  snapshot_ids_pool.cpp
+  snapshot_ids_pool.h
 )
 set_src(GAME_SERVER GLOB_RECURSE src/game/server
   account.cpp
@@ -722,6 +724,22 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   core/components/npcs/npc_manager.h
   core/components/quests/quest_manager.cpp
   core/components/quests/quest_manager.h
+  core/components/meta/player_meta.cpp
+  core/components/meta/player_meta.h
+  core/components/meta/meta_manager.cpp
+  core/components/meta/meta_manager.h
+  core/components/meta/achievement_manager.cpp
+  core/components/meta/achievement_manager.h
+  core/components/meta/duties_manager.cpp
+  core/components/meta/duties_manager.h
+  core/components/meta/mini_events_manager.cpp
+  core/components/meta/mini_events_manager.h
+  core/components/meta/durability_manager.cpp
+  core/components/meta/durability_manager.h
+  core/tools/event_listener.cpp
+  core/tools/event_listener.h
+  entity_manager.cpp
+  entity_manager.h
   core/tworld_component.h
   core/tworld_controller.cpp
   core/tworld_controller.h

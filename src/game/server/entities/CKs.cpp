@@ -14,6 +14,7 @@
 #include <game/server/core/components/content/content_types.h>
 #include <game/server/core/components/content/effect_registry.h>
 #include <game/server/core/components/content/trait_manager.h>
+#include <game/server/core/components/meta/mini_events_manager.h>
 #include <game/server/core/tworld_controller.h>
 
 #include "CKs.h"
@@ -105,13 +106,36 @@ void CKs::RewardIfDestroyed(CPlayer *pPlayer)
 		return;
 
 	const int CID = pPlayer->GetCID();
-	pPlayer->m_AccData.m_aItems[m_Type].m_Num++;
-	GameServer()->SendChatLocF(CID, "mine.pickup", "You picked up %s", GameServer()->LocItemName(CID, m_Type));
+	vec2 Pos = m_Pos;
+	int Num = 1;
+	if(TWorldController *pCore = GameServer()->Core())
+	{
+		if(pCore->MiniEventsManager())
+		{
+			const int Bonus = pCore->MiniEventsManager()->GetMiningBonusPercent();
+			if(Bonus > 0)
+				Num = maximum(1, Num + Num * Bonus / 100);
+		}
+		if(pCore->EntityManager())
+			pCore->EntityManager()->DropItem(Pos, CID, m_Type, Num);
+		else
+		{
+			pPlayer->m_AccData.m_aItems[m_Type].m_Num++;
+			GameServer()->SendChatLocF(CID, "mine.pickup", "You picked up %s", GameServer()->LocItemName(CID, m_Type));
+			if(GameServer()->Accounts()->IsEnabled() && pPlayer->GetAccountId() >= 0)
+				GameServer()->Accounts()->RequestSaveItems(CID);
+		}
+		pCore->Events().EmitPlayerMine(pPlayer, m_Type);
+	}
+	else
+	{
+		pPlayer->m_AccData.m_aItems[m_Type].m_Num++;
+		GameServer()->SendChatLocF(CID, "mine.pickup", "You picked up %s", GameServer()->LocItemName(CID, m_Type));
+		if(GameServer()->Accounts()->IsEnabled() && pPlayer->GetAccountId() >= 0)
+			GameServer()->Accounts()->RequestSaveItems(CID);
+	}
 	const int Cap = GetMaxHealth();
 	m_Health = Cap > 0 ? Cap : 1;
-
-	if(GameServer()->Accounts()->IsEnabled() && pPlayer->GetAccountId() >= 0)
-		GameServer()->Accounts()->RequestSaveItems(CID);
 }
 
 void CKs::Picking(int Dmg, CPlayer *Player)
@@ -132,6 +156,25 @@ void CKs::Picking(int Dmg, CPlayer *Player)
 		CritCtx.m_pExtraJson = pHoldingExtra;
 		CritCtx.m_InDamage = EffectiveDmg;
 		GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, CritCtx);
+
+		// Aggregate mining luck / damage from armor items
+		const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+		for(int a = 0; a < 3; a++)
+		{
+			const int ArmorId = Player->GetHolding(ArmorTypes[a]);
+			if(ArmorId <= 0)
+				continue;
+			const char *pArmorExtra = Player->GetExtraForItem(ArmorId);
+			if(!pArmorExtra || !pArmorExtra[0])
+				continue;
+			CEffectContext ArmorCtx = {};
+			ArmorCtx.m_pPlayer = Player;
+			ArmorCtx.m_pExtraJson = pArmorExtra;
+			ArmorCtx.m_InDamage = EffectiveDmg;
+			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, ArmorCtx);
+			CritCtx.m_MiningCritBonus += ArmorCtx.m_MiningCritBonus;
+			CritCtx.m_OutDamage += ArmorCtx.m_OutDamage;
+		}
 
 		int CritChance = CritCtx.m_MiningCritBonus;
 		if(GameServer()->Core()->TraitManager())
@@ -157,6 +200,26 @@ void CKs::Picking(int Dmg, CPlayer *Player)
 			Ctx.m_pExtraJson = pHoldingExtra;
 			Ctx.m_InDamage = Dmg;
 			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, Ctx);
+
+			// Aggregate explosive / mining cd from armor items
+			const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+			for(int a = 0; a < 3; a++)
+			{
+				const int ArmorId = Player->GetHolding(ArmorTypes[a]);
+				if(ArmorId <= 0)
+					continue;
+				const char *pArmorExtra = Player->GetExtraForItem(ArmorId);
+				if(!pArmorExtra || !pArmorExtra[0])
+					continue;
+				CEffectContext ArmorCtx = {};
+				ArmorCtx.m_pPlayer = Player;
+				ArmorCtx.m_pExtraJson = pArmorExtra;
+				ArmorCtx.m_InDamage = Dmg;
+				GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, ArmorCtx);
+				Ctx.m_ExplosionStacks += ArmorCtx.m_ExplosionStacks;
+				Ctx.m_OutDamage += ArmorCtx.m_OutDamage;
+			}
+
 			Exp = Ctx.m_ExplosionStacks;
 			CardDmg = Ctx.m_OutDamage;
 			Radius = 72.f + (float)Exp * 6.f;
@@ -201,6 +264,23 @@ void CKs::Picking(int Dmg, CPlayer *Player)
 			Ctx.m_pExtraJson = pHoldingExtra;
 			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, Ctx);
 			QFire = Ctx.m_OutMineCd;
+
+			// Aggregate mining CD reduction from armor items
+			const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
+			for(int a = 0; a < 3; a++)
+			{
+				const int ArmorId = Player->GetHolding(ArmorTypes[a]);
+				if(ArmorId <= 0)
+					continue;
+				const char *pArmorExtra = Player->GetExtraForItem(ArmorId);
+				if(!pArmorExtra || !pArmorExtra[0])
+					continue;
+				CEffectContext ArmorCtx = {};
+				ArmorCtx.m_pPlayer = Player;
+				ArmorCtx.m_pExtraJson = pArmorExtra;
+				GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, ArmorCtx);
+				QFire += ArmorCtx.m_OutMineCd;
+			}
 		}
 		if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
 			QFire = pH->GetCard(pHoldingExtra, ITEM_CARD_QUICKLY_FIRE_ID);

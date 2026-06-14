@@ -6,6 +6,7 @@
 #include <game/voting.h>
 #include <game/server/account.h>
 #include <game/server/core/components/craft/craft_manager.h>
+#include <game/server/core/components/meta/durability_manager.h>
 #include <game/server/entities/turret.h>
 #include <game/server/turret_ammo.h>
 #include <game/server/core/components/localization/localization_manager.h>
@@ -74,6 +75,8 @@ bool CCraftManager::TryCraftOneItem(int ClientID, int Item, char *pErr, int ErrS
 
 	pP->m_AccData.m_aItems[Item].m_Num++;
 	pAcc->RequestSaveItems(ClientID);
+	if(TWorldController *pCore = GS()->Core())
+		pCore->Events().EmitPlayerCraft(pP, Item, 1);
 	return true;
 }
 
@@ -140,9 +143,10 @@ static void ComChatEquip(IConsole::IResult *pResult, void *pUser)
 	}
 
 	const int T = pH->GetType(ItemId);
-	if(T != ITYPE_PICKAXE && T != ITYPE_AXE && T != ITYPE_SWORD)
+	if(T != ITYPE_PICKAXE && T != ITYPE_AXE && T != ITYPE_SWORD
+		&& T != ITYPE_HELMET && T != ITYPE_CHEST && T != ITYPE_LEGS)
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "equip.err.tool_only", u8"只能装备镐、斧或剑。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "equip.err.tool_only", u8"只能装备镐、斧、剑或盔甲。");
 		return;
 	}
 
@@ -302,11 +306,17 @@ static void ComVoteEquip(IConsole::IResult *pResult, void *pUser)
 	if(!pH->CheckItemValid(ItemId) || ItemId <= 0)
 		return;
 	const int T = pH->GetType(ItemId);
-	if(T != ITYPE_PICKAXE && T != ITYPE_AXE && T != ITYPE_SWORD && T != ITYPE_TURRET)
+	if(T != ITYPE_PICKAXE && T != ITYPE_AXE && T != ITYPE_SWORD && T != ITYPE_TURRET
+		&& T != ITYPE_HELMET && T != ITYPE_CHEST && T != ITYPE_LEGS)
 		return;
 	if(pP->m_AccData.m_aItems[ItemId].m_Num <= 0)
 		return;
 	pP->m_AccData.m_Holding[T] = ItemId;
+	if(TWorldController *pCore = pGame->Core())
+	{
+		CDurabilityManager::EnsureDurability(pP->m_AccData.m_aItems[ItemId].m_aExtra, sizeof(pP->m_AccData.m_aItems[ItemId].m_aExtra));
+		pCore->Events().EmitPlayerEquip(pP, ItemId);
+	}
 	pAcc->RequestSaveAccount(pCtx->m_ClientID);
 	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
 }

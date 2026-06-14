@@ -83,9 +83,10 @@ void CProjectile::Tick()
 	vec2 CurPos = GetPos(Ct);
 	int Collide = GameServer()->Collision()->IntersectLine(PrevPos, CurPos, &CurPos, 0);
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
-	CHitableEntity *pTargetEnt = (CHitableEntity *) GameWorld()->IntersectFlagEntity(PrevPos, CurPos, 6.0f, CurPos, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
-	if(pTargetEnt && pTargetEnt->ObjType() == CGameWorld::ENTTYPE_TURRET && GameWorld()->IsHumanDefenderOwner(m_Owner))
-		pTargetEnt = nullptr;
+	CEntity *pIntersect = GameWorld()->IsHumanDefenderOwner(m_Owner)
+		? GameWorld()->IntersectFlagEntitySkippingTurrets(PrevPos, CurPos, 6.0f, CurPos, CGameWorld::ENTFLAG_HITABLE, pOwnerChar)
+		: GameWorld()->IntersectFlagEntity(PrevPos, CurPos, 6.0f, CurPos, CGameWorld::ENTFLAG_HITABLE, pOwnerChar);
+	CHitableEntity *pTargetEnt = static_cast<CHitableEntity *>(pIntersect);
 
 	if(pOwnerChar && pOwnerChar->GetPlayer() && ((Server()->Tick() - m_StartTick) % 25 == 0 || Server()->Tick() - m_StartTick < 3))
 	{

@@ -55,6 +55,9 @@ public:
 	bool Spawn(class CPlayer *pPlayer, vec2 Pos);
 
 	bool IncreaseHealth(int Amount);
+	void AddMaxHealth(int Amount);
+	void SetMaxHealth(int Amount) { m_MaxHealth = maximum(1, Amount); }
+	int GetMaxHealth() const { return m_MaxHealth; }
 	bool IncreaseArmor(int Amount);
 	void ReduceArmor(int Amount);
 	void SetHealthDirect(int Amount);
@@ -63,6 +66,7 @@ public:
 	void SyncSpiderBody(vec2 Pos);
 
 	bool GiveWeapon(int Weapon, int Ammo);
+	void AddWeaponAmmo(int Weapon, int Bonus);
 	void GiveNinja();
 	void SetNinjaActivationTick(int Tick) { m_Ninja.m_ActivationTick = Tick; }
 
@@ -84,6 +88,9 @@ public:
 	int m_MiningTick;
 	bool m_LockedCK;
 	vec2 m_LockPos;
+
+	int m_RetaliationExpireTick;
+	int m_RetaliationStacks;
 
 	// need this hook for gamecontroller to call ninja fire
 	void DoNinjaFire(vec2 Direction, int MoveTime);
@@ -138,6 +145,8 @@ private:
 	int m_Armor;
 
 	int m_CardElectronTicks;
+
+	int m_MaxHealth;
 
 	int m_TriggeredEvents;
 

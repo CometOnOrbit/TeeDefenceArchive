@@ -86,6 +86,12 @@ bool ItemCardOps_Place(CGameContext *pGame, CPlayer *pP, int HostItemId, const c
 	if(!pH->IsPlaceableOnItemType(CardId, HostType))
 		return false;
 
+	const char *pResolvedType = pType;
+	if(pH->IsPartItem(CardId))
+		pResolvedType = "Parts";
+	else if(pH->GetType(CardId) == ITYPE_CARD)
+		pResolvedType = "Cards";
+
 	SAccSyncData &Acc = pP->m_AccData;
 	if(Acc.m_aItems[HostItemId].m_Num < 1 || Acc.m_aItems[CardId].m_Num < 1)
 		return false;
@@ -101,10 +107,10 @@ bool ItemCardOps_Place(CGameContext *pGame, CPlayer *pP, int HostItemId, const c
 		LoadSlots(pRoot, "Parts", aParts, &nP, 24);
 	}
 
-	SSlot *pTarget = str_comp(pType, "Cards") == 0 ? aCards : aParts;
-	int *pnT = str_comp(pType, "Cards") == 0 ? &nC : &nP;
-	const int OtherN = str_comp(pType, "Cards") == 0 ? nP : nC;
-	const SSlot *pOther = str_comp(pType, "Cards") == 0 ? aParts : aCards;
+	SSlot *pTarget = str_comp(pResolvedType, "Cards") == 0 ? aCards : aParts;
+	int *pnT = str_comp(pResolvedType, "Cards") == 0 ? &nC : &nP;
+	const int OtherN = str_comp(pResolvedType, "Cards") == 0 ? nP : nC;
+	const SSlot *pOther = str_comp(pResolvedType, "Cards") == 0 ? aParts : aCards;
 
 	const int HostCap = pH->GetMaxCapacity(HostItemId);
 	const int NewPieceCap = pH->GetMaxCapacity(CardId);

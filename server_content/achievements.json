@@ -1,0 +1,9 @@
+{
+    "achievements": [
+        {"id": "first_kill", "title": "First Blood", "desc": "Kill your first zombie", "type": "kill", "count": 1, "reward_item": 7, "reward_num": 1},
+        {"id": "wave_5", "title": "Wave Survivor", "desc": "Clear wave 5", "type": "wave", "count": 5},
+        {"id": "wave_10", "title": "Veteran Defender", "desc": "Clear wave 10", "type": "wave", "count": 10, "reward_item": 39, "reward_num": 2},
+        {"id": "craft_10", "title": "Apprentice Crafter", "desc": "Craft 10 items", "type": "craft", "count": 10},
+        {"id": "mine_100", "title": "Dedicated Miner", "desc": "Mine 100 times", "type": "mine", "count": 100, "reward_item": 0, "reward_num": 50}
+    ]
+}
