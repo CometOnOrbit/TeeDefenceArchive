@@ -22,8 +22,8 @@ public:
 class CLocalizationManager : public TWorldComponent
 {
 	static constexpr int MAX_LANGS = 32;
-	static constexpr int MAX_KEYS = 512;
-	static constexpr int KEY_LEN = 64;
+	static constexpr int MAX_KEYS = 1024;
+	static constexpr int KEY_LEN = 512;
 	static constexpr int STR_LEN = 512;
 	static constexpr int LANG_ID_LEN = 16;
 	static constexpr int KEY_MAP_SIZE = 1024;
