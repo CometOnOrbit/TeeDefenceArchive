@@ -179,7 +179,7 @@ bool TurretRepair_Consume(CGameContext *pGame, CPlayer *pP, int TurretItemId)
 	return true;
 }
 
-void TurretAmmo_BuildShotParams(const STurretAmmoMix *pMix, CItemHelper *pH, const char *pExtra, STurretShotParams *pOut)
+void TurretAmmo_BuildShotParams(const STurretAmmoMix *pMix, CItemHelper *pH, const char *pExtra, STurretShotParams *pOut, CPlayer *pPlayer)
 {
 	if(!pOut)
 		return;
@@ -214,6 +214,7 @@ void TurretAmmo_BuildShotParams(const STurretAmmoMix *pMix, CItemHelper *pH, con
 		if(pH->GameServer() && pH->GameServer()->Config()->m_SvContentFramework && pH->GameServer()->Core() && pH->GameServer()->Core()->EffectRegistry())
 		{
 			CEffectContext Ctx = {};
+			Ctx.m_pPlayer = pPlayer;
 			Ctx.m_pExtraJson = pExtra;
 			pH->GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_TURRET_FIRE, Ctx);
 			CardExtra = Ctx.m_OutDamage;

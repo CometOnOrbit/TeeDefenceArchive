@@ -19,11 +19,11 @@
                 "name": "Iron Helmet",
                 "desc": "A helmet made of iron.",
                 "defense": 2,
-                "capacity": 0,
+                "capacity": 20,
                 "proba": 90,
                 "max": 0,
                 "formula": {
-                    "Iron": 15
+                    "Iron": 250
                 }
             },
             {
@@ -31,11 +31,11 @@
                 "name": "Copper Helmet",
                 "desc": "A helmet made of copper.",
                 "defense": 3,
-                "capacity": 0,
+                "capacity": 30,
                 "proba": 90,
                 "max": 0,
                 "formula": {
-                    "Copper": 15
+                    "Copper": 500
                 }
             },
             {
@@ -43,13 +43,13 @@
                 "name": "Titanium Helmet",
                 "desc": "A helmet made of titanium alloy.",
                 "defense": 4,
-                "capacity": 0,
+                "capacity": 50,
                 "proba": 85,
                 "max": 0,
                 "formula": {
-                    "Iron": 10,
-                    "Copper": 10,
-                    "Coal": 10
+                    "Iron": 200,
+                    "Copper": 200,
+                    "Titanium": 100
                 }
             },
             {
@@ -57,11 +57,11 @@
                 "name": "Diamond Helmet",
                 "desc": "A helmet made of diamond.",
                 "defense": 5,
-                "capacity": 0,
+                "capacity": 80,
                 "proba": 80,
                 "max": 0,
                 "formula": {
-                    "Diamond": 10
+                    "Diamond": 500
                 }
             },
             {
@@ -69,11 +69,11 @@
                 "name": "Energy Helmet",
                 "desc": "A helmet made of pure energy.",
                 "defense": 6,
-                "capacity": 0,
+                "capacity": 120,
                 "proba": 80,
                 "max": 0,
                 "formula": {
-                    "Enegry": 10
+                    "Enegry": 25
                 }
             },
             {
@@ -81,13 +81,13 @@
                 "name": "Void Shard Helmet",
                 "desc": "A helmet forged from void shards.",
                 "defense": 7,
-                "capacity": 0,
+                "capacity": 150,
                 "proba": 70,
                 "max": 0,
                 "formula": {
-                    "Diamond": 10,
-                    "Enegry": 10,
-                    "Golden": 5
+                    "Diamond": 200,
+                    "Enegry": 50,
+                    "Void Shard": 10
                 }
             }
         ]

@@ -54,7 +54,7 @@ bool TurretAmmo_CanAfford(const CPlayer *pP, const STurretAmmoMix *pMix, int Tot
 int TurretRepair_MaterialCost(CItemHelper *pH, int TurretItemId, int MatId);
 bool TurretRepair_CanAfford(CGameContext *pGame, const CPlayer *pP, int TurretItemId);
 bool TurretRepair_Consume(CGameContext *pGame, CPlayer *pP, int TurretItemId);
-void TurretAmmo_BuildShotParams(const STurretAmmoMix *pMix, CItemHelper *pH, const char *pExtra, STurretShotParams *pOut);
+void TurretAmmo_BuildShotParams(const STurretAmmoMix *pMix, CItemHelper *pH, const char *pExtra, STurretShotParams *pOut, CPlayer *pPlayer = nullptr);
 
 void TurretAmmo_Fire(CGameContext *pGame, CGameWorld *pWorld, CTurret *pTurret, CPlayer *pOwner, vec2 From, vec2 Dir, CCharacter *pTarget,
 	const STurretShotParams &Params, int ItemDefId);

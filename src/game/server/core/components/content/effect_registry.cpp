@@ -59,7 +59,7 @@ void CEffectRegistry::ParseEffectParams(const json_value &Params, SEffectParams 
 	PARSE_INT(m_ForcePerStack, "force_per_stack");
 	PARSE_INT(m_RadiusBase, "radius_base");
 	PARSE_INT(m_RadiusPerStack, "radius_per_stack");
-	PARSE_INT(m_RadiusPerFusionStack, "radius_per_stack");
+	PARSE_INT(m_RadiusPerFusionStack, "radius_per_fusion_stack");
 	PARSE_INT(m_DurationPerStack, "duration_per_stack");
 	PARSE_INT(m_DurationTicks, "duration_ticks");
 	PARSE_INT(m_TickInterval, "tick_interval");
@@ -153,24 +153,14 @@ bool CEffectRegistry::EffectHasTrigger(const SEffectDef &Def, EEffectTrigger Tri
 	return Trigger >= 0 && Trigger < NUM_EFFECT_TRIGGERS && Def.m_aTriggers[Trigger];
 }
 
-int CEffectRegistry::LegacyItemToStacks(CItemHelper *pItems, const char *pExtraJson, int LegacyItemId) const
-{
-	return pItems ? pItems->GetCard(pExtraJson, LegacyItemId) + pItems->GetPart(pExtraJson, LegacyItemId) : 0;
-}
-
 int CEffectRegistry::QueryStacks(CItemHelper *pItems, const char *pExtraJson, const char *pEffectId) const
 {
 	if(!pItems || !pEffectId)
 		return 0;
 
-	int Stacks = 0;
-	for(int i = 0; i < NUM_ITEM; i++)
-		Stacks += pItems->GetEffectStacksFromExtra(pExtraJson, i, pEffectId);
-
 	const SEffectDef *pDef = FindEffect(pEffectId);
-	if(pDef && pDef->m_LegacyItem >= 0 && pItems->GetNumItemEffects(pDef->m_LegacyItem) == 0)
-		Stacks += LegacyItemToStacks(pItems, pExtraJson, pDef->m_LegacyItem);
-	return Stacks;
+	const int LegacyItem = (pDef && pDef->m_LegacyItem >= 0) ? pDef->m_LegacyItem : -1;
+	return pItems->QueryEffectStacksFromExtra(pExtraJson, pEffectId, LegacyItem);
 }
 
 void CEffectRegistry::ApplyTraitModifiers(CEffectContext &Ctx, float DamageMul, float ReloadMul) const

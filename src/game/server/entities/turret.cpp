@@ -201,7 +201,7 @@ void CTurret::Tick()
 		return;
 
 	STurretShotParams Params;
-	TurretAmmo_BuildShotParams(&Mix, pH, pExtra, &Params);
+	TurretAmmo_BuildShotParams(&Mix, pH, pExtra, &Params, pOwner);
 	if(pTarget)
 		Params.m_TargetCid = pTarget->GetPlayer()->GetCID();
 

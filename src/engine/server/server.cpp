@@ -1740,6 +1740,13 @@ int CServer::Run()
 
 	for(int w = 0; w < m_pMultiWorlds->GetWorldCount(); w++)
 		GameServer(w)->OnInit();
+	
+	if(m_pMultiWorlds)
+	{
+		for(int w = 0; w < m_pMultiWorlds->GetWorldCount(); w++)
+			GameServer(w)->OnConsoleInit();
+	}
+
 	str_format(aBuf, sizeof(aBuf), "netversion %s", GameServer(0)->NetVersion());
 	Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
 	if(str_comp(GameServer(0)->NetVersionHashUsed(), GameServer(0)->NetVersionHashReal()))
@@ -2152,11 +2159,6 @@ void CServer::RegisterCommands()
 	// register console commands in sub parts
 	m_ServerBan.InitServerBan(Console(), Storage(), this);
 	m_DemoRecorder.Init(Console(), Storage());
-	if(m_pMultiWorlds)
-	{
-		for(int w = 0; w < m_pMultiWorlds->GetWorldCount(); w++)
-			GameServer(w)->OnConsoleInit();
-	}
 }
 
 int CServer::SnapNewID(int WorldID)

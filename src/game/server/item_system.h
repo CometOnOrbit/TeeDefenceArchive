@@ -109,7 +109,7 @@ enum
 
 enum
 {
-	MAX_ITEM_EFFECT_KEYS = 4,
+	MAX_ITEM_EFFECT_KEYS = 8,
 
 	ITYPE_PICKAXE = 0,
 	ITYPE_AXE,
@@ -215,6 +215,7 @@ public:
 	int GetNumItemEffects(int ItemId) const;
 	const char *GetItemEffectKey(int ItemId, int EffectIdx) const;
 	int GetEffectStacksFromExtra(const char *pExtraJson, int ItemId, const char *pEffectKey) const;
+	int QueryEffectStacksFromExtra(const char *pExtraJson, const char *pEffectKey, int LegacyItemId = -1) const;
 	int SumArmorEffectStacks(class CPlayer *pP, int CardItemId, const char *pEffectKey) const;
 	int CountArmorWithCard(class CPlayer *pP, int CardItemId) const;
 

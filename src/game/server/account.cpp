@@ -1162,6 +1162,7 @@ void CAccountSystem::OnClientDisconnect(int ClientId)
 
 	m_aaQuestData[ClientId][0] = 0;
 	m_aaMetaData[ClientId][0] = 0;
+	m_aaSkillBinds[ClientId][0] = 0;
 	ClearSaveThrottle(ClientId);
 }
 

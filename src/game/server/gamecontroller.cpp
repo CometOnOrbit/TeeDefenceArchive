@@ -1383,17 +1383,17 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 			const char *pArmorExtra = pPl->GetExtraForItem(ArmorId);
 			if(!pArmorExtra || !pArmorExtra[0])
 				continue;
-			CEffectContext ArmorCtx = FxCtx;
-			ArmorCtx.m_pExtraJson = pArmorExtra;
-			ArmorCtx.m_OutDamage = 0;
-			ArmorCtx.m_OutForceMul = 1.f;
-			ArmorCtx.m_ElectronStacks = 0;
-			ArmorCtx.m_ExplosionStacks = 0;
-			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_WEAPON_FIRE, ArmorCtx);
-			ExtraDmg += ArmorCtx.m_OutDamage;
-			MoreForce *= ArmorCtx.m_OutForceMul;
-			Electron += ArmorCtx.m_ElectronStacks;
-			ExplosionStacks += ArmorCtx.m_ExplosionStacks;
+		CEffectContext ArmorCtx = {};
+		ArmorCtx.m_pPlayer = pPl;
+		ArmorCtx.m_pAttacker = pChr;
+		ArmorCtx.m_Weapon = Weapon;
+		ArmorCtx.m_pExtraJson = pArmorExtra;
+		ArmorCtx.m_OutForceMul = 1.f;
+		GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_WEAPON_FIRE, ArmorCtx);
+		ExtraDmg += ArmorCtx.m_OutDamage;
+		MoreForce *= ArmorCtx.m_OutForceMul;
+		Electron += ArmorCtx.m_ElectronStacks;
+		ExplosionStacks += ArmorCtx.m_ExplosionStacks;
 		}
 	}
 	if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
@@ -1676,10 +1676,12 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 			const char *pArmorExtra = pPl->GetExtraForItem(ArmorId);
 			if(!pArmorExtra || !pArmorExtra[0])
 				continue;
-			CEffectContext ArmorCtx = FxCtx;
-			ArmorCtx.m_pExtraJson = pArmorExtra;
-			ArmorCtx.m_OutReloadDelta = 0;
-			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_RELOAD, ArmorCtx);
+		CEffectContext ArmorCtx = {};
+		ArmorCtx.m_pPlayer = pPl;
+		ArmorCtx.m_pAttacker = pChr;
+		ArmorCtx.m_Weapon = Weapon;
+		ArmorCtx.m_pExtraJson = pArmorExtra;
+		GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_RELOAD, ArmorCtx);
 			LessReload += ArmorCtx.m_OutReloadDelta;
 		}
 	}

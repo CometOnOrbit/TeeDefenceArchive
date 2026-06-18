@@ -108,12 +108,13 @@ void CLaser::DoBounce()
 					const char *pEx = pOwner->GetExtraForItem(HostItem);
 					int Exp = 0;
 					int Fu = 0;
-					if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
-					{
-						CEffectContext Ctx = {};
-						Ctx.m_pPlayer = pOwner;
-						Ctx.m_pExtraJson = pEx;
-						GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_LASER_HIT, Ctx);
+				if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+				{
+					CEffectContext Ctx = {};
+					Ctx.m_pAttacker = pOwner->GetCharacter();
+					Ctx.m_pPlayer = pOwner;
+					Ctx.m_pExtraJson = pEx;
+					GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_LASER_HIT, Ctx);
 						Exp = Ctx.m_ExplosionStacks;
 						Fu = Ctx.m_FusionStacks;
 					}

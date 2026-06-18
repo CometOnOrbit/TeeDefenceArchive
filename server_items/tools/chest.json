@@ -19,11 +19,11 @@
                 "name": "Iron Chestplate",
                 "desc": "A chestplate made of iron.",
                 "defense": 2,
-                "capacity": 0,
+                "capacity": 20,
                 "proba": 90,
                 "max": 0,
                 "formula": {
-                    "Iron": 25
+                    "Iron": 250
                 }
             },
             {
@@ -31,11 +31,11 @@
                 "name": "Copper Chestplate",
                 "desc": "A chestplate made of copper.",
                 "defense": 3,
-                "capacity": 0,
+                "capacity": 30,
                 "proba": 90,
                 "max": 0,
                 "formula": {
-                    "Copper": 25
+                    "Copper": 500
                 }
             },
             {
@@ -43,13 +43,13 @@
                 "name": "Titanium Chestplate",
                 "desc": "A chestplate made of titanium alloy.",
                 "defense": 4,
-                "capacity": 0,
+                "capacity": 50,
                 "proba": 85,
                 "max": 0,
                 "formula": {
-                    "Iron": 15,
-                    "Copper": 15,
-                    "Coal": 15
+                    "Iron": 200,
+                    "Copper": 200,
+                    "Titanium": 100
                 }
             },
             {
@@ -57,11 +57,11 @@
                 "name": "Diamond Chestplate",
                 "desc": "A chestplate made of diamond.",
                 "defense": 5,
-                "capacity": 0,
+                "capacity": 80,
                 "proba": 80,
                 "max": 0,
                 "formula": {
-                    "Diamond": 15
+                    "Diamond": 500
                 }
             },
             {
@@ -69,11 +69,11 @@
                 "name": "Energy Chestplate",
                 "desc": "A chestplate made of pure energy.",
                 "defense": 6,
-                "capacity": 0,
+                "capacity": 120,
                 "proba": 80,
                 "max": 0,
                 "formula": {
-                    "Enegry": 15
+                    "Enegry": 25
                 }
             },
             {
@@ -81,13 +81,13 @@
                 "name": "Void Shard Chestplate",
                 "desc": "A chestplate forged from void shards.",
                 "defense": 7,
-                "capacity": 0,
+                "capacity": 150,
                 "proba": 70,
                 "max": 0,
                 "formula": {
-                    "Diamond": 15,
-                    "Enegry": 15,
-                    "Golden": 8
+                    "Diamond": 200,
+                    "Enegry": 50,
+                    "Void Shard": 10
                 }
             }
         ]

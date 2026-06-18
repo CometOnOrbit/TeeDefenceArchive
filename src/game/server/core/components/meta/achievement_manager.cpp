@@ -59,6 +59,8 @@ void CAchievementManager::LoadDefs()
 			Def.m_RewardItem = (int)A["reward_item"].u.integer;
 		if(A["reward_num"].type == json_integer)
 			Def.m_RewardNum = (int)A["reward_num"].u.integer;
+		else
+			Def.m_RewardNum = 1;
 	}
 	dbg_msg("ach", "loaded %d achievements", m_NumDefs);
 }

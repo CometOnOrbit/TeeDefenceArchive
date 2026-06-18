@@ -200,54 +200,6 @@ void CKs::Picking(int Dmg, CPlayer *Player)
 			Ctx.m_pExtraJson = pHoldingExtra;
 			Ctx.m_InDamage = Dmg;
 			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, Ctx);
-
-			// Aggregate explosive / mining cd from armor items
-			const int ArmorTypes[] = {ITYPE_HELMET, ITYPE_CHEST, ITYPE_LEGS};
-			for(int a = 0; a < 3; a++)
-			{
-				const int ArmorId = Player->GetHolding(ArmorTypes[a]);
-				if(ArmorId <= 0)
-					continue;
-				const char *pArmorExtra = Player->GetExtraForItem(ArmorId);
-				if(!pArmorExtra || !pArmorExtra[0])
-					continue;
-				CEffectContext ArmorCtx = {};
-				ArmorCtx.m_pPlayer = Player;
-				ArmorCtx.m_pExtraJson = pArmorExtra;
-				ArmorCtx.m_InDamage = Dmg;
-				GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_MINE, ArmorCtx);
-				Ctx.m_ExplosionStacks += ArmorCtx.m_ExplosionStacks;
-				Ctx.m_OutDamage += ArmorCtx.m_OutDamage;
-			}
-
-			Exp = Ctx.m_ExplosionStacks;
-			CardDmg = Ctx.m_OutDamage;
-			Radius = 72.f + (float)Exp * 6.f;
-		}
-		if(Config()->m_SvContentLegacyCards || !Config()->m_SvContentFramework)
-		{
-			Exp = pH->GetCard(pHoldingExtra, ITEM_CARD_EXPLOSION_ID);
-			CardDmg = pH->GetCard(pHoldingExtra, ITEM_CARD_DAMAGE_ID) * 2;
-			Radius = 72.f + (float)Exp * 6.f;
-		}
-		if(Exp > 0)
-		{
-			const int Splash = maximum(1, (Dmg * Exp) / 4 + Exp * maximum(1, CardDmg));
-
-			for(CGameWorld::TypeRange r = GameServer()->m_World.DoTypeRange(CGameWorld::ENTTYPE_PICKUP); !r.empty(); r.pop_front())
-			{
-				CEntity *pE = r.front();
-				if(!(pE->ObjFlag() & CGameWorld::ENTFLAG_CKS))
-					continue;
-				if(pE == this)
-					continue;
-				CKs *pCk = static_cast<CKs *>(pE);
-				if(distance(pCk->m_Pos, m_Pos) > Radius)
-					continue;
-				pCk->m_Health -= Splash;
-				pCk->RewardIfDestroyed(Player);
-			}
-			GameServer()->m_World.CreateSound(m_Pos, SOUND_GRENADE_EXPLODE);
 		}
 	}
 

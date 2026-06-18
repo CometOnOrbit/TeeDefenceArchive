@@ -342,14 +342,11 @@ const char *CItemHelper::GetItemDesc(int ID) const
 	return m_aaItemDesc[ID];
 }
 
-int CItemHelper::GetExtraSlotNum(const char *pExtraJson, const char *pArrayName, int ItemId) const
+namespace
 {
-	if(!pExtraJson || !pExtraJson[0] || !pArrayName || ItemId < 0)
-		return 0;
-
-	CJsonParser Parser;
-	json_value *pRoot = Parser.ParseString(pExtraJson, "item_extra_slot");
-	if(!pRoot)
+int ExtraSlotNumFromRoot(const json_value *pRoot, const char *pArrayName, int ItemId)
+{
+	if(!pRoot || !pArrayName || ItemId < 0)
 		return 0;
 
 	const json_value &Ex = (*pRoot)["Extra"];
@@ -371,6 +368,20 @@ int CItemHelper::GetExtraSlotNum(const char *pExtraJson, const char *pArrayName,
 		return 1;
 	}
 	return 0;
+}
+} // namespace
+
+int CItemHelper::GetExtraSlotNum(const char *pExtraJson, const char *pArrayName, int ItemId) const
+{
+	if(!pExtraJson || !pExtraJson[0] || !pArrayName || ItemId < 0)
+		return 0;
+
+	CJsonParser Parser;
+	json_value *pRoot = Parser.ParseString(pExtraJson, "item_extra_slot");
+	if(!pRoot)
+		return 0;
+
+	return ExtraSlotNumFromRoot(pRoot, pArrayName, ItemId);
 }
 
 int CItemHelper::GetCard(const char *pExtraJson, int CardID) const
@@ -451,7 +462,66 @@ int CItemHelper::GetEffectStacksFromExtra(const char *pExtraJson, int ItemId, co
 	if(!Matches)
 		return 0;
 
-	return GetCard(pExtraJson, ItemId) + GetPart(pExtraJson, ItemId);
+	if(!pExtraJson || !pExtraJson[0])
+		return 0;
+
+	CJsonParser Parser;
+	json_value *pRoot = Parser.ParseString(pExtraJson, "item_effect_stacks");
+	if(!pRoot)
+		return 0;
+
+	return ExtraSlotNumFromRoot(pRoot, "Cards", ItemId) + ExtraSlotNumFromRoot(pRoot, "Parts", ItemId);
+}
+
+int CItemHelper::QueryEffectStacksFromExtra(const char *pExtraJson, const char *pEffectKey, int LegacyItemId) const
+{
+	if(!pEffectKey || !pEffectKey[0] || !pExtraJson || !pExtraJson[0])
+		return 0;
+
+	CJsonParser Parser;
+	json_value *pRoot = Parser.ParseString(pExtraJson, "item_query_effect");
+	if(!pRoot)
+		return 0;
+
+	const json_value &Ex = (*pRoot)["Extra"];
+	if(Ex.type != json_object)
+		return 0;
+
+	int Stacks = 0;
+	static const char *const s_apSlotKeys[2] = {"Cards", "Parts"};
+	for(int s = 0; s < 2; s++)
+	{
+		const json_value &Arr = Ex[s_apSlotKeys[s]];
+		if(Arr.type != json_array)
+			continue;
+		for(unsigned i = 0; i < Arr.u.array.length; i++)
+		{
+			const json_value &El = Arr[(int)i];
+			if(El.type != json_object || El["id"].type != json_integer)
+				continue;
+			const int Id = (int)El["id"].u.integer;
+			if(!CheckItemValid(Id))
+				continue;
+			bool Matches = false;
+			for(int e = 0; e < m_aNumItemEffects[Id]; e++)
+			{
+				if(str_comp(m_aaItemEffects[Id][e], pEffectKey) == 0)
+				{
+					Matches = true;
+					break;
+				}
+			}
+			if(!Matches)
+				continue;
+			const int Num = El["num"].type == json_integer ? (int)El["num"].u.integer : 1;
+			Stacks += Num;
+		}
+	}
+
+	if(LegacyItemId >= 0 && CheckItemValid(LegacyItemId) && m_aNumItemEffects[LegacyItemId] == 0)
+		Stacks += ExtraSlotNumFromRoot(pRoot, "Cards", LegacyItemId) + ExtraSlotNumFromRoot(pRoot, "Parts", LegacyItemId);
+
+	return Stacks;
 }
 
 int CItemHelper::SumArmorEffectStacks(CPlayer *pP, int CardItemId, const char *pEffectKey) const

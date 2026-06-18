@@ -60,6 +60,8 @@ void CDutiesManager::LoadDefs()
 			Def.m_RewardItem = (int)D["reward_item"].u.integer;
 		if(D["reward_num"].type == json_integer)
 			Def.m_RewardNum = (int)D["reward_num"].u.integer;
+		else
+			Def.m_RewardNum = 1;
 		if(D["tier"].type == json_integer)
 			Def.m_Tier = (int)D["tier"].u.integer;
 		else

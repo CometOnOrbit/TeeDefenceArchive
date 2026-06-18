@@ -71,6 +71,19 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_DeadSpecMode = false;
 	m_Spawning = false;
 	mem_zero(&m_Latency, sizeof(m_Latency));
+	m_ViewPos = vec2(0.0f, 0.0f);
+	m_PlayerFlags = 0;
+	m_IsReadyToEnter = false;
+	m_Vote = 0;
+	m_VotePos = 0;
+	m_Score = 0;
+	mem_zero(&m_TeeInfos, sizeof(m_TeeInfos));
+	mem_zero(m_aActLatency, sizeof(m_aActLatency));
+	m_LatestActivity.m_TargetX = 0;
+	m_LatestActivity.m_TargetY = 0;
+	m_ZombNavNextRebuildTick = 0;
+	m_ZombNavCachedGoalTX = 0;
+	m_ZombNavCachedGoalTY = 0;
 }
 
 CPlayer::~CPlayer()

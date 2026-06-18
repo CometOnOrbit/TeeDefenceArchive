@@ -91,8 +91,8 @@
                 "effects": ["mining_luck"],
                 "formula": {
                     "Enegry Pickaxe": 1,
-                    "Golden": 100,
-                    "Void Shard": 3
+                    "Golden": 2000,
+                    "Void Shard": 10
                 }
             }
         ]

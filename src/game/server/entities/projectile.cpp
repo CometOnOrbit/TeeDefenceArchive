@@ -96,6 +96,7 @@ void CProjectile::Tick()
 		if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
 		{
 			CEffectContext Ctx = {};
+			Ctx.m_pAttacker = pOwnerChar;
 			Ctx.m_pPlayer = pOwnerChar->GetPlayer();
 			Ctx.m_pExtraJson = pEx;
 			GameServer()->Core()->EffectRegistry()->Apply(TRIGGER_PROJECTILE_HIT, Ctx);

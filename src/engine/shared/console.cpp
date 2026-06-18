@@ -970,7 +970,6 @@ void CConsole::Register(const char *pName, const char *pParams,
 	if(pCommand == 0)
 	{
 		pCommand = new(mem_alloc(sizeof(CCommand))) CCommand(Flags & CFGFLAG_BASICACCESS);
-		;
 		DoAdd = true;
 	}
 	pCommand->m_pfnCallback = pfnFunc;

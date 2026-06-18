@@ -6,19 +6,17 @@
                 "id": 39,
                 "name": "Titanium",
                 "desc": "Mid-game refined ore",
-                "max": 99,
                 "formula": {
-                    "Iron": 20,
-                    "Coal": 10
+                    "Iron": 50,
+                    "Coal": 25
                 }
             },
             {
                 "id": 40,
                 "name": "Void Shard",
                 "desc": "Rare crystal for advanced crafts",
-                "max": 50,
                 "formula": {
-                    "Diamond": 5,
+                    "Diamond": 50,
                     "Enegry": 2,
                     "Zombie's Heart": 10
                 }

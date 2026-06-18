@@ -24,7 +24,6 @@ public:
 	const SEffectDef *GetEffect(int Idx) const;
 	const SEffectDef *FindEffect(const char *pId) const;
 	int FindEffectIndex(const char *pId) const;
-	int LegacyItemToStacks(CItemHelper *pItems, const char *pExtraJson, int LegacyItemId) const;
 	int QueryStacks(CItemHelper *pItems, const char *pExtraJson, const char *pEffectId) const;
 	void Apply(EEffectTrigger Trigger, CEffectContext &Ctx) const;
 	void ApplyTraitModifiers(CEffectContext &Ctx, float DamageMul, float ReloadMul) const;
