@@ -975,7 +975,6 @@ void CGameController::Tick()
 		if(m_TdWarmup % Server()->TickSpeed() == 0)
 		{
 			const int SecLeft = (m_TdWarmup + Server()->TickSpeed() - 1) / Server()->TickSpeed();
-			GameServer()->SendBroadcastLocF(-1, "game.wave_countdown", "Next wave %d in %d s", m_TdWave + 1, SecLeft);
 			TdBroadcastGameInfo();
 		}
 		m_TdWarmup--;
