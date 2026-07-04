@@ -2,8 +2,6 @@
 
 本文档说明如何在 TeeDefenceArchive 中制作**剧情世界（Story）**、配置**多世界地图**、编写**任务链**与**传送门**，并完成本地化与部署。
 
-文档由AI生成。
-
 ---
 
 ## 1. 架构概览
@@ -394,7 +392,7 @@ flowchart TD
 | 7 | 僵尸之心 | `ch1_hearts` 收集目标 |
 | 40 | 虚空碎片 | `ch1_return` 收集目标 |
 
-更多物品见 `server_lang` 中 `item.id.*` 与 `server_items/` 定义。
+更多物品见 `server_lang` 中 `item.id.*` 与 `server_content/td/items/` 定义。
 
 ---
 

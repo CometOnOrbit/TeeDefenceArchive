@@ -7,8 +7,8 @@
 
 class CCharacter;
 class CGameController;
+class CGameControllerDefence;
 class CPlayer;
-class CZombieBot;
 
 class CEnemyRegistry : public TWorldComponent
 {
@@ -23,15 +23,16 @@ public:
 
 	void OnInitWorld(const char *pWhereLocalWorld) override;
 	void OnTick() override;
+	bool OnVoteMenuPage(int ClientID, int Page) override;
 
 	const SEnemyDef *FindByZombId(int ZombId) const;
 	const SEnemyDef *FindById(const char *pId) const;
 	bool HasTag(int ZombId, const char *pTag) const;
 	float GetHpMul(int ZombId) const;
-	void ApplyWaveBoost(CGameController *pCtrl, int Wave) const;
-	void OnZombieDeath(CGameController *pCtrl, CPlayer *pVictim) const;
+	void ApplyWaveBoost(CGameControllerDefence *pCtrl, int Wave) const;
+	void OnZombieDeath(CGameControllerDefence *pCtrl, CPlayer *pVictim) const;
 	void RollLoot(CPlayer *pKiller, int ZombId) const;
-	void TickZombie(CZombieBot *pBot) const;
+	void TickZombie(CPlayer *pPlayer) const;
 
 private:
 	void LoadEnemies();

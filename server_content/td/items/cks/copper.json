@@ -1,0 +1,11 @@
+{
+  "item": {
+    "type": 4,
+    "id": 2,
+    "name": "铜",
+    "desc": "或许可以用来做电线。",
+    "health": 2000,
+    "name_key": "$td.cks.copper",
+    "description_key": "$td.cks.2.desc"
+  }
+}

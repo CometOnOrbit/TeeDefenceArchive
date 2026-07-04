@@ -1,6 +1,8 @@
 # TeeDefense Archive
 
-基于 Teeworlds Archive 0.7.6 的塔防 Mod：守护主塔，抵御僵尸波次。含物品、合成、炮塔与 MySQL 持久化账号。
+基于 Teeworlds Archive 0.7.6 的塔防 + **F|RPG** 模组：守护主塔、多世界、MySQL 持久化。
+
+**更多文档：** [docs/](docs/README.md)（目录说明、RPG 指南、地图制作）
 
 ## 依赖
 
@@ -23,6 +25,7 @@ cmake --build build --target ArchiveServer
 ## 数据库初始化
 
 ```sql
+-- 详见 sql/TeeDef.sql
 CREATE DATABASE teedefense CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'teedefense'@'localhost' IDENTIFIED BY 'your_password';
 GRANT ALL PRIVILEGES ON teedefense.* TO 'teedefense'@'localhost';

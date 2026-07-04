@@ -1,0 +1,82 @@
+{
+  "item": {
+    "type": 3,
+    "multiple": [
+      {
+        "id": 24,
+        "name": "初级炮塔",
+        "desc": "起步。",
+        "capacity": 50,
+        "max": 1,
+        "formula": {
+          "Log": 70
+        },
+        "name_key": "$td.item.24.name",
+        "description_key": "$td.item.24.desc"
+      },
+      {
+        "id": 25,
+        "name": "中级炮塔",
+        "desc": "进阶。",
+        "capacity": 100,
+        "max": 1,
+        "formula": {
+          "Beginner Turret": 1,
+          "Log": 70,
+          "Copper": 200,
+          "Iron": 50
+        },
+        "name_key": "$td.item.25.name",
+        "description_key": "$td.item.25.desc"
+      },
+      {
+        "id": 26,
+        "name": "高级炮塔",
+        "desc": "终点。",
+        "capacity": 200,
+        "max": 1,
+        "formula": {
+          "Intermediate Turret": 1,
+          "Log": 70,
+          "Copper": 40,
+          "Golden": 200,
+          "Diamond": 50,
+          "Enegry": 10
+        },
+        "name_key": "$td.item.26.name",
+        "description_key": "$td.item.26.desc"
+      },
+      {
+        "id": 46,
+        "name": "狙击炮塔",
+        "desc": "远距离精准炮塔",
+        "capacity": 120,
+        "max": 1,
+        "formula": {
+          "Advanced Turret": 1,
+          "Titanium": 20,
+          "Diamond": 10
+        },
+        "name_key": "$td.item.46.name",
+        "description_key": "$td.item.46.desc"
+      },
+      {
+        "id": 47,
+        "name": "溅射炮塔",
+        "desc": "范围伤害炮塔",
+        "capacity": 150,
+        "max": 1,
+        "effects": [
+          "explosive"
+        ],
+        "formula": {
+          "Advanced Turret": 1,
+          "Coal": 500,
+          "Void Shard": 5
+        },
+        "name_key": "$td.item.47.name",
+        "description_key": "$td.item.47.desc"
+      }
+    ]
+  }
+}

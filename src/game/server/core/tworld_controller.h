@@ -29,6 +29,11 @@ class CAchievementManager;
 class CDutiesManager;
 class CMiniEventsManager;
 class CDurabilityManager;
+class CGuildManager;
+class CMMOManager;
+class CProfessionManager;
+class CDungeonManager;
+class CWorldBossManager;
 class CPlayer;
 class IConsole;
 class IEngine;
@@ -50,6 +55,7 @@ class TWorldController
 	CWorldManager *m_pWorldManager;
 	CPortalManager *m_pPortalManager;
 	CNpcManager *m_pNpcManager;
+	class CDialogManager *m_pDialogManager;
 	CQuestManager *m_pQuestManager;
 	CDefenceBotManager *m_pDefenceBotManager;
 	CEffectRegistry *m_pEffectRegistry;
@@ -62,10 +68,15 @@ class TWorldController
 	CDutiesManager *m_pDutiesManager;
 	CMiniEventsManager *m_pMiniEventsManager;
 	CDurabilityManager *m_pDurabilityManager;
+	CGuildManager *m_pGuildManager;
+	CMMOManager *m_pMMOManager;
+	CProfessionManager *m_pProfessionManager;
+	CDungeonManager *m_pDungeonManager;
+	CWorldBossManager *m_pWorldBossManager;
 
 public:
 	explicit TWorldController(CGameContext *pGameServer);
-	~TWorldController() = default;
+	~TWorldController();
 
 	void OnInit(IServer *pServer, IConsole *pConsole, IStorage *pStorage, IEngine *pEngine);
 	void OnConsoleInit(IConsole *pConsole) const;
@@ -74,7 +85,15 @@ public:
 	void OnResetClientData(int ClientID) const;
 	void OnCharacterSpawn(CPlayer *pPlayer);
 	void OnPlayerLogin(CPlayer *pPlayer);
-	bool DispatchPlayerVoteCommand(int ClientID, const char *pCmd, const char *pArgs) const;
+	bool DispatchPlayerVoteCommand(int ClientID, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason) const;
+
+	int ComponentCount() const { return m_System.m_apComponents.size(); }
+	TWorldComponent *GetComponent(int idx) const
+	{
+		if(idx < 0 || idx >= m_System.m_apComponents.size())
+			return nullptr;
+		return m_System.m_apComponents[idx];
+	}
 
 	CGameContext *GS() const { return m_pGameServer; }
 	IServer *Server() const;
@@ -93,6 +112,7 @@ public:
 	CWorldManager *WorldManager() const { return m_pWorldManager; }
 	CPortalManager *PortalManager() const { return m_pPortalManager; }
 	CNpcManager *NpcManager() const { return m_pNpcManager; }
+	class CDialogManager *DialogManager() const { return m_pDialogManager; }
 	CQuestManager *QuestManager() const { return m_pQuestManager; }
 	CDefenceBotManager *DefenceBotManager() const { return m_pDefenceBotManager; }
 	CEffectRegistry *EffectRegistry() const { return m_pEffectRegistry; }
@@ -105,6 +125,11 @@ public:
 	CDutiesManager *DutiesManager() const { return m_pDutiesManager; }
 	CMiniEventsManager *MiniEventsManager() const { return m_pMiniEventsManager; }
 	CDurabilityManager *DurabilityManager() const { return m_pDurabilityManager; }
+	CGuildManager *GuildManager() const { return m_pGuildManager; }
+	CMMOManager *GetMMOManager() const { return m_pMMOManager; }
+	CProfessionManager *ProfessionManager() const { return m_pProfessionManager; }
+	CDungeonManager *GetDungeonManager() const { return m_pDungeonManager; }
+	CWorldBossManager *GetWorldBossManager() const { return m_pWorldBossManager; }
 
 	CLocalizationManager &Loc() const { return *m_pLocalizationManager; }
 	CWorldManager &Worlds() const { return *m_pWorldManager; }

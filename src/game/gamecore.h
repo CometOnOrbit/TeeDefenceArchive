@@ -163,9 +163,11 @@ public:
 
 	vec2 m_HookPos;
 	vec2 m_HookDir;
+	vec2 m_HookTeleBase{};
 	int m_HookTick;
 	int m_HookState;
 	int m_HookedPlayer;
+	void SetHookedPlayer(int HookedPlayer) { m_HookedPlayer = HookedPlayer; }
 
 	int m_Jumped;
 
@@ -177,6 +179,17 @@ public:
 	CNetObj_PlayerInput m_Input;
 
 	int m_TriggeredEvents;
+
+	// MRPG / DDNet extensions
+	int m_Jumps{1};
+	bool m_Solo{false};
+	bool m_CollisionDisabled{false};
+	bool m_HookHitDisabled{false};
+	bool m_Super{false};
+	int m_MoveRestrictions{0};
+	bool m_DamageDisabled{false};
+	int m_WorldID{0};
+	bool m_NewHook{false};
 
 	void Init(CWorldCore *pWorld, CCollision *pCollision);
 	void Reset();

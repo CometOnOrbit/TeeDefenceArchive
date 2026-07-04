@@ -55,11 +55,11 @@ void CEventHandler::Snap(int SnappingClient)
 				if(pData)
 				{
 					mem_copy(pData, &m_aData[m_aEventList[i].m_Offset], m_aEventList[i].m_Size);
-					if(m_aEventList[i].m_Type == NETEVENTTYPE_DEATH && SnappingClient >= 0 && !GameServer()->ClientUsesExtendedSlots(SnappingClient))
+					if(m_aEventList[i].m_Type == NETEVENTTYPE_DEATH && SnappingClient >= 0)
 					{
 						CNetEvent_Death *pDeath = static_cast<CNetEvent_Death *>(pData);
-						const int Mapped = GameServer()->ClientDisplaySlot(SnappingClient, pDeath->m_ClientID);
-						pDeath->m_ClientID = Mapped >= 0 ? Mapped : 0;
+						if(!GameServer()->Server()->Translate(pDeath->m_ClientID, SnappingClient))
+							pDeath->m_ClientID = VANILLA_MAX_CLIENTS - 1;
 					}
 				}
 			}

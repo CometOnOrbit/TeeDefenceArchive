@@ -130,7 +130,7 @@ bool CDutiesManager::TryClaim(CPlayer *pPlayer, int Idx)
 			Core()->EntityManager()->DropItem(Pos, CID, Def.m_RewardItem, Def.m_RewardNum);
 	}
 	char aBuf[128];
-	GS()->LocFormat(aBuf, sizeof(aBuf), CID, "duty.reward", u8"日常奖励：%s", DutyTitle(GS(), CID, Def));
+	GS()->LocFormat(aBuf, sizeof(aBuf), CID, "duty.reward", "日常奖励：%s", DutyTitle(GS(), CID, Def));
 	GS()->SendChatTo(CID, aBuf);
 	RequestPersist(CID);
 	return true;
@@ -199,7 +199,7 @@ void CDutiesManager::BuildDutiesPage(int ClientID)
 	PlayerMeta_EnsureDay(&Meta);
 	CVoteMenuManager *pVote = Core()->VoteMenuManager();
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "duty.title", u8"日常任务"));
+	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "duty.title", "日常任务"));
 	if(Meta.m_aDay[0])
 		pVote->AddVote_PageSubtitle(Meta.m_aDay);
 	if(Core()->MiniEventsManager())
@@ -208,7 +208,7 @@ void CDutiesManager::BuildDutiesPage(int ClientID)
 		if(pEv && pEv[0])
 		{
 			char aLine[VOTE_DESC_LENGTH];
-			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "duty.mini_event", u8"★ 限时活动：%s"), pEv);
+			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "duty.mini_event", "★ 限时活动：%s"), pEv);
 			pVote->AddVote_TextLine(aLine);
 		}
 	}
@@ -219,7 +219,7 @@ void CDutiesManager::BuildDutiesPage(int ClientID)
 			Done++;
 	{
 		char aSum[VOTE_DESC_LENGTH];
-		str_format(aSum, sizeof(aSum), GS()->Loc(ClientID, "duty.progress", u8"今日进度 %d/%d"), Done, m_NumDefs);
+		str_format(aSum, sizeof(aSum), GS()->Loc(ClientID, "duty.progress", "今日进度 %d/%d"), Done, m_NumDefs);
 		pVote->AddVote_PageSubtitle(aSum);
 	}
 	pVote->AddVote_Separator();
@@ -228,7 +228,7 @@ void CDutiesManager::BuildDutiesPage(int ClientID)
 		"duty.tier.basic", "duty.tier.medium", "duty.tier.advanced", "duty.tier.expert"
 	};
 	static const char *const s_apTierFallback[4] = {
-		u8"基础", u8"中等", u8"高级", u8"进阶"
+		"基础", "中等", "高级", "进阶"
 	};
 
 	for(int tier = 0; tier < 4; tier++)
@@ -256,11 +256,11 @@ void CDutiesManager::BuildDutiesPage(int ClientID)
 			const SDutyDef &Def = m_aDefs[i];
 			const char *pTitle = DutyTitle(GS(), ClientID, Def);
 			if(Meta.m_aDutyClaimed[i])
-				str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "duty.entry.done", u8"✓ %s"), pTitle);
+				str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "duty.entry.done", "✓ %s"), pTitle);
 			else if(Meta.m_aDutyProgress[i] >= Def.m_Count)
-				str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "duty.entry.claim", u8"★ 领取 · %s"), pTitle);
+				str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "duty.entry.claim", "★ 领取 · %s"), pTitle);
 			else
-				str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "duty.entry", u8"▹ %s"), pTitle);
+				str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "duty.entry", "▹ %s"), pTitle);
 
 			if(!Meta.m_aDutyClaimed[i] && Meta.m_aDutyProgress[i] >= Def.m_Count)
 			{
@@ -309,10 +309,12 @@ void CDutiesManager::RegisterVoteCommands(CCommandManager *pMgr)
 	pMgr->AddCommand("dutyclaim", "", "i", ComVoteDutyClaim, GS());
 }
 
-bool CDutiesManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs)
+bool CDutiesManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)
 {
 	(void)pPlayer;
 	(void)pCmd;
 	(void)pArgs;
+	(void)ReasonNumber;
+	(void)pReason;
 	return false;
 }

@@ -1,0 +1,10 @@
+{
+  "item": {
+    "type": 4,
+    "id": 7,
+    "name": "僵尸之心",
+    "desc": "它们要向血腥暴力举报了。",
+    "name_key": "$td.item.7.name",
+    "description_key": "$td.item.7.desc"
+  }
+}

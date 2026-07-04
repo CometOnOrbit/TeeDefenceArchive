@@ -1,0 +1,1702 @@
+{
+  "recipes": [
+    {
+      "id": 1,
+      "result_item_id": 10,
+      "result_count": 3,
+      "name": "Small HP Potion x3",
+      "description": "Restores 30 HP each",
+      "name_key": "$craft.1.name",
+      "description_key": "$craft.1.desc",
+      "category": "potions",
+      "level": 1,
+      "success_rate": 0.9,
+      "gold_cost": 15,
+      "craft_time": 30,
+      "ingredients": [
+        {
+          "item_id": 40,
+          "count": 2
+        },
+        {
+          "item_id": 30,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "result_item_id": 11,
+      "result_count": 2,
+      "name": "HP Potion x2",
+      "description": "Restores 80 HP each",
+      "name_key": "$craft.2.name",
+      "description_key": "$craft.2.desc",
+      "category": "potions",
+      "level": 3,
+      "success_rate": 0.85,
+      "gold_cost": 40,
+      "craft_time": 45,
+      "ingredients": [
+        {
+          "item_id": 41,
+          "count": 2
+        },
+        {
+          "item_id": 40,
+          "count": 2
+        },
+        {
+          "item_id": 31,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "result_item_id": 12,
+      "result_count": 1,
+      "name": "Large HP Potion",
+      "description": "Restores 200 HP",
+      "name_key": "$craft.3.name",
+      "description_key": "$craft.3.desc",
+      "category": "potions",
+      "level": 8,
+      "success_rate": 0.75,
+      "gold_cost": 120,
+      "craft_time": 90,
+      "ingredients": [
+        {
+          "item_id": 41,
+          "count": 3
+        },
+        {
+          "item_id": 50,
+          "count": 2
+        },
+        {
+          "item_id": 33,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "result_item_id": 14,
+      "result_count": 3,
+      "name": "Small MP Potion x3",
+      "description": "Restores 30 MP each",
+      "name_key": "$craft.4.name",
+      "description_key": "$craft.4.desc",
+      "category": "potions",
+      "level": 1,
+      "success_rate": 0.9,
+      "gold_cost": 12,
+      "craft_time": 30,
+      "ingredients": [
+        {
+          "item_id": 41,
+          "count": 1
+        },
+        {
+          "item_id": 30,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "result_item_id": 15,
+      "result_count": 2,
+      "name": "MP Potion x2",
+      "description": "Restores 80 MP each",
+      "name_key": "$craft.5.name",
+      "description_key": "$craft.5.desc",
+      "category": "potions",
+      "level": 4,
+      "success_rate": 0.85,
+      "gold_cost": 30,
+      "craft_time": 45,
+      "ingredients": [
+        {
+          "item_id": 41,
+          "count": 3
+        },
+        {
+          "item_id": 42,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "result_item_id": 18,
+      "result_count": 2,
+      "name": "Antidote x2",
+      "description": "Cures poison",
+      "name_key": "$craft.6.name",
+      "description_key": "$craft.6.desc",
+      "category": "potions",
+      "level": 2,
+      "success_rate": 0.9,
+      "gold_cost": 25,
+      "craft_time": 40,
+      "ingredients": [
+        {
+          "item_id": 40,
+          "count": 3
+        },
+        {
+          "item_id": 56,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "result_item_id": 19,
+      "result_count": 1,
+      "name": "Panacea",
+      "description": "Removes all debuffs",
+      "name_key": "$craft.7.name",
+      "description_key": "$craft.7.desc",
+      "category": "potions",
+      "level": 10,
+      "success_rate": 0.7,
+      "gold_cost": 100,
+      "craft_time": 120,
+      "ingredients": [
+        {
+          "item_id": 41,
+          "count": 5
+        },
+        {
+          "item_id": 60,
+          "count": 1
+        },
+        {
+          "item_id": 32,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "result_item_id": 23,
+      "result_count": 1,
+      "name": "Regen Essence",
+      "description": "Slowly restores HP for 30 seconds",
+      "name_key": "$craft.8.name",
+      "description_key": "$craft.8.desc",
+      "category": "potions",
+      "level": 3,
+      "success_rate": 0.85,
+      "gold_cost": 30,
+      "craft_time": 50,
+      "ingredients": [
+        {
+          "item_id": 40,
+          "count": 3
+        },
+        {
+          "item_id": 41,
+          "count": 1
+        },
+        {
+          "item_id": 50,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "result_item_id": 25,
+      "result_count": 2,
+      "name": "Cooked Meat x2",
+      "description": "Restores 40 HP",
+      "name_key": "$craft.9.name",
+      "description_key": "$craft.9.desc",
+      "category": "potions",
+      "level": 1,
+      "success_rate": 0.95,
+      "gold_cost": 5,
+      "craft_time": 20,
+      "ingredients": [
+        {
+          "item_id": 52,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "result_item_id": 26,
+      "result_count": 1,
+      "name": "Fruit Salad",
+      "description": "Restores 20 HP and 15 MP",
+      "name_key": "$craft.10.name",
+      "description_key": "$craft.10.desc",
+      "category": "potions",
+      "level": 3,
+      "success_rate": 0.9,
+      "gold_cost": 15,
+      "craft_time": 30,
+      "ingredients": [
+        {
+          "item_id": 40,
+          "count": 2
+        },
+        {
+          "item_id": 24,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "result_item_id": 27,
+      "result_count": 1,
+      "name": "Royal Feast",
+      "description": "Full heal + 5min ATK buff",
+      "name_key": "$craft.11.name",
+      "description_key": "$craft.11.desc",
+      "category": "potions",
+      "level": 20,
+      "success_rate": 0.6,
+      "gold_cost": 300,
+      "craft_time": 180,
+      "ingredients": [
+        {
+          "item_id": 25,
+          "count": 3
+        },
+        {
+          "item_id": 26,
+          "count": 2
+        },
+        {
+          "item_id": 33,
+          "count": 2
+        },
+        {
+          "item_id": 41,
+          "count": 3
+        },
+        {
+          "item_id": 54,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "result_item_id": 110,
+      "result_count": 1,
+      "name": "Wooden Mallet",
+      "description": "Basic training hammer, ATK+2",
+      "name_key": "$craft.20.name",
+      "description_key": "$craft.20.desc",
+      "category": "weapons",
+      "level": 1,
+      "success_rate": 0.95,
+      "gold_cost": 30,
+      "craft_time": 60,
+      "ingredients": [
+        {
+          "item_id": 38,
+          "count": 5
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "result_item_id": 111,
+      "result_count": 1,
+      "name": "Iron Hammer",
+      "description": "Iron war hammer, ATK+6",
+      "name_key": "$craft.21.name",
+      "description_key": "$craft.21.desc",
+      "category": "weapons",
+      "level": 5,
+      "success_rate": 0.85,
+      "gold_cost": 150,
+      "craft_time": 120,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 6
+        },
+        {
+          "item_id": 38,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "result_item_id": 112,
+      "result_count": 1,
+      "name": "Steel Hammer",
+      "description": "Well-balanced steel hammer, ATK+12",
+      "name_key": "$craft.22.name",
+      "description_key": "$craft.22.desc",
+      "category": "weapons",
+      "level": 12,
+      "success_rate": 0.75,
+      "gold_cost": 500,
+      "craft_time": 180,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 5
+        },
+        {
+          "item_id": 31,
+          "count": 4
+        },
+        {
+          "item_id": 67,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "result_item_id": 113,
+      "result_count": 1,
+      "name": "Soul Hammer",
+      "description": "Craftsman hammer infused with spirit, ATK+20 DEF+3",
+      "name_key": "$craft.23.name",
+      "description_key": "$craft.23.desc",
+      "category": "weapons",
+      "level": 22,
+      "success_rate": 0.65,
+      "gold_cost": 1500,
+      "craft_time": 300,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 5
+        },
+        {
+          "item_id": 36,
+          "count": 3
+        },
+        {
+          "item_id": 60,
+          "count": 3
+        },
+        {
+          "item_id": 95,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "result_item_id": 114,
+      "result_count": 1,
+      "name": "Titanic Hammer",
+      "description": "Legendary titan hammer, ATK+35 DEF+5",
+      "name_key": "$craft.24.name",
+      "description_key": "$craft.24.desc",
+      "category": "weapons",
+      "level": 30,
+      "success_rate": 0.5,
+      "gold_cost": 4000,
+      "craft_time": 600,
+      "ingredients": [
+        {
+          "item_id": 35,
+          "count": 3
+        },
+        {
+          "item_id": 37,
+          "count": 2
+        },
+        {
+          "item_id": 36,
+          "count": 5
+        },
+        {
+          "item_id": 96,
+          "count": 3
+        },
+        {
+          "item_id": 76,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "result_item_id": 116,
+      "result_count": 1,
+      "name": "Old Pistol",
+      "description": "A rusty but reliable pistol",
+      "name_key": "$craft.25.name",
+      "description_key": "$craft.25.desc",
+      "category": "weapons",
+      "level": 1,
+      "success_rate": 0.95,
+      "gold_cost": 50,
+      "craft_time": 60,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 3
+        },
+        {
+          "item_id": 38,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "result_item_id": 117,
+      "result_count": 1,
+      "name": "Silver Pistol",
+      "description": "Silver-plated pistol, faster fire rate",
+      "name_key": "$craft.26.name",
+      "description_key": "$craft.26.desc",
+      "category": "weapons",
+      "level": 8,
+      "success_rate": 0.8,
+      "gold_cost": 350,
+      "craft_time": 150,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 4
+        },
+        {
+          "item_id": 31,
+          "count": 3
+        },
+        {
+          "item_id": 42,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "result_item_id": 118,
+      "result_count": 1,
+      "name": "Quickdraw Pistol",
+      "description": "Rapid-fire pistol, ATK+15",
+      "name_key": "$craft.27.name",
+      "description_key": "$craft.27.desc",
+      "category": "weapons",
+      "level": 16,
+      "success_rate": 0.7,
+      "gold_cost": 1200,
+      "craft_time": 240,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 4
+        },
+        {
+          "item_id": 36,
+          "count": 2
+        },
+        {
+          "item_id": 68,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "result_item_id": 140,
+      "result_count": 1,
+      "name": "Leather Cap",
+      "description": "Basic leather cap, DEF+1",
+      "name_key": "$craft.30.name",
+      "description_key": "$craft.30.desc",
+      "category": "armor",
+      "level": 1,
+      "success_rate": 0.95,
+      "gold_cost": 30,
+      "craft_time": 45,
+      "ingredients": [
+        {
+          "item_id": 45,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "result_item_id": 141,
+      "result_count": 1,
+      "name": "Iron Helmet",
+      "description": "Iron helmet, DEF+2",
+      "name_key": "$craft.31.name",
+      "description_key": "$craft.31.desc",
+      "category": "armor",
+      "level": 5,
+      "success_rate": 0.85,
+      "gold_cost": 200,
+      "craft_time": 90,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 4
+        },
+        {
+          "item_id": 45,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "result_item_id": 142,
+      "result_count": 1,
+      "name": "Steel Helmet",
+      "description": "Steel helmet, DEF+4",
+      "name_key": "$craft.32.name",
+      "description_key": "$craft.32.desc",
+      "category": "armor",
+      "level": 12,
+      "success_rate": 0.75,
+      "gold_cost": 600,
+      "craft_time": 150,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 4
+        },
+        {
+          "item_id": 31,
+          "count": 3
+        },
+        {
+          "item_id": 42,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "result_item_id": 145,
+      "result_count": 1,
+      "name": "Leather Vest",
+      "description": "Basic leather vest, DEF+2",
+      "name_key": "$craft.33.name",
+      "description_key": "$craft.33.desc",
+      "category": "armor",
+      "level": 1,
+      "success_rate": 0.95,
+      "gold_cost": 50,
+      "craft_time": 60,
+      "ingredients": [
+        {
+          "item_id": 45,
+          "count": 5
+        },
+        {
+          "item_id": 42,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "result_item_id": 146,
+      "result_count": 1,
+      "name": "Iron Chestplate",
+      "description": "Iron chestplate, DEF+4",
+      "name_key": "$craft.34.name",
+      "description_key": "$craft.34.desc",
+      "category": "armor",
+      "level": 5,
+      "success_rate": 0.85,
+      "gold_cost": 400,
+      "craft_time": 120,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 8
+        },
+        {
+          "item_id": 45,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "result_item_id": 147,
+      "result_count": 1,
+      "name": "Steel Plate",
+      "description": "Steel plate armor, DEF+7",
+      "name_key": "$craft.35.name",
+      "description_key": "$craft.35.desc",
+      "category": "armor",
+      "level": 12,
+      "success_rate": 0.7,
+      "gold_cost": 1200,
+      "craft_time": 240,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 6
+        },
+        {
+          "item_id": 31,
+          "count": 5
+        },
+        {
+          "item_id": 67,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "result_item_id": 148,
+      "result_count": 1,
+      "name": "Guardian Plate",
+      "description": "Guardian's plate, DEF+12",
+      "name_key": "$craft.36.name",
+      "description_key": "$craft.36.desc",
+      "category": "armor",
+      "level": 22,
+      "success_rate": 0.6,
+      "gold_cost": 3000,
+      "craft_time": 360,
+      "ingredients": [
+        {
+          "item_id": 36,
+          "count": 5
+        },
+        {
+          "item_id": 33,
+          "count": 4
+        },
+        {
+          "item_id": 76,
+          "count": 2
+        },
+        {
+          "item_id": 95,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "result_item_id": 150,
+      "result_count": 1,
+      "name": "Cloth Pants",
+      "description": "Basic cloth pants, DEF+1",
+      "name_key": "$craft.37.name",
+      "description_key": "$craft.37.desc",
+      "category": "armor",
+      "level": 1,
+      "success_rate": 0.95,
+      "gold_cost": 20,
+      "craft_time": 45,
+      "ingredients": [
+        {
+          "item_id": 42,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "result_item_id": 151,
+      "result_count": 1,
+      "name": "Iron Greaves",
+      "description": "Iron greaves, DEF+2",
+      "name_key": "$craft.38.name",
+      "description_key": "$craft.38.desc",
+      "category": "armor",
+      "level": 5,
+      "success_rate": 0.85,
+      "gold_cost": 250,
+      "craft_time": 90,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 5
+        },
+        {
+          "item_id": 42,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "result_item_id": 152,
+      "result_count": 1,
+      "name": "Steel Leggings",
+      "description": "Steel leggings, DEF+5",
+      "name_key": "$craft.39.name",
+      "description_key": "$craft.39.desc",
+      "category": "armor",
+      "level": 12,
+      "success_rate": 0.75,
+      "gold_cost": 700,
+      "craft_time": 150,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 5
+        },
+        {
+          "item_id": 31,
+          "count": 3
+        },
+        {
+          "item_id": 43,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "result_item_id": 155,
+      "result_count": 1,
+      "name": "Leather Boots",
+      "description": "Basic leather boots, DEF+1",
+      "name_key": "$craft.40.name",
+      "description_key": "$craft.40.desc",
+      "category": "armor",
+      "level": 1,
+      "success_rate": 0.95,
+      "gold_cost": 25,
+      "craft_time": 45,
+      "ingredients": [
+        {
+          "item_id": 45,
+          "count": 3
+        },
+        {
+          "item_id": 42,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "result_item_id": 156,
+      "result_count": 1,
+      "name": "Iron Boots",
+      "description": "Iron boots, DEF+2",
+      "name_key": "$craft.41.name",
+      "description_key": "$craft.41.desc",
+      "category": "armor",
+      "level": 5,
+      "success_rate": 0.85,
+      "gold_cost": 200,
+      "craft_time": 90,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 4
+        },
+        {
+          "item_id": 45,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "result_item_id": 158,
+      "result_count": 1,
+      "name": "Swift Boots",
+      "description": "Swift boots, DEF+3 SPD+",
+      "name_key": "$craft.42.name",
+      "description_key": "$craft.42.desc",
+      "category": "armor",
+      "level": 15,
+      "success_rate": 0.7,
+      "gold_cost": 1000,
+      "craft_time": 200,
+      "ingredients": [
+        {
+          "item_id": 36,
+          "count": 3
+        },
+        {
+          "item_id": 43,
+          "count": 3
+        },
+        {
+          "item_id": 32,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "result_item_id": 170,
+      "result_count": 1,
+      "name": "Soul Ring",
+      "description": "A simple ring infused with spirit",
+      "name_key": "$craft.50.name",
+      "description_key": "$craft.50.desc",
+      "category": "armor",
+      "level": 5,
+      "success_rate": 0.85,
+      "gold_cost": 200,
+      "craft_time": 120,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 3
+        },
+        {
+          "item_id": 2,
+          "count": 5
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "result_item_id": 171,
+      "result_count": 1,
+      "name": "Ring of Protection",
+      "description": "Grants protection, DEF+2",
+      "name_key": "$craft.51.name",
+      "description_key": "$craft.51.desc",
+      "category": "armor",
+      "level": 10,
+      "success_rate": 0.75,
+      "gold_cost": 500,
+      "craft_time": 180,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 3
+        },
+        {
+          "item_id": 73,
+          "count": 2
+        },
+        {
+          "item_id": 42,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "result_item_id": 174,
+      "result_count": 1,
+      "name": "Amulet of Wind",
+      "description": "Grants wind affinity, DEF+1 SPD+",
+      "name_key": "$craft.52.name",
+      "description_key": "$craft.52.desc",
+      "category": "armor",
+      "level": 15,
+      "success_rate": 0.65,
+      "gold_cost": 1200,
+      "craft_time": 300,
+      "ingredients": [
+        {
+          "item_id": 34,
+          "count": 2
+        },
+        {
+          "item_id": 36,
+          "count": 2
+        },
+        {
+          "item_id": 64,
+          "count": 3
+        },
+        {
+          "item_id": 57,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 60,
+      "result_item_id": 93,
+      "result_count": 1,
+      "name": "Enchant Scroll",
+      "description": "Adds +1 enchant to a piece of equipment",
+      "name_key": "$craft.60.name",
+      "description_key": "$craft.60.desc",
+      "category": "other",
+      "level": 10,
+      "success_rate": 0.8,
+      "gold_cost": 200,
+      "craft_time": 120,
+      "ingredients": [
+        {
+          "item_id": 43,
+          "count": 3
+        },
+        {
+          "item_id": 60,
+          "count": 2
+        },
+        {
+          "item_id": 33,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "result_item_id": 95,
+      "result_count": 1,
+      "name": "Upgrade Stone",
+      "description": "Used to upgrade equipment tiers",
+      "name_key": "$craft.61.name",
+      "description_key": "$craft.61.desc",
+      "category": "other",
+      "level": 8,
+      "success_rate": 0.75,
+      "gold_cost": 100,
+      "craft_time": 90,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 5
+        },
+        {
+          "item_id": 67,
+          "count": 2
+        },
+        {
+          "item_id": 32,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 62,
+      "result_item_id": 96,
+      "result_count": 1,
+      "name": "High Upgrade Stone",
+      "description": "Used for high-tier equipment upgrades",
+      "name_key": "$craft.62.name",
+      "description_key": "$craft.62.desc",
+      "category": "other",
+      "level": 18,
+      "success_rate": 0.6,
+      "gold_cost": 500,
+      "craft_time": 240,
+      "ingredients": [
+        {
+          "item_id": 95,
+          "count": 3
+        },
+        {
+          "item_id": 36,
+          "count": 3
+        },
+        {
+          "item_id": 76,
+          "count": 2
+        },
+        {
+          "item_id": 33,
+          "count": 5
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "result_item_id": 100,
+      "result_count": 3,
+      "name": "Town Scroll x3",
+      "description": "Teleports you back to town",
+      "name_key": "$craft.63.name",
+      "description_key": "$craft.63.desc",
+      "category": "other",
+      "level": 2,
+      "success_rate": 0.9,
+      "gold_cost": 30,
+      "craft_time": 45,
+      "ingredients": [
+        {
+          "item_id": 42,
+          "count": 3
+        },
+        {
+          "item_id": 40,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 64,
+      "result_item_id": 200,
+      "result_count": 1,
+      "name": "Basic Fishing Rod",
+      "description": "Simple bamboo fishing rod",
+      "name_key": "$craft.64.name",
+      "description_key": "$craft.64.desc",
+      "category": "other",
+      "level": 1,
+      "success_rate": 0.95,
+      "gold_cost": 20,
+      "craft_time": 60,
+      "ingredients": [
+        {
+          "item_id": 38,
+          "count": 3
+        },
+        {
+          "item_id": 42,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "result_item_id": 98,
+      "result_count": 1,
+      "name": "Gem·Ruby",
+      "description": "Attack gem, socket into weapons",
+      "name_key": "$craft.65.name",
+      "description_key": "$craft.65.desc",
+      "category": "other",
+      "level": 12,
+      "success_rate": 0.6,
+      "gold_cost": 200,
+      "craft_time": 120,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 3
+        },
+        {
+          "item_id": 61,
+          "count": 2
+        },
+        {
+          "item_id": 31,
+          "count": 5
+        }
+      ]
+    },
+    {
+      "id": 66,
+      "result_item_id": 99,
+      "result_count": 1,
+      "name": "Gem·Sapphire",
+      "description": "Defense gem, socket into armor",
+      "name_key": "$craft.66.name",
+      "description_key": "$craft.66.desc",
+      "category": "other",
+      "level": 12,
+      "success_rate": 0.6,
+      "gold_cost": 200,
+      "craft_time": 120,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 3
+        },
+        {
+          "item_id": 62,
+          "count": 2
+        },
+        {
+          "item_id": 67,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 70,
+      "result_item_id": 901,
+      "result_count": 1,
+      "name": "布帽",
+      "description": "基础DPS头冠",
+      "category": "armor",
+      "level": 1,
+      "success_rate": 1.0,
+      "gold_cost": 10,
+      "craft_time": 30,
+      "ingredients": [
+        {
+          "item_id": 42,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 71,
+      "result_item_id": 902,
+      "result_count": 1,
+      "name": "皮帽",
+      "description": "精良皮制头冠",
+      "category": "armor",
+      "level": 5,
+      "success_rate": 0.9,
+      "gold_cost": 40,
+      "craft_time": 60,
+      "ingredients": [
+        {
+          "item_id": 45,
+          "count": 4
+        },
+        {
+          "item_id": 42,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 72,
+      "result_item_id": 903,
+      "result_count": 1,
+      "name": "银饰头盔",
+      "description": "稀有银制头冠",
+      "category": "armor",
+      "level": 10,
+      "success_rate": 0.8,
+      "gold_cost": 150,
+      "craft_time": 120,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 5
+        },
+        {
+          "item_id": 31,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 73,
+      "result_item_id": 904,
+      "result_count": 1,
+      "name": "水晶之冠",
+      "description": "史诗级水晶头冠",
+      "category": "armor",
+      "level": 18,
+      "success_rate": 0.7,
+      "gold_cost": 500,
+      "craft_time": 180,
+      "ingredients": [
+        {
+          "item_id": 34,
+          "count": 3
+        },
+        {
+          "item_id": 44,
+          "count": 2
+        },
+        {
+          "item_id": 47,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "result_item_id": 905,
+      "result_count": 1,
+      "name": "龙鳞头冠",
+      "description": "传说级龙鳞头冠",
+      "category": "armor",
+      "level": 25,
+      "success_rate": 0.5,
+      "gold_cost": 2000,
+      "craft_time": 300,
+      "ingredients": [
+        {
+          "item_id": 35,
+          "count": 3
+        },
+        {
+          "item_id": 48,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 75,
+      "result_item_id": 906,
+      "result_count": 1,
+      "name": "铁盔",
+      "description": "基础铁制头盔",
+      "category": "armor",
+      "level": 2,
+      "success_rate": 1.0,
+      "gold_cost": 15,
+      "craft_time": 45,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 5
+        }
+      ]
+    },
+    {
+      "id": 76,
+      "result_item_id": 907,
+      "result_count": 1,
+      "name": "钢盔",
+      "description": "精良钢制头盔",
+      "category": "armor",
+      "level": 6,
+      "success_rate": 0.9,
+      "gold_cost": 60,
+      "craft_time": 75,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 4
+        },
+        {
+          "item_id": 67,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 77,
+      "result_item_id": 908,
+      "result_count": 1,
+      "name": "泰坦面甲",
+      "description": "稀有泰坦面甲",
+      "category": "armor",
+      "level": 12,
+      "success_rate": 0.8,
+      "gold_cost": 200,
+      "craft_time": 150,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 4
+        },
+        {
+          "item_id": 36,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 78,
+      "result_item_id": 909,
+      "result_count": 1,
+      "name": "不朽王冠",
+      "description": "史诗级不朽王冠",
+      "category": "armor",
+      "level": 20,
+      "success_rate": 0.65,
+      "gold_cost": 800,
+      "craft_time": 240,
+      "ingredients": [
+        {
+          "item_id": 36,
+          "count": 4
+        },
+        {
+          "item_id": 37,
+          "count": 2
+        },
+        {
+          "item_id": 47,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 80,
+      "result_item_id": 911,
+      "result_count": 1,
+      "name": "布衣",
+      "description": "基础布制胸甲",
+      "category": "armor",
+      "level": 1,
+      "success_rate": 1.0,
+      "gold_cost": 15,
+      "craft_time": 40,
+      "ingredients": [
+        {
+          "item_id": 42,
+          "count": 5
+        }
+      ]
+    },
+    {
+      "id": 81,
+      "result_item_id": 912,
+      "result_count": 1,
+      "name": "皮甲",
+      "description": "精良皮制胸甲",
+      "category": "armor",
+      "level": 5,
+      "success_rate": 0.9,
+      "gold_cost": 60,
+      "craft_time": 80,
+      "ingredients": [
+        {
+          "item_id": 45,
+          "count": 6
+        },
+        {
+          "item_id": 42,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 82,
+      "result_item_id": 913,
+      "result_count": 1,
+      "name": "锁子甲",
+      "description": "稀有锁子甲",
+      "category": "armor",
+      "level": 11,
+      "success_rate": 0.8,
+      "gold_cost": 250,
+      "craft_time": 150,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 6
+        },
+        {
+          "item_id": 31,
+          "count": 4
+        }
+      ]
+    },
+    {
+      "id": 83,
+      "result_item_id": 914,
+      "result_count": 1,
+      "name": "秘银胸甲",
+      "description": "史诗秘银胸甲",
+      "category": "armor",
+      "level": 19,
+      "success_rate": 0.7,
+      "gold_cost": 600,
+      "craft_time": 200,
+      "ingredients": [
+        {
+          "item_id": 34,
+          "count": 4
+        },
+        {
+          "item_id": 44,
+          "count": 3
+        },
+        {
+          "item_id": 47,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 84,
+      "result_item_id": 915,
+      "result_count": 1,
+      "name": "龙鳞甲",
+      "description": "传说龙鳞胸甲",
+      "category": "armor",
+      "level": 27,
+      "success_rate": 0.45,
+      "gold_cost": 3000,
+      "craft_time": 360,
+      "ingredients": [
+        {
+          "item_id": 35,
+          "count": 4
+        },
+        {
+          "item_id": 37,
+          "count": 3
+        },
+        {
+          "item_id": 48,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 85,
+      "result_item_id": 916,
+      "result_count": 1,
+      "name": "板甲",
+      "description": "稀有重型板甲",
+      "category": "armor",
+      "level": 14,
+      "success_rate": 0.75,
+      "gold_cost": 350,
+      "craft_time": 180,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 6
+        },
+        {
+          "item_id": 36,
+          "count": 3
+        },
+        {
+          "item_id": 67,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 86,
+      "result_item_id": 122,
+      "result_count": 1,
+      "name": "手炮",
+      "description": "基础手炮（Lv2）",
+      "category": "weapons",
+      "level": 2,
+      "success_rate": 1.0,
+      "gold_cost": 25,
+      "craft_time": 45,
+      "ingredients": [
+        {
+          "item_id": 31,
+          "count": 4
+        },
+        {
+          "item_id": 38,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 87,
+      "result_item_id": 123,
+      "result_count": 1,
+      "name": "爆裂霰弹枪",
+      "description": "精良霰弹枪（Lv6）",
+      "category": "weapons",
+      "level": 6,
+      "success_rate": 0.85,
+      "gold_cost": 100,
+      "craft_time": 90,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 5
+        },
+        {
+          "item_id": 45,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 88,
+      "result_item_id": 124,
+      "result_count": 1,
+      "name": "重型散弹枪",
+      "description": "稀有散弹枪（Lv11）",
+      "category": "weapons",
+      "level": 11,
+      "success_rate": 0.75,
+      "gold_cost": 400,
+      "craft_time": 150,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 5
+        },
+        {
+          "item_id": 67,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 89,
+      "result_item_id": 128,
+      "result_count": 1,
+      "name": "爆破棒",
+      "description": "基础榴弹（Lv3）",
+      "category": "weapons",
+      "level": 3,
+      "success_rate": 1.0,
+      "gold_cost": 30,
+      "craft_time": 50,
+      "ingredients": [
+        {
+          "item_id": 38,
+          "count": 4
+        },
+        {
+          "item_id": 30,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 90,
+      "result_item_id": 129,
+      "result_count": 1,
+      "name": "摧毁者",
+      "description": "精良榴弹（Lv7）",
+      "category": "weapons",
+      "level": 7,
+      "success_rate": 0.85,
+      "gold_cost": 120,
+      "craft_time": 100,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 4
+        },
+        {
+          "item_id": 31,
+          "count": 3
+        },
+        {
+          "item_id": 61,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": 91,
+      "result_item_id": 134,
+      "result_count": 1,
+      "name": "聚焦棒",
+      "description": "基础激光（Lv2）",
+      "category": "weapons",
+      "level": 2,
+      "success_rate": 1.0,
+      "gold_cost": 20,
+      "craft_time": 40,
+      "ingredients": [
+        {
+          "item_id": 30,
+          "count": 4
+        },
+        {
+          "item_id": 38,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 92,
+      "result_item_id": 135,
+      "result_count": 1,
+      "name": "水晶长枪",
+      "description": "精良激光（Lv6）",
+      "category": "weapons",
+      "level": 6,
+      "success_rate": 0.85,
+      "gold_cost": 100,
+      "craft_time": 90,
+      "ingredients": [
+        {
+          "item_id": 32,
+          "count": 4
+        },
+        {
+          "item_id": 31,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 93,
+      "result_item_id": 136,
+      "result_count": 1,
+      "name": "棱镜光束",
+      "description": "稀有激光（Lv13）",
+      "category": "weapons",
+      "level": 13,
+      "success_rate": 0.75,
+      "gold_cost": 450,
+      "craft_time": 160,
+      "ingredients": [
+        {
+          "item_id": 33,
+          "count": 4
+        },
+        {
+          "item_id": 62,
+          "count": 2
+        },
+        {
+          "item_id": 47,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 94,
+      "result_item_id": 114,
+      "result_count": 1,
+      "name": "泰坦巨锤",
+      "description": "史诗锤（Lv18）",
+      "category": "weapons",
+      "level": 18,
+      "success_rate": 0.6,
+      "gold_cost": 1500,
+      "craft_time": 300,
+      "ingredients": [
+        {
+          "item_id": 35,
+          "count": 3
+        },
+        {
+          "item_id": 37,
+          "count": 2
+        },
+        {
+          "item_id": 36,
+          "count": 5
+        },
+        {
+          "item_id": 68,
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": 95,
+      "result_item_id": 121,
+      "result_count": 1,
+      "name": "唤风者",
+      "description": "传说手枪（Lv26）",
+      "category": "weapons",
+      "level": 26,
+      "success_rate": 0.35,
+      "gold_cost": 5000,
+      "craft_time": 450,
+      "ingredients": [
+        {
+          "item_id": 35,
+          "count": 4
+        },
+        {
+          "item_id": 37,
+          "count": 3
+        },
+        {
+          "item_id": 49,
+          "count": 1
+        },
+        {
+          "item_id": 48,
+          "count": 2
+        },
+        {
+          "item_id": 68,
+          "count": 3
+        }
+      ]
+    }
+  ]
+}

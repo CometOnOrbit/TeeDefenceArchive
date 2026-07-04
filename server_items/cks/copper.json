@@ -1,9 +1,0 @@
-{
-    "item": {
-        "type": 4,
-        "id": 2,
-        "name": "Copper",
-        "desc": "Maybe they can make wires.",
-        "health": 2000
-    }
-}

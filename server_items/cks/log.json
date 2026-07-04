@@ -1,9 +1,0 @@
-{
-    "item": {
-        "type": 4,
-        "id": 0,
-        "name": "Log",
-        "desc": "The most basic material.",
-        "health": 50
-    }
-}

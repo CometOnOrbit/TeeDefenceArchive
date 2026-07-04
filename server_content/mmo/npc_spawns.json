@@ -1,0 +1,43 @@
+{
+  "spawns": [
+    {
+      "entry_id": "npcs_town_guard_01",
+      "name": "Guard",
+      "skin": "brownbear",
+      "color_body": 16711680,
+      "color_feet": 0,
+      "world": 0,
+      "x": 1152,
+      "y": 992,
+      "radius": 60,
+      "statis": true,
+      "emote": 1
+    },
+    {
+      "entry_id": "npcs_traveler_01",
+      "name": "Traveler",
+      "skin": "bluestripe",
+      "color_body": 255,
+      "color_feet": 131586,
+      "world": 0,
+      "x": 896,
+      "y": 1152,
+      "radius": 80,
+      "statis": false,
+      "emote": 2
+    },
+    {
+      "entry_id": "npcs_sage_01",
+      "name": "Sage",
+      "skin": "warpaint",
+      "color_body": 0,
+      "color_feet": 16776960,
+      "world": 0,
+      "x": 704,
+      "y": 896,
+      "radius": 60,
+      "statis": true,
+      "emote": 0
+    }
+  ]
+}

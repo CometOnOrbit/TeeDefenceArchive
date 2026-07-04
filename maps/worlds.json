@@ -1,0 +1,9 @@
+{
+    "worlds": [
+        {"title": "[简单]Shwar by Wartoz", "map": "TDef-Shwar", "mode": "defence", "travel_locked": false},
+        {"title": "[中等]Mine-Craft", "map": "Mine-Craft", "mode": "defence", "travel_locked": false},
+        {"title": "[高难度]Yours Minecraft", "map": "yours_minecraft", "mode": "defence", "travel_locked": false},
+        {"title": "[PVP]Deeply", "map": "TDef-Deeply", "mode": "pvp", "travel_locked": false},
+        {"title": "[???]2022第一张TDef地图", "map": "TDef1", "mode": "defence", "travel_locked": false}
+    ]
+}

@@ -10,6 +10,11 @@ enum
 	LAYERTYPE_GAME,
 	LAYERTYPE_TILES,
 	LAYERTYPE_QUADS,
+	LAYERTYPE_FRONT,
+	LAYERTYPE_TELE,
+	LAYERTYPE_SPEEDUP,
+	LAYERTYPE_SWITCH,
+	LAYERTYPE_TUNE,
 	LAYERTYPE_SOUNDS = 10,
 
 	MAPITEMTYPE_VERSION = 0,
@@ -29,7 +34,7 @@ enum
 	CURVETYPE_BEZIER,
 	NUM_CURVETYPES,
 
-	// game layer tiles
+	// game layer tiles — TDA (Teeworlds original)
 	ENTITY_NULL = 0,
 	ENTITY_SPAWN,
 	ENTITY_SPAWN_RED,
@@ -52,18 +57,66 @@ enum
 	ENTITY_ENERGY,
 	NUM_ENTITIES,
 
+	// tiles — TDA / DDNet base
 	TILE_AIR = 0,
-	TILE_HOOKABLE,
-	TILE_DEATH,
-	TILE_UNHOOKABLE,
+	TILE_HOOKABLE,  // =1
+	TILE_DEATH,     // =2
+	TILE_UNHOOKABLE, // =3 (identical to TILE_NOHOOK)
+	TILE_WATER = 6,
+
+	// tiles — TDA MMO extras
+	TILE_TELE_FROM_CONFIRM = 10,
+	TILE_SW_ZONE = 22,
+	TILE_TELE_FROM = 26,
+	TILE_TELE_OUT = 27,
+	TILE_SHOP_ZONE = 29,
+	TILE_CHAIR_LV1 = 33,
+	TILE_CHAIR_LV2 = 34,
+	TILE_CHAIR_LV3 = 35,
+	TILE_NPC_INTERACT = 40,
+	TILE_INFO_ZONE = 41,
+
+	// tiles — MRPG / DDNet extended (additions, no TDA conflict)
+	TILE_SOLID = 1,          // alias for TILE_HOOKABLE
+	TILE_NOHOOK = 3,          // alias for TILE_UNHOOKABLE
+	TILE_FIXED_CAM = 4,
+	TILE_SMOOTH_FIXED_CAM = 5,
+	TILE_PLAYER_HOUSE = 8,
+	TILE_DESTROYER_PROJECTILE = 11,
+	TILE_WORLD_SWAPPER = 14,
+	TILE_JAIL_ZONE = 15,
+	TILE_GUILD_HOUSE = 16,
+	TILE_AUCTION = 17,
+	TILE_AETHER_TELEPORT = 28,
+	TILE_CRAFT_ZONE = 31,
+	TILE_GUILD_CHAIR = 32,
+	TILE_BANK_MANAGER = 38,
+	TILE_FISHING_MODE = 39,
+	TILE_QUEST_BOARD = 42,
+	TILE_STOP = 60,
+	TILE_STOPS,
+	TILE_STOPA,
+	TILE_SW_TEXT = 70,
+	TILE_SW_HOUSE_ZONE = 71,
+	TILE_SW_ACTION_ZONE = 72,
+
+	MAX_TILES = 255,
 
 	TILEFLAG_VFLIP = 1,
 	TILEFLAG_HFLIP = 2,
 	TILEFLAG_OPAQUE = 4,
 	TILEFLAG_ROTATE = 8,
+	ROTATION_0 = 0,
+	ROTATION_90 = TILEFLAG_ROTATE,
+	ROTATION_180 = (TILEFLAG_VFLIP | TILEFLAG_HFLIP),
+	ROTATION_270 = (TILEFLAG_VFLIP | TILEFLAG_HFLIP | TILEFLAG_ROTATE),
 
 	LAYERFLAG_DETAIL = 1,
 	TILESLAYERFLAG_GAME = 1,
+	TILESLAYERFLAG_TELE = 2,
+	TILESLAYERFLAG_SPEEDUP = 4,
+	TILESLAYERFLAG_FRONT = 8,
+	TILESLAYERFLAG_SWITCH = 16,
 
 	ENTITY_OFFSET = 255 - 16 * 4,
 };
@@ -91,25 +144,52 @@ struct CQuad
 	int m_ColorEnvOffset;
 };
 
-struct CTile
+class CTile
 {
+public:
 	unsigned char m_Index;
 	unsigned char m_Flags;
 	unsigned char m_Skip;
 	unsigned char m_Reserved;
 };
 
+class CTeleTile
+{
+public:
+	unsigned char m_Number;
+	unsigned char m_Type;
+};
+
+class CSwitchTileExtra
+{
+public:
+	unsigned char m_Number;
+	unsigned char m_Type;
+	unsigned char m_Flags;
+	unsigned char m_Delay;
+};
+
+class CSpeedupTileExtra
+{
+public:
+	unsigned char m_Force;
+	unsigned char m_MaxSpeed;
+	unsigned char m_Type;
+	short m_Angle;
+};
+
 struct CMapItemInfo
 {
-	enum
-	{
-		CURRENT_VERSION = 1
-	};
 	int m_Version;
 	int m_Author;
 	int m_MapVersion;
 	int m_Credits;
 	int m_License;
+};
+
+struct CMapItemInfoSettings : CMapItemInfo
+{
+	int m_Settings;
 };
 
 struct CMapItemImage_v1
@@ -170,7 +250,8 @@ struct CMapItemLayerTilemap
 {
 	enum
 	{
-		CURRENT_VERSION = 4
+		CURRENT_VERSION = 3,
+		TILE_SKIP_MIN_VERSION = 4,
 	};
 
 	CMapItemLayer m_Layer;
@@ -188,6 +269,13 @@ struct CMapItemLayerTilemap
 	int m_Data;
 
 	int m_aName[3];
+
+	// DDRace extended fields
+	int m_Tele;
+	int m_Speedup;
+	int m_Front;
+	int m_Switch;
+	int m_Tune;
 };
 
 struct CMapItemLayerQuads
@@ -311,6 +399,14 @@ public:
 	int m_SoundEnvOffset;
 
 	CSoundShape m_Shape;
+};
+
+class CDoorTile
+{
+public:
+	unsigned char m_Index;
+	unsigned char m_Flags;
+	int m_Number;
 };
 
 class CMapItemLayerSounds

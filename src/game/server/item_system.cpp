@@ -19,6 +19,7 @@ void CItemHelper::ResetStats()
 	mem_zero(m_aMatHealth, sizeof(m_aMatHealth));
 	mem_zero(m_aaItemName, sizeof(m_aaItemName));
 	mem_zero(m_aaItemDesc, sizeof(m_aaItemDesc));
+	mem_zero(m_aaItemNameKey, sizeof(m_aaItemNameKey));
 	mem_zero(m_aItemType, sizeof(m_aItemType));
 	mem_zero(m_aItemMaxStack, sizeof(m_aItemMaxStack));
 	mem_zero(m_aFormula, sizeof(m_aFormula));
@@ -47,6 +48,8 @@ void CItemHelper::ConsumeStatPass(const json_value &Entry, int ParentType)
 		str_copy(m_aaItemName[ID], Entry["name"].u.string.ptr, sizeof(m_aaItemName[ID]));
 	if(Entry["desc"].type == json_string)
 		str_copy(m_aaItemDesc[ID], Entry["desc"].u.string.ptr, sizeof(m_aaItemDesc[ID]));
+	if(Entry["name_key"].type == json_string)
+		str_copy(m_aaItemNameKey[ID], Entry["name_key"].u.string.ptr, sizeof(m_aaItemNameKey[ID]));
 	m_aItemType[ID] = Type;
 	if(Entry["max"].type == json_integer)
 		m_aItemMaxStack[ID] = (int)Entry["max"].u.integer;
@@ -166,17 +169,17 @@ void CItemHelper::LoadDefinitions(IStorage *pStorage)
 	int nFiles = 0;
 
 	CJsonParser IdxParser;
-	json_value *pIdx = IdxParser.ParseFile("server_items/index.json", pStorage);
+	json_value *pIdx = IdxParser.ParseFile("server_content/td/items/index.json", pStorage);
 	if(!pIdx)
 	{
-		dbg_msg("items", "server_items/index.json: %s", IdxParser.Error());
+		dbg_msg("items", "server_content/td/items/index.json: %s", IdxParser.Error());
 		return;
 	}
 
 	const json_value &Arr = (*pIdx)["item indices"];
 	if(Arr.type != json_array)
 	{
-		dbg_msg("items", "server_items/index.json: missing 'item indices' array");
+		dbg_msg("items", "server_content/td/items/index.json: missing 'item indices' array");
 		return;
 	}
 

@@ -35,6 +35,7 @@ json_value *CJsonParser::ParseData(const void *pFileData, unsigned FileSize, con
 
 	json_settings JsonSettings;
 	mem_zero(&JsonSettings, sizeof(JsonSettings));
+	JsonSettings.settings |= json_enable_comments;
 	char aJsonError[json_error_max];
 	m_pParsedJson = json_parse_ex(&JsonSettings, static_cast<const json_char *>(pFileData), FileSize, aJsonError);
 

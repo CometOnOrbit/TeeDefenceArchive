@@ -1,0 +1,17 @@
+{
+    "shops": [
+        {
+            "id": "general",
+            "name": "General Store",
+            "items": [
+                { "item_id": 3, "name": "Iron Ore", "price": 50, "stack": 1 },
+                { "item_id": 4, "name": "Gold Ore", "price": 200, "stack": 1 },
+                { "item_id": 5, "name": "Diamond", "price": 500, "stack": 1 },
+                { "item_id": 31, "name": "Log", "price": 30, "stack": 1 },
+                { "item_id": 32, "name": "Coal", "price": 40, "stack": 1 },
+                { "item_id": 8, "name": "Wooden Sword", "price": 100, "stack": 1 },
+                { "item_id": 7, "name": "Health Potion", "price": 75, "stack": 1 }
+            ]
+        }
+    ]
+}

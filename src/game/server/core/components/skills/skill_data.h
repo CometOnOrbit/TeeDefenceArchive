@@ -12,6 +12,7 @@ struct SSkillDescription
 {
 	int m_Id;
 	char m_aKey[32];
+	char m_aName[64];
 	bool m_Passive;
 	bool m_AutoLearn;
 	int m_ManaCostPct;

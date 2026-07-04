@@ -115,7 +115,7 @@ void CAchievementManager::GrantReward(CPlayer *pPlayer, const SAchievementDef &D
 			Core()->EntityManager()->DropItem(Pos, pPlayer->GetCID(), Def.m_RewardItem, Def.m_RewardNum);
 	}
 	char aBuf[128];
-	GS()->LocFormat(aBuf, sizeof(aBuf), pPlayer->GetCID(), "achievement.unlocked", u8"成就解锁：%s", AchTitle(GS(), pPlayer->GetCID(), Def));
+	GS()->LocFormat(aBuf, sizeof(aBuf), pPlayer->GetCID(), "achievement.unlocked", "成就解锁：%s", AchTitle(GS(), pPlayer->GetCID(), Def));
 	GS()->SendChatTo(pPlayer->GetCID(), aBuf);
 }
 
@@ -204,14 +204,14 @@ void CAchievementManager::BuildAchievementsPage(int ClientID)
 	SPlayerMetaData &Meta = Core()->MetaManager()->Get(ClientID);
 	CVoteMenuManager *pVote = Core()->VoteMenuManager();
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "achievement.title", u8"成就"));
+	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "achievement.title", "成就"));
 	int Done = 0;
 	for(int i = 0; i < m_NumDefs; i++)
 		if(Meta.m_aaAchievements[i])
 			Done++;
 	{
 		char aSum[VOTE_DESC_LENGTH];
-		str_format(aSum, sizeof(aSum), GS()->Loc(ClientID, "achievement.progress", u8"已解锁 %d/%d"), Done, m_NumDefs);
+		str_format(aSum, sizeof(aSum), GS()->Loc(ClientID, "achievement.progress", "已解锁 %d/%d"), Done, m_NumDefs);
 		pVote->AddVote_PageSubtitle(aSum);
 	}
 	pVote->AddVote_Separator();
@@ -221,9 +221,9 @@ void CAchievementManager::BuildAchievementsPage(int ClientID)
 		const bool Complete = Meta.m_aaAchievements[i];
 		const char *pTitle = AchTitle(GS(), ClientID, m_aDefs[i]);
 		if(Complete)
-			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "achievement.entry.done", u8"✓ %s"), pTitle);
+			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "achievement.entry.done", "✓ %s"), pTitle);
 		else
-			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "achievement.entry", u8"▹ %s"), pTitle);
+			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "achievement.entry", "▹ %s"), pTitle);
 		pVote->AddVote_TextLine(aLine);
 		if(!Complete)
 			pVote->AddVote_ProgressLine(Core()->MetaManager()->GetAchProgress(ClientID, i), m_aDefs[i].m_Count);
@@ -251,10 +251,12 @@ void CAchievementManager::RegisterVoteCommands(CCommandManager *pMgr)
 	pMgr->AddCommand("menuachievements", "", "", ComVoteAchPage, GS());
 }
 
-bool CAchievementManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs)
+bool CAchievementManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)
 {
 	(void)pPlayer;
 	(void)pCmd;
 	(void)pArgs;
+	(void)ReasonNumber;
+	(void)pReason;
 	return false;
 }

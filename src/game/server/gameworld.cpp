@@ -3,6 +3,8 @@
 
 #include <generated/server_data.h>
 
+#include <engine/shared/config.h>
+
 #include "entities/character.h"
 #include "entities/growingexplosion.h"
 #include "entities/plasma.h"
@@ -22,6 +24,9 @@ CGameWorld::CGameWorld()
 	m_pGameServer = 0x0;
 	m_pConfig = 0x0;
 	m_pServer = 0x0;
+	m_NumMarkedBotsActive = 0;
+	mem_zero(m_aBotsActive, sizeof(m_aBotsActive));
+	mem_zero(m_aMarkedBotsActive, sizeof(m_aMarkedBotsActive));
 
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 	{
@@ -166,6 +171,119 @@ void CGameWorld::Tick()
 				m_alpEntityLists[i][j]->TickDefered();
 
 	RemoveEntities();
+	UpdatePlayerMaps();
+}
+
+static bool distCompare(std::pair<float, int> a, std::pair<float, int> b)
+{
+	return a.first < b.first;
+}
+
+void CGameWorld::UpdatePlayerMaps(bool Force)
+{
+	if(!Force && (!m_pConfig || Server()->Tick() % m_pConfig->m_SvMapUpdateRate != 0))
+		return;
+
+	std::pair<float, int> Dist[MAX_CLIENTS];
+
+	for(int ClientID = 0; ClientID < MAX_HUMAN_CLIENTS; ClientID++)
+	{
+		CPlayer *pPlayer = m_pGameServer->m_apPlayers[ClientID];
+		if(!Server()->ClientIngame(ClientID) || Server()->GetClientWorldID(ClientID) != m_pGameServer->GetWorldID() || !pPlayer)
+			continue;
+
+		int *pMap = Server()->GetIdMap(ClientID);
+
+		for(int j = MAX_HUMAN_CLIENTS; j < MAX_CLIENTS; j++)
+		{
+			Dist[j].second = j;
+			CPlayer *pBotPlayer = m_pGameServer->m_apPlayers[j];
+			if(!Server()->ClientIngame(j) || !pBotPlayer || !pBotPlayer->GetCharacter())
+			{
+				Dist[j].first = 1e10f;
+				continue;
+			}
+
+			const float ActiveBotDistSq = pBotPlayer->GetActiveDistance() * pBotPlayer->GetActiveDistance();
+			const vec2 BotPos = pBotPlayer->GetCharacter()->GetPos();
+			const float BotDist = distance(pPlayer->m_ViewPos, BotPos);
+			const float DistanceSq = BotDist * BotDist;
+			if(DistanceSq > ActiveBotDistSq)
+			{
+				Dist[j].first = 1e10f;
+				continue;
+			}
+
+			if(pBotPlayer->IsSnappingInactiveForClient(ClientID))
+				Dist[j].first = 1e10f;
+			else
+			{
+				Dist[j].first = 0;
+				Dist[j].first += DistanceSq;
+			}
+		}
+
+		Dist[ClientID].first = 0.f;
+
+		int aReverseMap[MAX_CLIENTS];
+		memset(aReverseMap, -1, sizeof(int) * MAX_CLIENTS);
+		for(int j = MAX_HUMAN_CLIENTS; j < VANILLA_MAX_CLIENTS; j++)
+		{
+			if(pMap[j] == -1)
+				continue;
+
+			if(Dist[pMap[j]].first > 5e9f)
+				pMap[j] = -1;
+			else
+				aReverseMap[pMap[j]] = j;
+		}
+
+		std::nth_element(&Dist[MAX_HUMAN_CLIENTS], &Dist[VANILLA_MAX_CLIENTS - 1], &Dist[MAX_CLIENTS], distCompare);
+
+		int Mapc = MAX_HUMAN_CLIENTS;
+		int Demand = 0;
+		for(int j = MAX_HUMAN_CLIENTS; j < VANILLA_MAX_CLIENTS - 1; j++)
+		{
+			const int k = Dist[j].second;
+			if(aReverseMap[k] != -1 || Dist[j].first > 5e9f)
+				continue;
+
+			while(Mapc < VANILLA_MAX_CLIENTS && pMap[Mapc] != -1)
+				Mapc++;
+
+			if(Mapc < VANILLA_MAX_CLIENTS - 1)
+			{
+				pMap[Mapc] = k;
+				m_pGameServer->SendClientInfo(ClientID, k, false, true);
+			}
+			else
+				Demand++;
+		}
+
+		for(int j = MAX_CLIENTS - 1; j > VANILLA_MAX_CLIENTS - 2; j--)
+		{
+			const int k = Dist[j].second;
+			if(aReverseMap[k] != -1 && Demand-- > 0)
+				pMap[aReverseMap[k]] = -1;
+		}
+
+		for(int j = MAX_HUMAN_CLIENTS; j < VANILLA_MAX_CLIENTS - 1; j++)
+		{
+			if(pMap[j] >= 0 && m_NumMarkedBotsActive < MAX_CLIENTS)
+				m_aMarkedBotsActive[m_NumMarkedBotsActive++] = pMap[j];
+		}
+
+		pMap[VANILLA_MAX_CLIENTS - 1] = -1;
+	}
+
+	mem_zero(m_aBotsActive, sizeof(m_aBotsActive));
+	for(int i = 0; i < m_NumMarkedBotsActive; i++)
+	{
+		const int MarkedID = m_aMarkedBotsActive[i];
+		if(MarkedID >= 0 && MarkedID < MAX_CLIENTS)
+			m_aBotsActive[MarkedID] = true;
+	}
+	m_NumMarkedBotsActive = 0;
 }
 
 CEntity *CGameWorld::IntersectEntity(vec2 Pos0, vec2 Pos1, float Radius, vec2 &NewPos, int Type, CEntity *pNotThis)

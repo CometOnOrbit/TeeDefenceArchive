@@ -1,0 +1,11 @@
+{
+  "item": {
+    "type": 4,
+    "id": 4,
+    "name": "金",
+    "desc": "闪闪发亮！",
+    "health": 30000,
+    "name_key": "$td.cks.golden",
+    "description_key": "$td.cks.4.desc"
+  }
+}

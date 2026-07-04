@@ -12,6 +12,7 @@
 #include "snapshot_ids_pool.h"
 
 class CMultiWorlds;
+class CInputEvents;
 
 class CServerBan : public CNetBan
 {
@@ -38,6 +39,7 @@ class CServer : public IServer
 	class IConsole *m_pConsole;
 	class IStorage *m_pStorage;
 	CMultiWorlds *m_pMultiWorlds;
+	class CInputEvents *m_pInputKeys;
 
 public:
 	class IGameServer *GameServerPlayer(int ClientID) const;
@@ -45,6 +47,7 @@ public:
 	class CConfig *Config() { return m_pConfig; }
 	class IConsole *Console() { return m_pConsole; }
 	class IStorage *Storage() { return m_pStorage; }
+	class IInputEvents *Input() const override;
 
 	enum
 	{
@@ -128,6 +131,9 @@ public:
 	};
 
 	CClient m_aClients[MAX_CLIENTS];
+
+	// Per-client ID map (MRPG-style): maps display slots 0-63 to server slots
+	int m_aIdMap[MAX_CLIENTS * VANILLA_MAX_CLIENTS] {};
 
 	CSnapshotDelta m_SnapshotDelta;
 	CSnapshotBuilder m_SnapshotBuilder;
@@ -217,6 +223,13 @@ public:
 	void ReleaseClientInAllWorlds(int ClientID) override;
 	void ReleaseClientInOtherWorlds(int ClientID, int KeepWorldID) override;
 
+	int GetMinuteGameTime() const override;
+	int GetHourGameTime() const override;
+	int GetOffsetGameTime() const override;
+	void SetOffsetGameTime(int Hour) override;
+	const char *GetStringTypeday() const override;
+	int GetCurrentTypeday() const override;
+
 	bool HasHumanInWorld(int WorldID) const;
 	void SetClientWorldID(int ClientID, int WorldID);
 	void SyncLegacyMapFromWorld(int WorldID);
@@ -225,6 +238,9 @@ public:
 	bool IsClientSlotEmpty(int ClientID) const;
 	void DummyJoin(int ClientID, const char *pName, int WorldID);
 	void DummyRemove(int ClientID);
+	void InitClientBot(int ClientID) override;
+
+	int *GetIdMap(int ClientID) override;
 
 	virtual int SendMsg(CMsgPacker *pMsg, int Flags, int ClientID);
 
@@ -277,6 +293,12 @@ public:
 	static void ConchainConsoleOutputLevelUpdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainRconPasswordSet(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainMapUpdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+
+	int m_GameHourTime;
+	int m_GameMinuteTime;
+	int m_GameTypeday;
+	int64 m_ShiftTime;
+	int64 m_LastShiftTick;
 
 	void RegisterCommands();
 

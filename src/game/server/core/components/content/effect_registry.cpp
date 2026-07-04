@@ -88,7 +88,7 @@ void CEffectRegistry::LoadEffects()
 		return;
 
 	CJsonParser Parser;
-	json_value *pRoot = Parser.ParseFile("server_content/effects.json", Storage());
+	json_value *pRoot = Parser.ParseFile("server_content/td/effects.json", Storage());
 	if(!pRoot)
 	{
 		dbg_msg("content", "effects.json: %s", Parser.Error());
@@ -144,7 +144,7 @@ void CEffectRegistry::OnConsoleInit()
 			(void)pResult;
 			CEffectRegistry *pSelf = static_cast<CEffectRegistry *>(pUser);
 			pSelf->LoadEffects();
-		}, this, "Reload server_content/effects.json");
+		}, this, "Reload server_content/td/effects.json");
 	}
 }
 

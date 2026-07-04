@@ -1,0 +1,46 @@
+{
+    "worlds": [
+        {
+            "id": 0,
+            "name": "Shwar",
+            "name_key": "world.0.name",
+            "title": "[Easy]Shwar by Wartoz",
+            "title_key": "world.0.title"
+        },
+        {
+            "id": 1,
+            "name": "Mine-Craft",
+            "name_key": "world.1.name",
+            "title": "[Medium]Mine-Craft",
+            "title_key": "world.1.title"
+        },
+        {
+            "id": 2,
+            "name": "Yours Minecraft",
+            "name_key": "world.2.name",
+            "title": "[Hard]Yours Minecraft",
+            "title_key": "world.2.title"
+        },
+        {
+            "id": 3,
+            "name": "Deeply",
+            "name_key": "world.3.name",
+            "title": "[PVP]Deeply",
+            "title_key": "world.3.title"
+        },
+        {
+            "id": 4,
+            "name": "TDef1",
+            "name_key": "world.4.name",
+            "title": "[???]The first TDef map of 2022",
+            "title_key": "world.4.title"
+        },
+        {
+            "id": 7,
+            "name": "测试F|RPG",
+            "name_key": "world.7.name",
+            "title": "测试 F|RPG 地图 — 欢迎来到测试区",
+            "title_key": "world.7.title"
+        }
+    ]
+}

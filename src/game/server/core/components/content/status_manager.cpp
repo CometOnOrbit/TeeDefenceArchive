@@ -162,6 +162,13 @@ void CStatusManager::ProcessStatus(CCharacter *pChr, SActiveStatus &St)
 			pChr->TakeDamage(vec2(0, 0), pChr->GetPos(), maximum(1, St.m_Stacks), -1, WEAPON_GAME);
 		}
 	}
+	else if(str_comp(St.m_aId, "atk_boost") == 0)
+	{
+		// atk_boost is applied in battle_cry/enlighten
+		// Effect is passive: stored in St.m_Amount (bonus damage added in FireWeapon)
+		// No tick action needed, just duration tracking
+		(void)0;
+	}
 
 	St.m_DurationTicks--;
 	if(St.m_DurationTicks <= 0)

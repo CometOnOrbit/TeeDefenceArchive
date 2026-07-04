@@ -1,0 +1,97 @@
+{
+  "item": {
+    "type": 5,
+    "multiple": [
+      {
+        "id": 35,
+        "name": "炮管",
+        "desc": "炮塔散射范围更广",
+        "capacity": 20,
+        "placeable": [
+          3
+        ],
+        "max": 2,
+        "max_place": 2,
+        "effects": [
+          "barrel_spread"
+        ],
+        "formula": {
+          "Log": 200,
+          "Iron": 10
+        },
+        "name_key": "$td.item.35.name",
+        "description_key": "$td.item.35.desc"
+      },
+      {
+        "id": 36,
+        "name": "散热器",
+        "desc": "降低炮塔射击冷却",
+        "capacity": 40,
+        "placeable": [
+          3
+        ],
+        "max": 3,
+        "max_place": 2,
+        "effects": [
+          "turret_cooldown"
+        ],
+        "formula": {
+          "Log": 100,
+          "Coal": 340,
+          "Copper": 500,
+          "Iron": 200,
+          "Golden": 100,
+          "Diamond": 10,
+          "Enegry": 5,
+          "Zombie's Heart": 500
+        },
+        "name_key": "$td.item.36.name",
+        "description_key": "$td.item.36.desc"
+      },
+      {
+        "id": 37,
+        "name": "弹匣",
+        "desc": "嵌入后增加弹药容量",
+        "capacity": 15,
+        "placeable": [
+          0,
+          1,
+          2
+        ],
+        "max": 3,
+        "max_place": 2,
+        "effects": [
+          "magazine_bonus"
+        ],
+        "formula": {
+          "Log": 150,
+          "Iron": 30,
+          "Copper": 20
+        },
+        "name_key": "$td.item.37.name",
+        "description_key": "$td.item.37.desc"
+      },
+      {
+        "id": 38,
+        "name": "稳定器",
+        "desc": "延长炮塔射程",
+        "capacity": 25,
+        "placeable": [
+          3
+        ],
+        "max": 2,
+        "max_place": 2,
+        "effects": [
+          "stabilizer"
+        ],
+        "formula": {
+          "Log": 200,
+          "Copper": 80,
+          "Titanium": 5
+        },
+        "name_key": "$td.item.38.name",
+        "description_key": "$td.item.38.desc"
+      }
+    ]
+  }
+}

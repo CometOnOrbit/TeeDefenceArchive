@@ -19,6 +19,7 @@
 #include <engine/shared/econ.h>
 #include <engine/shared/filecollection.h>
 #include <engine/shared/http_request.h>
+#include "input_events.h"
 #include <engine/shared/http_thread.h>
 #include <engine/shared/jsonwriter.h>
 #include <engine/shared/mapchecker.h>
@@ -102,6 +103,9 @@ int CServerBan::BanExt(T *pBanPool, const typename T::CDataType *pData, int Seco
 		if(Server()->m_aClients[i].m_State == CServer::CClient::STATE_EMPTY)
 			continue;
 
+		if(Server()->GameServerPlayer(i) && Server()->GameServerPlayer(i)->IsClientBot(i))
+			continue;
+
 		if(NetMatch(&Data, Server()->m_NetServer.ClientAddr(i)))
 		{
 			CNetHash NetHash(&Data);
@@ -174,6 +178,12 @@ CServer::CServer() : m_DemoRecorder(&m_SnapshotDelta)
 	m_CurrentGameTick = 0;
 	m_RunServer = true;
 
+	m_GameHourTime = 0;
+	m_GameMinuteTime = 0;
+	m_GameTypeday = -1;
+	m_ShiftTime = 0;
+	m_LastShiftTick = 0;
+
 	str_copy(m_aShutdownReason, "Server shutdown", sizeof(m_aShutdownReason));
 
 	m_pCurrentMapData = 0;
@@ -189,6 +199,37 @@ CServer::CServer() : m_DemoRecorder(&m_SnapshotDelta)
 	m_GeneratedRconPassword = 0;
 
 	Init();
+}
+
+int CServer::GetMinuteGameTime() const { return m_GameMinuteTime; }
+int CServer::GetHourGameTime() const { return m_GameHourTime; }
+int CServer::GetOffsetGameTime() const { return m_ShiftTime; }
+void CServer::SetOffsetGameTime(int Hour)
+{
+	m_LastShiftTick = Tick();
+	m_GameHourTime = clamp(Hour, 0, 23);
+	m_GameMinuteTime = 0;
+	if(Hour <= 0)
+		m_ShiftTime = m_LastShiftTick;
+	else
+		m_ShiftTime = m_LastShiftTick - ((m_GameHourTime * 60) * TickSpeed());
+}
+const char *CServer::GetStringTypeday() const
+{
+	switch(GetCurrentTypeday())
+	{
+		case MORNING_TYPE: return "Morning";
+		case DAY_TYPE: return "Day";
+		case EVENING_TYPE: return "Evening";
+		default: return "Night";
+	}
+}
+int CServer::GetCurrentTypeday() const
+{
+	if(m_GameHourTime >= 0 && m_GameHourTime < 6) return NIGHT_TYPE;
+	if(m_GameHourTime >= 6 && m_GameHourTime < 13) return MORNING_TYPE;
+	if(m_GameHourTime >= 13 && m_GameHourTime < 19) return DAY_TYPE;
+	return EVENING_TYPE;
 }
 
 void CServer::SetClientName(int ClientID, const char *pName)
@@ -258,27 +299,8 @@ int64 CServer::TickStartTime(int Tick)
 
 int CServer::Init()
 {
-	for(int i = 0; i < MAX_CLIENTS; i++)
-	{
-		m_aClients[i].m_State = CClient::STATE_EMPTY;
-		m_aClients[i].m_aName[0] = 0;
-		m_aClients[i].m_aClan[0] = 0;
-		m_aClients[i].m_Country = -1;
-		m_aClients[i].m_WorldID = INITIALIZER_WORLD_ID;
-		m_aClients[i].m_OldWorldID = INITIALIZER_WORLD_ID;
-		m_aClients[i].m_ChangeWorld = false;
-		m_aClients[i].m_ChangeWorldEnter = false;
-		m_aClients[i].m_ChangeWorldDestID = -1;
-		m_aClients[i].m_ChangeWorldWasReady = false;
-		m_aClients[i].m_HasChangeWorldSession = false;
-		m_aClients[i].m_ChangeWorldAccountId = -1;
-		m_aClients[i].m_ChangeWorldSessionSize = 0;
-		m_aClients[i].m_HasChangeWorldSpawnPos = false;
-		m_aClients[i].m_ChangeWorldSpawnPos = vec2(0, 0);
-		m_aClients[i].m_Snapshots.Init();
-	}
-
 	m_CurrentGameTick = 0;
+	m_pInputKeys = CreateInputKeys();
 
 	return 0;
 }
@@ -295,6 +317,11 @@ IGameServer *CServer::GameServerPlayer(int ClientID) const
 	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
 		return GameServer(0);
 	return GameServer(GetClientWorldID(ClientID));
+}
+
+class IInputEvents *CServer::Input() const
+{
+	return m_pInputKeys;
 }
 
 int CServer::GetClientWorldID(int ClientID) const
@@ -552,7 +579,7 @@ int CServer::GetClientInfo(int ClientID, CClientInfo *pInfo) const
 
 void CServer::GetClientAddr(int ClientID, char *pAddrStr, int Size) const
 {
-	if(ClientID >= 0 && ClientID < MAX_CLIENTS && m_aClients[ClientID].m_State == CClient::STATE_INGAME)
+	if(ClientID >= 0 && ClientID < MAX_CLIENTS && m_aClients[ClientID].m_State == CClient::STATE_INGAME && !(GameServerPlayer(ClientID) && GameServerPlayer(ClientID)->IsClientBot(ClientID)))
 		net_addr_str(m_NetServer.ClientAddr(ClientID), pAddrStr, Size, false);
 }
 
@@ -618,6 +645,12 @@ void CServer::DummyJoin(int ClientID, const char *pName, int WorldID)
 	m_aClients[ClientID].m_WorldID = WorldID;
 	m_aClients[ClientID].Reset();
 
+	// Initialize per-client ID map
+	int *pIdMap = GetIdMap(ClientID);
+	for(int j = 0; j < VANILLA_MAX_CLIENTS; j++)
+		pIdMap[j] = -1;
+	pIdMap[0] = ClientID;
+
 	GameServer(WorldID)->OnBotConnected(ClientID);
 }
 
@@ -629,6 +662,9 @@ void CServer::DummyRemove(int ClientID)
 		return;
 	if(m_aClients[ClientID].m_State < CClient::STATE_READY)
 		return;
+
+	if(m_pInputKeys)
+		m_pInputKeys->ResetClientBlockKeys(ClientID);
 
 	GameServerPlayer(ClientID)->OnClientDrop(ClientID, "teedefense zombie removed");
 
@@ -643,6 +679,28 @@ void CServer::DummyRemove(int ClientID)
 	m_aClients[ClientID].m_NoRconNote = false;
 	m_aClients[ClientID].m_Quitting = false;
 	m_aClients[ClientID].m_Snapshots.PurgeAll();
+}
+
+int *CServer::GetIdMap(int ClientID)
+{
+	return m_aIdMap + VANILLA_MAX_CLIENTS * ClientID;
+}
+
+void CServer::InitClientBot(int ClientID)
+{
+	dbg_assert(ClientID >= MAX_HUMAN_CLIENTS && ClientID < MAX_CLIENTS, "bot client id out of range");
+
+	m_aClients[ClientID].m_State = CClient::STATE_INGAME;
+	m_aClients[ClientID].m_WorldID = -1;
+	m_aClients[ClientID].m_Score = 1;
+
+	// Initialize per-client ID map for bots
+	int *pIdMap = GetIdMap(ClientID);
+	for(int j = 0; j < VANILLA_MAX_CLIENTS; j++)
+		pIdMap[j] = -1;
+	pIdMap[0] = ClientID;
+
+	SendConnectionReady(ClientID);
 }
 
 void CServer::InitRconPasswordIfUnset()
@@ -707,6 +765,8 @@ int CServer::SendMsg(CMsgPacker *pMsg, int Flags, int ClientID)
 			for(int i = 0; i < MAX_CLIENTS; i++)
 			{
 				if(m_aClients[i].m_State != CClient::STATE_INGAME || m_aClients[i].m_Quitting)
+					continue;
+				if(!m_NetServer.ClientSlotOnline(i))
 					continue;
 				if(GameServerPlayer(i) && GameServerPlayer(i)->IsClientBot(i))
 					continue;
@@ -1115,6 +1175,13 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 				m_aClients[ClientID].m_State = CClient::STATE_INGAME;
 				m_aClients[ClientID].m_ChangeWorldEnter = m_aClients[ClientID].m_ChangeWorld;
 				m_aClients[ClientID].m_ChangeWorld = false;
+
+				// Initialize per-client ID map for human clients
+				int *pIdMap = GetIdMap(ClientID);
+				for(int j = 0; j < VANILLA_MAX_CLIENTS; j++)
+					pIdMap[j] = -1;
+				pIdMap[0] = ClientID;
+
 				SendServerInfo(ClientID);
 				pGS->OnClientEnter(ClientID);
 			}
@@ -1840,6 +1907,32 @@ int CServer::Run()
 				if((m_CurrentGameTick % 2) == 0)
 					ShouldSnap = true;
 
+				if(m_CurrentGameTick % TickSpeed() == 0)
+				{
+					if(m_GameTypeday != GetCurrentTypeday())
+					{
+						m_GameTypeday = GetCurrentTypeday();
+						for(int w = 0; w < m_pMultiWorlds->GetWorldCount(); w++)
+						{
+							CWorld *pWorld = m_pMultiWorlds->GetWorld(w);
+							if(pWorld && pWorld->GetDetail() && !pWorld->GetDetail()->GetNoDaytime())
+								GameServer(w)->OnDaytypeChange(m_GameTypeday);
+						}
+					}
+
+					m_GameMinuteTime++;
+					if(m_GameMinuteTime >= 60)
+					{
+						m_GameHourTime++;
+						if(m_GameHourTime >= 24)
+						{
+							m_GameHourTime = 0;
+							SetOffsetGameTime(0);
+						}
+						m_GameMinuteTime = 0;
+					}
+				}
+
 				for(int w = 0; w < m_pMultiWorlds->GetWorldCount(); w++)
 				{
 					if(!HasHumanInWorld(w))
@@ -1862,6 +1955,10 @@ int CServer::Run()
 
 					GameServer(w)->OnTick();
 				}
+
+				// Reset input events AFTER OnTick so MotdMenu can read them
+				if(m_pInputKeys)
+					m_pInputKeys->ResetInputKeys();
 			}
 
 			// snap game
@@ -1921,6 +2018,9 @@ void CServer::Free()
 		mem_free(m_pCurrentMapData);
 		m_pCurrentMapData = 0;
 	}
+	delete m_pInputKeys;
+	m_pInputKeys = nullptr;
+
 	delete m_pMultiWorlds;
 	m_pMultiWorlds = nullptr;
 	m_pMap = nullptr;

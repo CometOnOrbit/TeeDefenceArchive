@@ -5,16 +5,239 @@
 #include <game/server/core/components/content/status_manager.h>
 #include <game/server/core/components/meta/mini_events_manager.h>
 #include <game/server/core/tworld_controller.h>
+#include <game/server/core/components/vote/vote_menu_manager.h>
+#include <game/server/core/components/vote/vote_menu_types.h>
 #include <game/server/entity_manager.h>
 #include <game/server/entities/character.h>
 #include <game/server/gamecontroller.h>
+#include <game/server/worldmodes/defence.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
-#include <game/server/zombie_bot.h>
+#include <game/server/turret_ammo.h>
+
 
 CEnemyRegistry::CEnemyRegistry()
 {
 	m_NumEnemies = 0;
+}
+
+bool CEnemyRegistry::OnVoteMenuPage(int ClientID, int Page)
+{
+	if(Page != PAGE_COMPENDIUM && Page != PAGE_COMPENDIUM_ZOMBIE
+		&& Page != PAGE_COMPENDIUM_ITEM && Page != PAGE_COMPENDIUM_TURRET_AMMO)
+		return false;
+	if(!GS() || !Core() || !Core()->VoteMenuManager())
+		return false;
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP)
+		return false;
+	CVoteMenuManager *pVote = Core()->VoteMenuManager();
+	SPlayerVote *pSVote = pVote->GetPlayerVote(ClientID);
+
+	if(Page == PAGE_COMPENDIUM)
+	{
+		pVote->SetVoteLastPage(PAGE_MENU);
+		pVote->AddVote_PageHeader(CVoteMenuManager::VL(GS(), pP, "compendium.title", "图鉴"));
+		pVote->AddVote_Separator();
+		pVote->AddVote_PageSubtitle(CVoteMenuManager::VL(GS(), pP, "compendium.subtitle", "查阅游戏资料"));
+		pVote->AddVote_Space();
+
+		pVote->AddVote_Section(CVoteMenuManager::VL(GS(), pP, "compendium.section.zombie", "僵尸种类"));
+		pVote->AddVote_Goto(PAGE_COMPENDIUM_ZOMBIE, CVoteMenuManager::VL(GS(), pP, "compendium.goto.zombie", "  ☞ 查看全部僵尸"));
+		{
+			const int Num = NumEnemies();
+			char aLine[VOTE_DESC_LENGTH];
+			str_format(aLine, sizeof(aLine), CVoteMenuManager::VL(GS(), pP, "compendium.count.zombie", "  （共 %d 种）"), Num);
+			pVote->AddVote_TextLine(aLine);
+		}
+		pVote->AddVote_Space();
+
+		pVote->AddVote_Section(CVoteMenuManager::VL(GS(), pP, "compendium.section.item", "物品效果"));
+		pVote->AddVote_Goto(PAGE_COMPENDIUM_ITEM, CVoteMenuManager::VL(GS(), pP, "compendium.goto.item", "  ☞ 浏览全部物品"));
+		pVote->AddVote_Space();
+
+		pVote->AddVote_Section(CVoteMenuManager::VL(GS(), pP, "compendium.section.turret_ammo", "炮塔子弹配比"));
+		pVote->AddVote_Goto(PAGE_COMPENDIUM_TURRET_AMMO, CVoteMenuManager::VL(GS(), pP, "compendium.goto.turret_ammo", "  ☞ 材料效果说明"));
+		pVote->AddVote_PageFooter();
+	}
+	else if(Page == PAGE_COMPENDIUM_ZOMBIE)
+	{
+		pVote->SetVoteLastPage(PAGE_COMPENDIUM);
+		pVote->AddVote_PageHeader(CVoteMenuManager::VL(GS(), pP, "compendium.zombie.title", "僵尸种类"));
+		pVote->AddVote_Separator();
+		const int Num = NumEnemies();
+		if(Num <= 0)
+			pVote->AddVote_EmptyHint(CVoteMenuManager::VL(GS(), pP, "compendium.zombie.empty", "暂无数据"));
+		else
+		{
+			for(int i = 0; i < Num; i++)
+			{
+				const SEnemyDef *pDef = GetEnemy(i);
+				if(!pDef)
+					continue;
+
+				char aZombKey[48];
+				str_format(aZombKey, sizeof(aZombKey), "enemy.%s", pDef->m_aId);
+				const char *pZombName = CVoteMenuManager::VL(GS(), pP, aZombKey, pDef->m_aId);
+
+				// Line 1: name + wave
+				{
+					char aLine[VOTE_DESC_LENGTH];
+					if(pDef->m_WaveMin > 0)
+					{
+						char aWave[24];
+						str_format(aWave, sizeof(aWave), CVoteMenuManager::VL(GS(), pP, "compendium.zombie.wave", " 第%d波起"), pDef->m_WaveMin);
+						str_format(aLine, sizeof(aLine), "▹ %s%s", pZombName, aWave);
+					}
+					else
+						str_format(aLine, sizeof(aLine), "▹ %s", pZombName);
+					pVote->AddVote_TextLine(aLine);
+				}
+
+				// Line 2: HP mul
+				if(pDef->m_HpMul > 0.01f && pDef->m_HpMul != 1.f)
+				{
+					char aHp[VOTE_DESC_LENGTH];
+					str_format(aHp, sizeof(aHp), CVoteMenuManager::VL(GS(), pP, "compendium.zombie.hp_mul", "  血量×%.1f"), pDef->m_HpMul);
+					pVote->AddVote_TextLine(aHp);
+				}
+
+				// Line 3: tags (one per line if many)
+				if(pDef->m_NumTags > 0)
+				{
+					for(int t = 0; t < pDef->m_NumTags; t++)
+					{
+						char aTagKey[48];
+						str_format(aTagKey, sizeof(aTagKey), "compendium.tag.%s", pDef->m_aaTagNames[t]);
+						const char *pTagDesc = CVoteMenuManager::VL(GS(), pP, aTagKey, pDef->m_aaTagNames[t]);
+						char aTag[VOTE_DESC_LENGTH];
+						str_format(aTag, sizeof(aTag), CVoteMenuManager::VL(GS(), pP, "compendium.zombie.tag_line", "  ·%s"), pTagDesc);
+						pVote->AddVote_TextLine(aTag);
+					}
+				}
+
+				// Line 4+: loot, one per line
+				for(int l = 0; l < pDef->m_NumLoot; l++)
+				{
+					const SEnemyLootEntry &Entry = pDef->m_aLoot[l];
+					const char *pMatName = GS()->LocItemName(ClientID, Entry.m_ItemId);
+					char aLoot[VOTE_DESC_LENGTH];
+					if(Entry.m_MinNum == Entry.m_MaxNum)
+						str_format(aLoot, sizeof(aLoot), "  掉落 %s ×%d", pMatName, Entry.m_MinNum);
+					else
+						str_format(aLoot, sizeof(aLoot), "  掉落 %s ×%d~%d", pMatName, Entry.m_MinNum, Entry.m_MaxNum);
+					pVote->AddVote_TextLine(aLoot);
+				}
+
+				if(pDef->m_NumLoot + pDef->m_NumTags > 0)
+					pVote->AddVote_Space();
+			}
+		}
+		pVote->AddVote_PageFooter();
+	}
+	else if(Page == PAGE_COMPENDIUM_ITEM)
+	{
+		pVote->SetVoteLastPage(PAGE_COMPENDIUM);
+		pVote->AddVote_PageHeader(CVoteMenuManager::VL(GS(), pP, "compendium.item.title", "物品效果"));
+		pVote->AddVote_Separator();
+
+		CItemHelper *pH = GS()->ItemHelper();
+		if(!pH)
+			pVote->AddVote_EmptyHint(CVoteMenuManager::VL(GS(), pP, "compendium.item.unavailable", "物品系统尚未加载"));
+		else
+		{
+			for(int t = 0; t < NUM_ITYPE; t++)
+			{
+				if(pSVote->m_Select[SPlayerVote::ITEMLIST] != t)
+				{
+					char aCmd[64];
+					str_format(aCmd, sizeof(aCmd), "ccv_menuselitem %d %d", SPlayerVote::ITEMLIST, t);
+					char aLine[VOTE_DESC_LENGTH];
+					str_format(aLine, sizeof(aLine), CVoteMenuManager::VL(GS(), pP, "compendium.item.category", "▹ %s"), CVoteMenuManager::ItemTypeLoc(GS(), pP, t));
+					pVote->AddVote(aLine, aCmd, ClientID);
+				}
+				else
+				{
+					char aLine[VOTE_DESC_LENGTH];
+					str_format(aLine, sizeof(aLine), CVoteMenuManager::VL(GS(), pP, "compendium.item.category.open", "▾ %s"), CVoteMenuManager::ItemTypeLoc(GS(), pP, t));
+					pVote->AddVote_TextLine(aLine);
+
+					const int Cat = pSVote->m_Select[SPlayerVote::ITEMLIST];
+					for(int i = 0; i < NUM_ITEM; i++)
+					{
+						if(pH->GetType(i) != Cat)
+							continue;
+						if(!pH->HasItemDefinition(i))
+							continue;
+
+						const char *pName = GS()->LocItemName(ClientID, i);
+						const char *pDesc = GS()->LocItemDesc(ClientID, i);
+						const int PrefixLen = 4; // "  · "
+						const int SepLen = pDesc && pDesc[0] ? 3 : 0; // " — "
+						const int NameLen = str_length(pName);
+						const int DescAvail = VOTE_DESC_LENGTH - 1 - PrefixLen - NameLen - SepLen;
+
+						char aLine2[VOTE_DESC_LENGTH];
+						if(pDesc && pDesc[0] && DescAvail > 2)
+						{
+							char aShortDesc[VOTE_DESC_LENGTH];
+							str_copy(aShortDesc, pDesc, minimum((int)sizeof(aShortDesc), DescAvail + 1));
+							if(str_length(aShortDesc) < str_length(pDesc))
+							{
+								// Truncated — replace last 3 chars with "..."
+								const int Dst = str_length(aShortDesc);
+								if(Dst >= 4)
+								{
+									aShortDesc[Dst - 1] = '.';
+									aShortDesc[Dst - 2] = '.';
+									aShortDesc[Dst - 3] = '.';
+								}
+							}
+							str_format(aLine2, sizeof(aLine2), "  · %s — %s", pName, aShortDesc);
+						}
+						else
+							str_format(aLine2, sizeof(aLine2), "  · %s", pName);
+						pVote->AddVote_TextLine(aLine2);
+					}
+				}
+			}
+		}
+		pVote->AddVote_PageFooter();
+	}
+	else if(Page == PAGE_COMPENDIUM_TURRET_AMMO)
+	{
+		pVote->SetVoteLastPage(PAGE_COMPENDIUM);
+		pVote->AddVote_PageHeader(CVoteMenuManager::VL(GS(), pP, "compendium.turret_ammo.title", "子弹材料效果"));
+		pVote->AddVote_Separator();
+		CVoteMenuManager::AddVoteWrappedText(pVote, "炮塔使用材料作子弹，不同材料提供不同效果，配比可在炮塔页面调整。");
+
+		static const struct { int m_Mat; const char *m_pName; const char *m_pEffect; } s_aAmmo[] = {
+			{TURRET_AMMO_LOG,      "木材", "基础材料，无特殊加成"},
+			{TURRET_AMMO_COAL,     "煤炭", "≥20% 子弹爆炸；主导→定向爆裂弹"},
+			{TURRET_AMMO_COPPER,   "铜",   "≥20% 连锁闪电；主导→电弧弹"},
+			{TURRET_AMMO_IRON,     "铁",   "≥15% 伤害提升（每25% +1倍）"},
+			{TURRET_AMMO_GOLD,     "金",   "≥10% 伤害提升（每20% +1倍）"},
+			{TURRET_AMMO_DIAMOND,  "钻石", "≥10% 伤害提升（每10% +1倍）"},
+			{TURRET_AMMO_ENEGRY,   "能量", "≥25% 聚变效果；配煤爆裂更大"},
+			{TURRET_AMMO_ZOMBIEHEART, "僵尸之心", "无战斗效果，珍贵通货"},
+		};
+
+		for(int i = 0; i < 8; i++)
+		{
+			const char *pMat = CVoteMenuManager::TurretMatLoc(GS(), pP, s_aAmmo[i].m_Mat);
+
+			char aLine[VOTE_DESC_LENGTH];
+			str_format(aLine, sizeof(aLine), "▹ %s", pMat);
+			pVote->AddVote_TextLine(aLine);
+
+			CVoteMenuManager::AddVoteWrappedText(pVote, s_aAmmo[i].m_pEffect);
+			pVote->AddVote_Space();
+		}
+
+		CVoteMenuManager::AddVoteWrappedText(pVote, "伤害加成可叠加。卡牌特效（爆炸/聚变/电子链）也可与材料效果叠加。");
+		pVote->AddVote_PageFooter();
+	}
+	return true;
 }
 
 void CEnemyRegistry::LoadEnemies()
@@ -24,7 +247,7 @@ void CEnemyRegistry::LoadEnemies()
 		return;
 
 	CJsonParser Parser;
-	json_value *pRoot = Parser.ParseFile("server_content/enemies.json", Storage());
+	json_value *pRoot = Parser.ParseFile("server_content/td/enemies.json", Storage());
 	if(!pRoot)
 	{
 		dbg_msg("content", "enemies.json: %s", Parser.Error());
@@ -150,7 +373,7 @@ float CEnemyRegistry::GetHpMul(int ZombId) const
 	return pDef ? pDef->m_HpMul : 1.f;
 }
 
-void CEnemyRegistry::ApplyWaveBoost(CGameController *pCtrl, int Wave) const
+void CEnemyRegistry::ApplyWaveBoost(CGameControllerDefence *pCtrl, int Wave) const
 {
 	if(!pCtrl || Wave <= 0)
 		return;
@@ -165,7 +388,7 @@ void CEnemyRegistry::ApplyWaveBoost(CGameController *pCtrl, int Wave) const
 	}
 }
 
-void CEnemyRegistry::OnZombieDeath(CGameController *pCtrl, CPlayer *pVictim) const
+void CEnemyRegistry::OnZombieDeath(CGameControllerDefence *pCtrl, CPlayer *pVictim) const
 {
 	if(!pCtrl || !pVictim || !GS())
 		return;
@@ -263,16 +486,14 @@ void CEnemyRegistry::RollLoot(CPlayer *pKiller, int ZombId) const
 	}
 
 	pKiller->m_Score++;
-	GS()->SendChatLocF(pKiller->GetCID(), "game.loot_drop", u8"掉落：%s ×%d（僵尸心+%d）",
+	GS()->SendChatLocF(pKiller->GetCID(), "game.loot_drop", "掉落：%s ×%d（僵尸心+%d）",
 		GS()->LocItemName(pKiller->GetCID(), Reward), Num, pDef ? maximum(1, pDef->m_BonusHearts) : 1);
 }
 
-void CEnemyRegistry::TickZombie(CZombieBot *pBot) const
+void CEnemyRegistry::TickZombie(CPlayer *pP) const
 {
-	if(!pBot || !GS() || !Core() || !Core()->StatusManager())
+	if(!pP || !GS() || !Core() || !Core()->StatusManager())
 		return;
-
-	CPlayer *pP = pBot->Player();
 	CCharacter *pChr = pP ? pP->GetCharacter() : nullptr;
 	if(!pP || !pChr || !pChr->IsAlive())
 		return;
@@ -314,18 +535,22 @@ void CEnemyRegistry::TickZombie(CZombieBot *pBot) const
 	}
 }
 
+
+
 void CEnemyRegistry::OnTick()
 {
 	if(!GS() || !GS()->m_pController)
 		return;
 
-	CGameController *pCtrl = static_cast<CGameController *>(GS()->m_pController);
+	auto *pCtrl = dynamic_cast<CGameControllerDefence *>(GS()->m_pController);
+	if(!pCtrl)
+		return;
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
 		CPlayer *pP = GS()->m_apPlayers[i];
 		if(!pP || !pP->IsDummy() || pP->GetZomb() == ZOMB_NONE)
 			continue;
-		if(CZombieBot *pBot = pCtrl->TdGetZombieBot(i))
-			TickZombie(pBot);
+		if(pCtrl->TdGetZombieAI(i))
+			TickZombie(GS()->m_apPlayers[i]);
 	}
 }

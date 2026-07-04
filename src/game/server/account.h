@@ -108,6 +108,8 @@ public:
 
 	void OnClientDisconnect(int ClientId);
 
+	CSqlConnectionPool *GetSqlPool() { return &m_Pool; }
+
 	/** Queues async tw_Items sync (logged-in players). */
 	void RequestSaveItems(int ClientId);
 

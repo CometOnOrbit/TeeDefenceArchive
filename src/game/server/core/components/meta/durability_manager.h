@@ -20,7 +20,7 @@ public:
 	void OnPlayerMine(CPlayer *pPlayer, int MatId) override;
 
 	void RegisterVoteCommands(CCommandManager *pMgr);
-	bool OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs);
+	bool OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason);
 
 	static int GetDurability(CItemHelper *pH, int ItemId, const char *pExtra);
 	static void SetDurability(char *pExtra, int ExtraSize, int Dur);

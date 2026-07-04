@@ -3,7 +3,6 @@
 #include <engine/shared/config.h>
 #include <engine/shared/protocol.h>
 
-#include <game/extra_hud.h>
 #include <game/mapitems.h>
 #include <game/version.h>
 #include <generated/server_data.h>
@@ -14,6 +13,13 @@
 #include "entities/electro.h"
 #include "entities/laser.h"
 #include "entities/lightning.h"
+#include "entities/mmo/hammer_lamp_bolt.h"
+#include "entities/mmo/homing_grenade.h"
+#include "entities/mmo/magnetic_pulse.h"
+#include "entities/mmo/mmo_weapon_common.h"
+#include "entities/mmo/tesla_chain.h"
+#include "entities/mmo/tracked_plasma.h"
+#include "entities/mmo/wall_pusher.h"
 #include "entities/pickup.h"
 #include "entities/projectile.h"
 #include "entities/turret.h"
@@ -22,18 +28,23 @@
 #include "core/components/bots/defence_bot_manager.h"
 #include "core/components/craft/craft_manager.h"
 #include "core/components/npcs/npc_manager.h"
+#include "core/components/dialogs/dialog_manager.h"
 #include "core/components/vote/vote_menu_manager.h"
+#include "core/components/profession/profession_manager.h"
 #include "core/tworld_controller.h"
-#include "entities/spider_boss.h"
-#include "zombie_nav.h"
-#include "entities/tower-main.h"
 #include "entities/CKs.h"
 #include "item_system.h"
 #include "gamecontext.h"
 #include "botengine.h"
 #include <game/server/core/components/content/trait_manager.h>
 #include <game/server/core/components/quests/quest_manager.h>
+#include <game/server/core/components/guilds/guild_manager.h>
+#include <game/server/core/components/profession/profession_manager.h>
 #include <game/server/core/components/meta/achievement_manager.h>
+#include <game/server/core/components/mmo/mmo_manager.h>
+#include <game/server/core/components/mmo/mmo_item.h>
+#include <game/server/global_state.h>
+
 #include <game/server/core/components/meta/duties_manager.h>
 #include <game/server/core/components/meta/durability_manager.h>
 #include <game/server/core/components/skills/skill_manager.h>
@@ -44,26 +55,140 @@
 
 #include "gamecontroller.h"
 #include "player.h"
-#include "zombie_bot.h"
-
-static int TdZombieFirstSlot(const CConfig *pCfg)
-{
-	return minimum((int)MAX_HUMAN_CLIENTS, pCfg->m_SvMaxClients);
-}
+#include "core/components/dungeon/dungeon_manager.h"
 
 static bool IsZombiePlayer(const CPlayer *pPlayer)
 {
 	return pPlayer && pPlayer->IsDummy() && pPlayer->GetZomb() != ZOMB_NONE;
 }
 
-static bool IsHumanDefenderInWorld(CGameContext *pGame, int ClientID, int WorldID)
+static int GetMMOWeaponEnchant(CPlayer *pPl, int ItemID)
 {
-	if(!pGame || ClientID < 0 || ClientID >= MAX_HUMAN_CLIENTS)
-		return false;
-	if(pGame->Server()->GetClientWorldID(ClientID) != WorldID)
-		return false;
-	CPlayer *pP = pGame->m_apPlayers[ClientID];
-	return pP && pP->GetTeam() == TEAM_RED && pP->GetCharacter();
+	if(!pPl || ItemID <= 0)
+		return 0;
+	for(size_t i = 0; i < pPl->m_MMOInventory.size(); i++)
+	{
+		const CMMOItem &It = pPl->m_MMOInventory[i];
+		if(It.GetID() == ItemID)
+			return It.GetEnchant();
+	}
+	return 0;
+}
+
+static const CMMOItemDescription *GetActiveMMOWeaponDef(CCharacter *pChr, CPlayer *pPl, int *pEnchant)
+{
+	if(!pChr || !pPl || pPl->IsDummy())
+		return nullptr;
+	const int ItemID = pChr->GetActiveWeaponItemID();
+	if(ItemID <= 0)
+		return nullptr;
+	const CMMOItemDescription *pDef = CMMOItemDescription::Get(ItemID);
+	if(!pDef)
+		return nullptr;
+	if(pEnchant)
+		*pEnchant = GetMMOWeaponEnchant(pPl, ItemID);
+	return pDef;
+}
+
+static vec2 ApplyWeaponSpread(vec2 Dir, int SpreadDeg)
+{
+	if(SpreadDeg <= 0 || length(Dir) < 0.001f)
+		return Dir;
+	const float SpreadRad = SpreadDeg * pi / 180.f;
+	const float Jitter = (random_int() % 2001 - 1000) / 1000.f * SpreadRad;
+	const float a = angle(Dir) + Jitter;
+	return vec2(cosf(a), sinf(a));
+}
+
+static float WeaponProjSpeedMul(const SMMOWeaponProfile *pProf)
+{
+	return pProf ? (float)pProf->m_ProjSpeedPercent / 100.f : 1.f;
+}
+
+static int WeaponExtraSpread(const SMMOWeaponProfile *pProf)
+{
+	return pProf ? pProf->m_SpreadDegrees : 0;
+}
+
+static float WeaponProjLifeMul(const SMMOWeaponProfile *pProf)
+{
+	return pProf ? (float)pProf->m_ProjRangePercent / 100.f : 1.f;
+}
+
+static float WeaponFanSpreadRadians(const SMMOWeaponProfile *pProf)
+{
+	if(!pProf || pProf->m_FanSpreadRad <= 0)
+		return 0.1f;
+	return (float)pProf->m_FanSpreadRad / 100.f;
+}
+
+static float WeaponLaserReach(const CTuningParams *pTune, const SMMOWeaponProfile *pProf)
+{
+	float Reach = pTune->m_LaserReach;
+	if(pProf && pProf->m_LaserReachPercent != 100)
+		Reach *= (float)pProf->m_LaserReachPercent / 100.f;
+	return Reach;
+}
+
+static vec2 WeaponFanDirection(vec2 BaseDir, int Index, int Count, float SpreadRad)
+{
+	const float Center = (Count - 1) * 0.5f;
+	const float a = angle(BaseDir) + (Index - Center) * SpreadRad;
+	return vec2(cosf(a), sinf(a));
+}
+
+static int RollWeaponDamage(int BaseDmg, const SMMOWeaponProfile *pProf)
+{
+	int Dmg = BaseDmg;
+	if(pProf && pProf->m_DamageMulPercent != 100)
+		Dmg = Dmg * pProf->m_DamageMulPercent / 100;
+	if(pProf && pProf->m_CritChance > 0 && (random_int() % 100) < pProf->m_CritChance)
+		Dmg *= 2;
+	return maximum(1, Dmg);
+}
+
+static void ApplyWeaponRecoil(CCharacter *pChr, vec2 Dir, const SMMOWeaponProfile *pProf)
+{
+	if(!pChr || !pProf || pProf->m_RecoilPercent <= 0 || length(Dir) < 0.001f)
+		return;
+	pChr->GetCore()->m_Vel -= normalize(Dir) * (2.5f * (float)pProf->m_RecoilPercent / 100.f);
+}
+
+static void ApplyWeaponLifesteal(CCharacter *pChr, int Damage, const SMMOWeaponProfile *pProf)
+{
+	if(!pChr || !pProf || pProf->m_LifestealPercent <= 0 || Damage <= 0)
+		return;
+	pChr->IncreaseHealth(maximum(1, Damage * pProf->m_LifestealPercent / 100));
+}
+
+static int EffectiveAttackSpeedPercent(CPlayer *pPl, const CMMOItemDescription *pWeapon, int Enchant)
+{
+	int Spd = 100;
+	if(pPl)
+	{
+		const int FromPlayer = pPl->GetStat(AttributeIdentifier::AttackSPD);
+		if(FromPlayer > 0)
+			Spd = FromPlayer;
+	}
+	if(pWeapon)
+		Spd = Spd * pWeapon->GetAttackSpeedPercent(Enchant) / 100;
+	return clamp(Spd, 50, 600);
+}
+
+static bool WeaponProfileExplosive(const SMMOWeaponProfile *pProf, bool DefaultExplosive)
+{
+	if(pProf && pProf->m_Explosive)
+		return true;
+	return DefaultExplosive;
+}
+
+static void SpawnDirectionalProjectile(CGameWorld *pWorld, int WeaponType, int ClientID, vec2 Pos, vec2 Dir,
+	int LifeTicks, int Damage, bool Explosive, float Force, int SoundImpact, const SMMOWeaponProfile *pProf)
+{
+	new CProjectile(pWorld, WeaponType, ClientID, Pos, Dir, LifeTicks,
+		Damage, Explosive, Force, SoundImpact, WeaponType,
+		WeaponProjSpeedMul(pProf), WeaponProjLifeMul(pProf),
+		pProf ? pProf->m_Pierce : 0, pProf ? pProf->m_LifestealPercent : 0);
 }
 
 CGameController::CGameController(CGameContext *pGameServer)
@@ -73,148 +198,17 @@ CGameController::CGameController(CGameContext *pGameServer)
 	m_pServer = m_pGameServer->Server();
 
 	m_GameStartTick = Server()->Tick();
-
-	m_TdWarmup = 0;
-	m_TdGameOverTick = -1;
-	m_TdZombStart = 0;
-	m_TdWave = 0;
-	mem_zero(m_TdZombie, sizeof(m_TdZombie));
-	m_TdZombLeft = 0;
-	m_pTower = nullptr;
-	mem_zero(m_apZombieBots, sizeof(m_apZombieBots));
-	m_pSpiderBoss = nullptr;
-	m_TdBossWave = false;
-	m_TdSpiderBossPending = false;
-	m_TdDummyRemoveLen = 0;
-	mem_zero(m_aTdDummyRemove, sizeof(m_aTdDummyRemove));
-	m_TdPendingZomb = ZOMB_ZABY;
-	m_TdDifficulty = clamp(m_pConfig->m_SvTdDifficulty, 0, 2);
 	m_RealPlayerNum = 0;
 }
 
-float CGameController::TdDifficultyZombieMul() const
-{
-	static const float s_aMul[NUM_TD_DIFF] = {0.65f, 0.85f, 1.15f};
-	return s_aMul[m_TdDifficulty];
-}
 
-float CGameController::TdDifficultyHealthMul() const
-{
-	static const float s_aMul[NUM_TD_DIFF] = {0.75f, 0.88f, 1.10f};
-	return s_aMul[m_TdDifficulty];
-}
-
-float CGameController::TdDifficultyAiMul() const
-{
-	static const float s_aMul[NUM_TD_DIFF] = {0.85f, 1.0f, 1.15f};
-	return s_aMul[m_TdDifficulty];
-}
-
-float CGameController::TdDifficultyTowerMul() const
-{
-	static const float s_aMul[NUM_TD_DIFF] = {1.25f, 1.0f, 0.75f};
-	return s_aMul[m_TdDifficulty];
-}
-
-int CGameController::TdGetDifficultyTowerMaxHealth() const
-{
-	return maximum(1, (int)(Config()->m_SvMaxTowerHealth * TdDifficultyTowerMul() + 0.5f));
-}
-
-bool CGameController::TdCanChangeDifficulty() const
-{
-	return m_TdWave == 0 && m_TdGameOverTick == -1;
-}
-
-bool CGameController::TdSetDifficulty(int Difficulty)
-{
-	if(!TdCanChangeDifficulty())
-		return false;
-	m_TdDifficulty = clamp(Difficulty, 0, 2);
-	Config()->m_SvTdDifficulty = m_TdDifficulty;
-	TdRefreshTowerMaxHealth();
-	return true;
-}
-
-void CGameController::TdRefreshTowerMaxHealth()
-{
-	if(!m_pTower)
-		return;
-	const int MaxHp = TdGetDifficultyTowerMaxHealth();
-	if(m_pTower->GetHealth() > MaxHp)
-		m_pTower->SetHealth(MaxHp);
-	else if(m_TdWave == 0)
-		m_pTower->SetHealth(MaxHp);
-}
-
-void CGameController::TdApplyDifficultyToZombieCounts()
-{
-	const float Mul = TdDifficultyZombieMul();
-	if(fabs(Mul - 1.0f) < 0.001f)
-		return;
-	for(unsigned i = 0; i < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); i++)
-	{
-		if(m_TdZombie[i] > 0)
-			m_TdZombie[i] = maximum(1, (int)(m_TdZombie[i] * Mul + 0.5f));
-	}
-}
 
 CGameController::~CGameController()
 {
-	TdDestroySpiderBoss();
-	for(int i = 0; i < MAX_CLIENTS; i++)
-	{
-		delete m_apZombieBots[i];
-		m_apZombieBots[i] = nullptr;
-	}
 }
 
 void CGameController::PreTick()
 {
-	for(int i = 0; i < MAX_CLIENTS; i++)
-	{
-		CPlayer *pP = GameServer()->m_apPlayers[i];
-		if(!pP || !pP->IsDummy() || !pP->GetCharacter() || !pP->GetCharacter()->IsAlive())
-			continue;
-		if(pP->GetZomb() == ZOMB_SPIDER_BOSS)
-			continue;
-		if(pP->GetZomb() != ZOMB_NONE)
-			TdRunZombieBrain(pP);
-		else if(TWorldController *pCore = GameServer()->Core())
-			pCore->DefenceBotManager()->TickPlayer(pP);
-	}
-}
-
-vec2 CGameController::TdGetZombieMarchGoal() const
-{
-	vec2 Goal = m_pTower ? m_pTower->GetPos() : TdGetZombieRallyPos();
-	Goal = ZombieNavResolveGoal(GameServer(), Goal);
-	CBotEngine *pBE = GameServer()->BotEngine();
-	if(pBE)
-	{
-		CGraph *pGraph = pBE->GetGraph();
-		if(pGraph && pGraph->m_NumVertices > 0 && pGraph->m_pVertices)
-		{
-			const int V = pBE->GetClosestVertex(Goal);
-			if(V >= 0 && V < pGraph->m_NumVertices)
-				Goal = pGraph->m_pVertices[V].m_Pos;
-		}
-	}
-	return Goal;
-}
-
-vec2 CGameController::TdGetZombieRallyPos() const
-{
-	for(int Slot = 1; Slot >= 0; Slot--)
-	{
-		if(m_alSpawnPoints[Slot].size() == 0)
-			continue;
-		vec2 Sum(0.0f, 0.0f);
-		for(int i = 0; i < m_alSpawnPoints[Slot].size(); i++)
-			Sum += m_alSpawnPoints[Slot][i];
-		return Sum / (float)m_alSpawnPoints[Slot].size();
-	}
-	return vec2(0.0f, 0.0f);
 }
 
 int CGameController::GetDummyTeam() const
@@ -227,109 +221,6 @@ void CGameController::OnBotPlayerCreated(CPlayer *pPlayer)
 	if(GameServer()->Core() && GameServer()->Core()->NpcManager() &&
 		GameServer()->Core()->NpcManager()->OnBotPlayerCreated(pPlayer))
 		return;
-
-	for(int p = 0; p < NUM_SKINPARTS; p++)
-	{
-		pPlayer->m_TeeInfos.m_aUseCustomColors[p] = 0;
-		pPlayer->m_TeeInfos.m_aSkinPartColors[p] = 0xFF000000;
-	}
-	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[0], "standard", MAX_SKIN_ARRAY_SIZE);
-	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[2], "uniban", MAX_SKIN_ARRAY_SIZE);
-	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[3], "standard", MAX_SKIN_ARRAY_SIZE);
-	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[4], "standard", MAX_SKIN_ARRAY_SIZE);
-	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[5], "standard", MAX_SKIN_ARRAY_SIZE);
-
-	const int CID = pPlayer->GetCID();
-	delete m_apZombieBots[CID];
-	m_apZombieBots[CID] = nullptr;
-
-	pPlayer->InitZombie(m_TdPendingZomb);
-	const char *pBodySkin = "saddo";
-	switch(m_TdPendingZomb)
-	{
-	case ZOMB_ZOOMER:
-		pBodySkin = "redstripe";
-		break;
-	case ZOMB_ZOOKER:
-		pBodySkin = "bluekitty";
-		break;
-	case ZOMB_ZAMER:
-		pBodySkin = "twinbop";
-		break;
-	case ZOMB_ZUNNER:
-		pBodySkin = "cammostripes";
-		break;
-	case ZOMB_ZASTER:
-		pBodySkin = "coala";
-		break;
-	case ZOMB_ZOTTER:
-		pBodySkin = "cammo";
-		break;
-	case ZOMB_ZENADE:
-		pBodySkin = "twintri";
-		break;
-	case ZOMB_FLOMBIE:
-		pBodySkin = "toptri";
-		break;
-	case ZOMB_ZINJA:
-		pBodySkin = "default";
-		break;
-	case ZOMB_ZELE:
-		pBodySkin = "redbopp";
-		break;
-	case ZOMB_ZINVIS:
-		pBodySkin = "pinky";
-		break;
-	case ZOMB_ZEATER:
-		pBodySkin = "warpaint";
-		break;
-	case ZOMB_ZSHIELD:
-		pBodySkin = "brownkitty";
-		break;
-	case ZOMB_ZHEALER:
-		pBodySkin = "limekitty";
-		break;
-	case ZOMB_ZSPLITTER:
-		pBodySkin = "bluestripe";
-		break;
-	case ZOMB_SPIDER_BOSS:
-		pBodySkin = "pinky";
-		break;
-	case ZOMB_ZABY:
-	default:
-		pBodySkin = "saddo";
-		break;
-	}
-	str_copy(pPlayer->m_TeeInfos.m_aaSkinPartNames[1], pBodySkin, MAX_SKIN_ARRAY_SIZE);
-
-	if(pPlayer->GetZomb() == ZOMB_SPIDER_BOSS)
-	{
-		pPlayer->TryRespawn();
-		if(!pPlayer->GetCharacter())
-			m_TdSpiderBossPending = false;
-		return;
-	}
-
-	if(pPlayer->GetZomb() != ZOMB_NONE && GameServer()->BotEngine())
-		m_apZombieBots[CID] = new CZombieBot(GameServer()->BotEngine(), pPlayer, this);
-}
-
-void CGameController::TdRunZombieBrain(CPlayer *pP)
-{
-	const int CID = pP->GetCID();
-	if(!m_apZombieBots[CID] && GameServer()->BotEngine())
-		m_apZombieBots[CID] = new CZombieBot(GameServer()->BotEngine(), pP, this);
-	CZombieBot *pBot = m_apZombieBots[CID];
-	if(!pBot)
-		return;
-
-	pBot->Tick();
-	if(!m_apZombieBots[CID])
-		return;
-
-	CNetObj_PlayerInput Inp = pBot->Input();
-	pP->OnPredictedInput(&Inp);
-	pP->OnDirectInput(&Inp);
 }
 
 // activity
@@ -429,89 +320,9 @@ bool CGameController::CanCharacterPickup(CCharacter *pChr) const
 	return true;
 }
 
-void CGameController::TdClearZombieBot(int ClientID)
-{
-	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
-		return;
-	delete m_apZombieBots[ClientID];
-	m_apZombieBots[ClientID] = nullptr;
-}
-
-void CGameController::TdDestroySpiderBoss()
-{
-	if(m_pSpiderBoss)
-	{
-		delete m_pSpiderBoss;
-		m_pSpiderBoss = nullptr;
-	}
-	m_TdSpiderBossPending = false;
-	m_TdBossWave = false;
-}
-
-bool CGameController::TdHasSpiderBossPlayer() const
-{
-	const int Zombie0 = TdZombieFirstSlot(Config());
-	const int WorldID = GameServer()->GetWorldID();
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		const CPlayer *pP = GameServer()->m_apPlayers[i];
-		if(pP && pP->IsDummy() && pP->GetZomb() == ZOMB_SPIDER_BOSS && Server()->GetClientWorldID(i) == WorldID)
-			return true;
-	}
-	return false;
-}
-
-bool CGameController::IsSpiderBossCore(CCharacter *pChr) const
-{
-	const CPlayer *pPlayer = pChr ? pChr->GetPlayer() : nullptr;
-	if(!pPlayer || pPlayer->GetZomb() != ZOMB_SPIDER_BOSS)
-		return false;
-	return m_pSpiderBoss && m_pSpiderBoss->GetOwnerCid() == pPlayer->GetCID();
-}
-
 // event
 int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int Weapon)
 {
-	CPlayer *pVictimPlayer = pVictim->GetPlayer();
-	if(IsZombiePlayer(pVictimPlayer))
-	{
-		if(pVictimPlayer->IsEliminated())
-			return 0;
-
-		if(pKiller && !pKiller->IsDummy() && Weapon != WEAPON_GAME)
-		{
-			if(TWorldController *pCore = GameServer()->Core())
-			{
-				if(pCore->EnemyRegistry())
-					pCore->EnemyRegistry()->RollLoot(pKiller, pVictimPlayer->GetZomb());
-				pCore->Events().EmitPlayerKill(pKiller, pVictimPlayer->GetZomb());
-			}
-		}
-
-		if(pVictimPlayer->GetZomb() == ZOMB_SPIDER_BOSS)
-			TdDestroySpiderBoss();
-		else if(TWorldController *pCore = GameServer()->Core())
-		{
-			if(pCore->EnemyRegistry())
-				pCore->EnemyRegistry()->OnZombieDeath(this, pVictimPlayer);
-		}
-
-		pVictimPlayer->ForbidRespawn();
-		TdClearZombieBot(pVictimPlayer->GetCID());
-
-		if(m_TdZombLeft > 0)
-		{
-			m_TdZombLeft--;
-			if(m_TdZombLeft > 0)
-				TdDoZombMessage(m_TdZombLeft);
-		}
-
-		if(m_TdDummyRemoveLen < TD_REMOVE_QUEUE)
-			m_aTdDummyRemove[m_TdDummyRemoveLen++] = pVictimPlayer->GetCID();
-
-		return 0;
-	}
-
 	// update spectator modes for dead players in survival
 	for(int i = 0; i < MAX_CLIENTS; ++i)
 		if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->m_DeadSpecMode)
@@ -539,89 +350,11 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 	pChr->GiveWeapon(WEAPON_HAMMER, -1);
 	pChr->GiveWeapon(WEAPON_GUN, 10);
 
-	if(pChr->GetPlayer()->IsDummy())
-	{
-		const int Z = pChr->GetPlayer()->GetZomb();
-		int Health = TdZombieBaseHealth(m_TdWave);
-		if(Z == ZOMB_ZASTER)
-			Health = maximum(40, Health * 10);
-		if(Z == ZOMB_SPIDER_BOSS)
-			Health = maximum(100, m_TdWave * 20);
-		Health = maximum(1, (int)(Health * TdDifficultyHealthMul() + 0.5f));
-		if(TWorldController *pCore = GameServer()->Core())
-		{
-			if(pCore->EnemyRegistry())
-				Health = maximum(1, (int)(Health * pCore->EnemyRegistry()->GetHpMul(Z) + 0.5f));
-		}
-
-		if(Z == ZOMB_SPIDER_BOSS)
-			pChr->SetBossHealth(Health);
-		else
-			pChr->SetHealthDirect(Health);
-		pChr->GiveWeapon(WEAPON_HAMMER, -1);
-		pChr->GiveWeapon(WEAPON_GUN, -1);
-		pChr->GiveWeapon(WEAPON_SHOTGUN, -1);
-		pChr->GiveWeapon(WEAPON_GRENADE, -1);
-		pChr->GiveWeapon(WEAPON_LASER, -1);
-
-		switch(Z)
-		{
-		case ZOMB_ZUNNER:
-		case ZOMB_FLOMBIE:
-			pChr->SetWeapon(WEAPON_GUN);
-			break;
-		case ZOMB_ZOOKER:
-			pChr->SetWeapon(WEAPON_HAMMER);
-			break;
-		case ZOMB_ZOTTER:
-			pChr->SetWeapon(WEAPON_SHOTGUN);
-			break;
-		case ZOMB_ZENADE:
-			pChr->SetWeapon(WEAPON_GRENADE);
-			break;
-		case ZOMB_ZOOMER:
-			pChr->SetWeapon(WEAPON_LASER);
-			break;
-		case ZOMB_ZAMER:
-		case ZOMB_ZABY:
-		case ZOMB_ZASTER:
-		case ZOMB_ZINJA:
-		case ZOMB_ZELE:
-		case ZOMB_ZINVIS:
-		case ZOMB_ZEATER:
-		case ZOMB_ZSHIELD:
-		case ZOMB_ZHEALER:
-		case ZOMB_ZSPLITTER:
-			pChr->SetWeapon(WEAPON_HAMMER);
-			break;
-		case ZOMB_SPIDER_BOSS:
-			pChr->SetWeapon(WEAPON_GRENADE);
-			pChr->SetHitRadius(112.0f);
-			pChr->SyncSpiderBody(TdSnapSpawnToGround(pChr->GetPos(), 112.0f));
-			break;
-		default:
-			pChr->SetWeapon(WEAPON_HAMMER);
-			break;
-		}
-
-		if(Z == ZOMB_SPIDER_BOSS)
-		{
-			m_TdSpiderBossPending = false;
-			if(m_pSpiderBoss)
-			{
-				if(m_TdDummyRemoveLen < TD_REMOVE_QUEUE)
-					m_aTdDummyRemove[m_TdDummyRemoveLen++] = pChr->GetPlayer()->GetCID();
-				return;
-			}
-			m_pSpiderBoss = new CSpiderBoss(&GameServer()->m_World, pChr, this, m_TdWave);
-			TdBroadcastBossHealth();
-		}
-	}
-	else
-		pChr->SetHealthDirect(Config()->m_SvPlayerMaxHealth);
+	CPlayer *pPlayer = pChr->GetPlayer();
+	pChr->SetHealthDirect(Config()->m_SvPlayerMaxHealth);
 
 	// Apply max health bonus from cards equipped on armor (helm/chest/legs)
-	if(!pChr->GetPlayer()->IsDummy())
+	if(!pPlayer->IsDummy())
 	{
 		CItemHelper *pH = GameServer()->ItemHelper();
 		if(pH)
@@ -630,10 +363,10 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 			int TotalStacks = 0;
 			for(int a = 0; a < 3; a++)
 			{
-				const int ItemId = pChr->GetPlayer()->GetHolding(ArmorTypes[a]);
+				const int ItemId = pPlayer->GetHolding(ArmorTypes[a]);
 				if(ItemId <= 0)
 					continue;
-				const char *pExtra = pChr->GetPlayer()->GetExtraForItem(ItemId);
+				const char *pExtra = pPlayer->GetExtraForItem(ItemId);
 				TotalStacks += pH->GetEffectStacksFromExtra(pExtra, ITEM_CARD_MAX_HEALTH, "max_health_bonus");
 			}
 			if(TotalStacks > 0)
@@ -646,9 +379,9 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 	pChr->SetMaxHealth(pChr->GetHealth());
 
 	// Magazine parts on pickaxe/axe/sword increase spawn ammo
-	if(!pChr->GetPlayer()->IsDummy() && Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
+	if(!pPlayer->IsDummy() && Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->EffectRegistry())
 	{
-		CPlayer *pPl = pChr->GetPlayer();
+		CPlayer *pPl = pPlayer;
 		int AmmoBonus = 0;
 		const int ToolTypes[] = {ITYPE_PICKAXE, ITYPE_AXE, ITYPE_SWORD};
 		for(int t = 0; t < 3; t++)
@@ -671,24 +404,10 @@ void CGameController::OnCharacterSpawn(CCharacter *pChr)
 				pChr->AddWeaponAmmo(w, AmmoBonus);
 		}
 	}
-
-	if(IsZombiePlayer(pChr->GetPlayer()) && pChr->GetPlayer()->GetZomb() != ZOMB_SPIDER_BOSS)
-	{
-		const int Idx = pChr->GetPlayer()->GetZomb() - ZOMB_ZABY;
-		if(Idx >= 0 && Idx < NUM_TD_ZOMB && m_TdZombie[Idx] > 0)
-			m_TdZombie[Idx]--;
-	}
 }
 
 bool CGameController::OnEntity(int Index, vec2 Pos)
 {
-	if(Index == ENTITY_MAIN_TOWER)
-	{
-		m_pTower = new CTowerMain(&GameServer()->m_World, Pos);
-		TdRefreshTowerMaxHealth();
-		return true;
-	}
-
 	int Type = -1;
 	int CkItem = -1;
 
@@ -797,48 +516,40 @@ void CGameController::OnPlayerConnect(CPlayer *pPlayer)
 {
 	const int ClientID = pPlayer->GetCID();
 
-	if(!pPlayer->IsDummy())
+	if(!pPlayer->IsDummy() && !pPlayer->IsQuestNpc())
 	{
-		GameServer()->SendChatLoc(ClientID, "welcome", "Welcome to TeeDefense Archive");
 		GameServer()->EnforceSpectatorUntilLogin(pPlayer);
 
 		if(pPlayer->GetAccountId() < 0)
 		{
-			GameServer()->SendChatLoc(ClientID, "login.hint", u8"本服务器需要 MySQL 账号 — 使用 /register 或 /login");
-			GameServer()->SendBroadcastLoc(ClientID, "login.broadcast", u8"旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
+			GameServer()->SendChatLoc(ClientID, "login.hint", "本服务器需要 MySQL 账号 — 使用 /register 或 /login");
+			GameServer()->SendBroadcastLoc(ClientID, "login.broadcast", "旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
 			pPlayer->m_NextLoginHintTick = Server()->Tick() + Server()->TickSpeed() * 20;
-			GameServer()->SendChatAllLocF("game.join_spectator", u8"%s 以旁观者身份加入 — 请 /register 或 /login", Server()->ClientName(ClientID));
+			GameServer()->SendChatAllLocF("game.join_spectator", "%s 以旁观者身份加入 — 请 /register 或 /login", Server()->ClientName(ClientID));
 		}
 		else
 		{
 			GameServer()->EnterGame(ClientID);
 			GameServer()->SendCommunityInfo(ClientID);
-			GameServer()->SendChatAllLocF("game.join", "%s joined TeeDefense — defend the tower!", Server()->ClientName(ClientID));
 		}
 	}
 
 	if(pPlayer->GetAccountId() >= 0)
 		pPlayer->Respawn();
 
-	if(!IsZombiePlayer(pPlayer))
-	{
-		char aBuf[128];
-		str_format(aBuf, sizeof(aBuf), "team_join player='%d:%s' team=%d", ClientID, Server()->ClientName(ClientID), pPlayer->GetTeam());
-		GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
-	}
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "team_join player='%d:%s' team=%d", ClientID, Server()->ClientName(ClientID), pPlayer->GetTeam());
+	GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
 
 	SendGameInfo(ClientID);
 }
 
 void CGameController::OnPlayerDisconnect(CPlayer *pPlayer)
 {
-	if(IsZombiePlayer(pPlayer))
-		TdClearZombieBot(pPlayer->GetCID());
-
 	pPlayer->OnDisconnect();
 
 	int ClientID = pPlayer->GetCID();
-	if(Server()->ClientIngame(ClientID) && !IsZombiePlayer(pPlayer))
+	if(Server()->ClientIngame(ClientID))
 	{
 		char aBuf[128];
 		str_format(aBuf, sizeof(aBuf), "leave player='%d:%s'", ClientID, Server()->ClientName(ClientID));
@@ -868,27 +579,15 @@ void CGameController::Snap(int SnappingClient)
 	if(!pGameData)
 		return;
 
-	pGameData->m_GameStartTick = m_GameStartTick;
+	pGameData->m_GameStartTick = Server()->GetOffsetGameTime();
 	pGameData->m_GameStateFlags = 0;
-	pGameData->m_GameStateEndTick = 0; // no timer/infinite = 0, on end = GameEndTick, otherwise = GameStateEndTick
-	if(m_TdWarmup > 0)
-	{
-		pGameData->m_GameStateFlags |= GAMESTATEFLAG_WARMUP;
-		pGameData->m_GameStateEndTick = Server()->Tick() + m_TdWarmup;
-	}
+	pGameData->m_GameStateEndTick = 0;
 
 	CNetObj_GameDataPrediction *pGameDataPrediction = static_cast<CNetObj_GameDataPrediction *>(Server()->SnapNewItem(NETOBJTYPE_GAMEDATAPREDICTION, 0, sizeof(CNetObj_GameDataPrediction)));
 	if(!pGameDataPrediction)
 		return;
 
 	pGameDataPrediction->m_PredictionFlags = GAMEPREDICTIONFLAG_EVENT | GAMEPREDICTIONFLAG_INPUT;
-
-	if(m_pSpiderBoss && m_pSpiderBoss->IsCoreAlive())
-	{
-		ExtraHudSnapProgress(Server(), EXTRAHUD_SLOT_PRIMARY,
-			m_pSpiderBoss->GetCoreHealth(), m_pSpiderBoss->GetCoreMaxHealth(),
-			m_pSpiderBoss->GetLegsAlive());
-	}
 
 	// demo recording
 	if(SnappingClient == -1)
@@ -899,18 +598,9 @@ void CGameController::Snap(int SnappingClient)
 
 		pGameInfo->m_GameFlags = 0;
 		pGameInfo->m_TimeLimit = 0;
-		if(m_pTower)
-		{
-			pGameInfo->m_ScoreLimit = m_pTower->GetHealth();
-			pGameInfo->m_MatchNum = m_TdZombStart;
-			pGameInfo->m_MatchCurrent = m_TdZombLeft;
-		}
-		else
-		{
-			pGameInfo->m_ScoreLimit = 0;
-			pGameInfo->m_MatchNum = 0;
-			pGameInfo->m_MatchCurrent = 1;
-		}
+		pGameInfo->m_ScoreLimit = 0;
+		pGameInfo->m_MatchNum = 0;
+		pGameInfo->m_MatchCurrent = 1;
 	}
 }
 
@@ -933,8 +623,8 @@ void CGameController::TickLoginReminders()
 		if(Now < pP->m_NextLoginHintTick)
 			continue;
 
-		GameServer()->SendChatLoc(i, "login.hint", u8"本服务器需要 MySQL 账号 — 使用 /register 或 /login");
-		GameServer()->SendBroadcastLoc(i, "login.broadcast", u8"旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
+		GameServer()->SendChatLoc(i, "login.hint", "本服务器需要 MySQL 账号 — 使用 /register 或 /login");
+		GameServer()->SendBroadcastLoc(i, "login.broadcast", "旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
 		pP->m_NextLoginHintTick = Now + Server()->TickSpeed() * 25;
 	}
 }
@@ -943,51 +633,6 @@ void CGameController::Tick()
 {
 	TickLoginReminders();
 	DoActivityCheck();
-
-	for(int i = 0; i < m_TdDummyRemoveLen; i++)
-		Server()->DummyRemove(m_aTdDummyRemove[i]);
-	TdResetPendingRemoves();
-
-	if(m_TdGameOverTick != -1)
-	{
-		if(Server()->Tick() > m_TdGameOverTick + Server()->TickSpeed() * 5)
-			Server()->ChangeMap(Config()->m_SvMap);
-		return;
-	}
-
-	int Players = 0;
-	const int WorldID = GameServer()->GetWorldID();
-	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
-	{
-		if(!IsHumanDefenderInWorld(GameServer(), i, WorldID))
-			continue;
-		Players++;
-	}
-
-	if(Players >= 1 && m_TdWave == 0)
-		TdStartRound();
-
-	if(m_TdWave == 0)
-		return;
-
-	if(m_TdWarmup > 0)
-	{
-		if(m_TdWarmup % Server()->TickSpeed() == 0)
-		{
-			const int SecLeft = (m_TdWarmup + Server()->TickSpeed() - 1) / Server()->TickSpeed();
-			TdBroadcastGameInfo();
-		}
-		m_TdWarmup--;
-		if(m_TdWarmup == 0)
-			TdStartRound();
-		return;
-	}
-
-	if(m_pSpiderBoss && m_pSpiderBoss->IsCoreAlive() && Server()->Tick() % Server()->TickSpeed() == 0)
-		TdBroadcastBossHealth();
-
-	TdCheckZombie();
-	TdDoWincheck();
 }
 
 bool CGameController::IsFriendlyFire(int ClientID1, int ClientID2, int Damage) const
@@ -1029,47 +674,10 @@ void CGameController::SendGameInfo(int ClientID)
 	CNetMsg_Sv_GameInfo GameInfoMsg;
 	GameInfoMsg.m_GameFlags = 0;
 	GameInfoMsg.m_TimeLimit = 0;
-	if(m_pTower)
-	{
-		GameInfoMsg.m_ScoreLimit = m_pTower->GetHealth();
-		if(m_TdWarmup > 0)
-		{
-			GameInfoMsg.m_MatchNum = m_TdWave + 1;
-			GameInfoMsg.m_MatchCurrent = (m_TdWarmup + Server()->TickSpeed() - 1) / Server()->TickSpeed();
-		}
-		else
-		{
-			GameInfoMsg.m_MatchNum = m_TdZombStart;
-			GameInfoMsg.m_MatchCurrent = m_TdZombLeft;
-		}
-	}
-	else
-	{
-		GameInfoMsg.m_ScoreLimit = 0;
-		GameInfoMsg.m_MatchNum = 0;
-		GameInfoMsg.m_MatchCurrent = 1;
-	}
+	GameInfoMsg.m_ScoreLimit = 0;
+	GameInfoMsg.m_MatchNum = 0;
+	GameInfoMsg.m_MatchCurrent = 1;
 	Server()->SendPackMsg(&GameInfoMsg, MSGFLAG_VITAL | MSGFLAG_NORECORD, ClientID);
-}
-
-void CGameController::TdBroadcastGameInfo()
-{
-	for(int i = 0; i < MAX_CLIENTS; i++)
-	{
-		if(!GameServer()->m_apPlayers[i] || GameServer()->m_apPlayers[i]->IsDummy())
-			continue;
-		if(Server()->ClientIngame(i))
-			SendGameInfo(i);
-	}
-}
-
-void CGameController::TdBroadcastBossHealth()
-{
-	if(!m_pSpiderBoss || !m_pSpiderBoss->IsCoreAlive())
-		return;
-
-	GameServer()->SendBroadcastLocF(-1, "boss.spider.health_broadcast", u8"Boss 核心: %d / %d  腿: %d / 4",
-		m_pSpiderBoss->GetCoreHealth(), m_pSpiderBoss->GetCoreMaxHealth(), m_pSpiderBoss->GetLegsAlive());
 }
 
 // spawn
@@ -1246,7 +854,24 @@ void CGameController::DoTeamChange(CPlayer *pPlayer, int Team, bool DoChatMsg)
 	Msg.m_Team = Team;
 	Msg.m_Silent = DoChatMsg ? 0 : 1;
 	Msg.m_CooldownTick = pPlayer->m_TeamChangeTick;
-	Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, -1);
+	if(ClientID < VANILLA_MAX_CLIENTS)
+	{
+		Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, -1);
+	}
+	else
+	{
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			if(!Server()->ClientIngame(i))
+				continue;
+			const int DisplayID = GameServer()->ClientDisplaySlot(i, ClientID);
+			if(DisplayID < 0)
+				continue;
+			Msg.m_ClientID = DisplayID;
+			Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+			Msg.m_ClientID = ClientID;
+		}
+	}
 
 	if(!IsZombiePlayer(pPlayer))
 	{
@@ -1306,6 +931,8 @@ void CGameController::RegisterChatCommands(CCommandManager *pManager)
 	{
 		if(pCore->AccountManager())
 			pCore->AccountManager()->RegisterChatCommands(pManager);
+		if(pCore->DialogManager())
+			pCore->DialogManager()->RegisterChatCommands(pManager);
 		if(pCore->VoteMenuManager())
 			pCore->VoteMenuManager()->RegisterChatCommands(pManager);
 		if(pCore->CraftManager())
@@ -1325,12 +952,28 @@ void CGameController::RegisterChatCommands(CCommandManager *pManager)
 			pCore->QuestManager()->RegisterChatCommands(pManager);
 			pCore->QuestManager()->RegisterVoteCommands(pManager);
 		}
+		// Group/trade/friend commands available in ALL worlds
+		CGlobalState::RegisterGlobalGroupCommands(GameServer(), pManager);
+		CGlobalState::RegisterGlobalTradeCommands(GameServer(), pManager);
+		CGlobalState::RegisterGlobalFriendCommands(GameServer(), pManager);
+
+		if(pCore->GetMMOManager())
+		{
+			pCore->GetMMOManager()->RegisterMMOCommands(pManager);
+			pCore->GetMMOManager()->RegisterMMOVoteCommands(pManager);
+		}
 		if(pCore->AchievementManager())
 			pCore->AchievementManager()->RegisterVoteCommands(pManager);
 		if(pCore->DutiesManager())
 			pCore->DutiesManager()->RegisterVoteCommands(pManager);
 		if(pCore->DurabilityManager())
 			pCore->DurabilityManager()->RegisterVoteCommands(pManager);
+		if(pCore->ProfessionManager())
+			pCore->ProfessionManager()->RegisterChatCommands(pManager);
+		if(pCore->GuildManager())
+			pCore->GuildManager()->RegisterChatCommands(pManager);
+		if(pCore->GetDungeonManager())
+			pCore->GetDungeonManager()->RegisterChatCommands(pManager);
 	}
 }
 
@@ -1403,10 +1046,43 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 		ExplosionStacks = (pH && pSx) ? pH->GetCard(pSx, ITEM_CARD_EXPLOSION_ID) : 0;
 	}
 
+	// MMO: TRPG六维 → 武器伤害 + 装备武器攻击/差分
+	const CMMOItemDescription *pMMOWeapon = nullptr;
+	int WeaponEnchant = 0;
+	const SMMOWeaponProfile *pProf = nullptr;
+	if(pPl && !pPl->IsDummy())
+	{
+		if(Weapon == WEAPON_HAMMER)
+			ExtraDmg += pPl->GetEffectiveMeleeAttack();
+		else
+			ExtraDmg += pPl->GetEffectiveRangedAttack();
+
+		pMMOWeapon = GetActiveMMOWeaponDef(pChr, pPl, &WeaponEnchant);
+		if(pMMOWeapon)
+		{
+			ExtraDmg += pMMOWeapon->GetWeaponAttackBonus(WeaponEnchant);
+			ExtraDmg += pMMOWeapon->GetEngineWeaponDamageBonus(Weapon, WeaponEnchant);
+			if(pMMOWeapon->HasWeaponProfile())
+			{
+				pProf = &pMMOWeapon->GetWeaponProfile();
+				if(pProf->m_ForcePercent != 100)
+					MoreForce *= (float)pProf->m_ForcePercent / 100.f;
+			}
+		}
+	}
+
 	if(Server()->Tick() < pChr->m_RetaliationExpireTick && pChr->m_RetaliationStacks > 0)
 	{
 		const int WeaponDmg = g_pData->m_Weapons.m_aId[Weapon].m_Damage + ExtraDmg;
 		ExtraDmg += WeaponDmg * 15 * pChr->m_RetaliationStacks / 100;
+	}
+
+	// Shadow Step: next attack bonus (doubled)
+	if(pChr && pChr->m_ShadowNextCrit)
+	{
+		pChr->m_ShadowNextCrit = false;
+		const int BaseDmg = g_pData->m_Weapons.m_aId[Weapon].m_Damage + ExtraDmg;
+		ExtraDmg += BaseDmg; // effectively doubles damage
 	}
 
 	int ReloadTimer = 0;
@@ -1421,6 +1097,59 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 			}
 
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_HAMMER_FIRE);
+
+			if(pProf && pProf->m_FireStyle == EMMOFireStyle::HammerBlast)
+			{
+				const int HamVanilla = g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage;
+				const int HamPvp = RollWeaponDamage(HamVanilla + ExtraDmg, pProf);
+				const float BlastRadius = (float)pProf->m_HammerBlastRadius;
+				for(CGameWorld::TypeRange r = GameServer()->m_World.DoTypeRange(CGameWorld::ENTTYPE_CHARACTER); !r.empty(); r.pop_front())
+				{
+					CCharacter *pTarget = static_cast<CCharacter *>(r.front());
+					if(!MMOWeaponTargetValid(GameServer(), ClientID, pTarget))
+						continue;
+					if(distance(pTarget->GetPos(), ChrPos) >= BlastRadius)
+						continue;
+					GameServer()->m_World.CreateExplosion(pTarget->GetPos(), pChr, WEAPON_HAMMER, HamPvp);
+					ApplyWeaponLifesteal(pChr, HamPvp, pProf);
+				}
+				if(length(Direction) > 0.001f)
+					pChr->GetCore()->m_Vel += normalize(Direction) * 2.5f;
+				GameServer()->m_World.CreateExplosion(ChrPos, pChr, WEAPON_HAMMER, HamPvp);
+				ReloadTimer = Server()->TickSpeed() / 3;
+				break;
+			}
+
+			if(pProf && pProf->m_FireStyle == EMMOFireStyle::HammerLamp)
+			{
+				const int HamVanilla = g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage;
+				const int HamPvp = RollWeaponDamage(HamVanilla + ExtraDmg, pProf);
+				const float LampRadius = (float)pProf->m_HammerLampRadius;
+				array<CEntity *> lpEnts;
+				lpEnts.hint_size(16);
+				const int Num = GameServer()->m_World.FindEntities(ProjStartPos, LampRadius, lpEnts, CGameWorld::ENTTYPE_CHARACTER);
+				int Spawned = 0;
+				for(int i = 0; i < Num && Spawned < 16; ++i)
+				{
+					CCharacter *pTarget = static_cast<CCharacter *>(lpEnts[i]);
+					if(!MMOWeaponTargetValid(GameServer(), ClientID, pTarget))
+						continue;
+					if(GameServer()->Collision()->IntersectLineWithInvisible(ProjStartPos, pTarget->GetPos(), nullptr, nullptr))
+						continue;
+
+					vec2 Dir;
+					if(length(pTarget->GetPos() - ChrPos) > 0.0f)
+						Dir = normalize(pTarget->GetPos() - ChrPos);
+					else
+						Dir = vec2(0.f, -1.f);
+					const vec2 Force = vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f;
+
+					new CMMOHammerLampBolt(&GameServer()->m_World, ClientID, pTarget->GetCID(), ProjStartPos, Force, HamPvp);
+					Spawned++;
+				}
+				ReloadTimer = (int)(Server()->TickSpeed() * 1.4f);
+				break;
+			}
 
 			if(Electron > 0)
 			{
@@ -1464,19 +1193,19 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 						{
 							if(pPl->RepairDeployedTurret())
 							{
-								GameServer()->SendChatLoc(ClientID, "turret.hammer_repair.ok", u8"炮塔已修复。");
+								GameServer()->SendChatLoc(ClientID, "turret.hammer_repair.ok", "炮塔已修复。");
 								if(GameServer()->Accounts())
 									GameServer()->Accounts()->RequestSaveAccount(ClientID);
 							}
 							else
 							{
-								GameServer()->SendChatLoc(ClientID, "turret.hammer_repair.fail", u8"修复失败（材料不足或距离太远）。");
+								GameServer()->SendChatLoc(ClientID, "turret.hammer_repair.fail", "修复失败（材料不足或距离太远）。");
 							}
 						}
 						else
 						{
 							pPl->RecallTurret();
-							GameServer()->SendChatLoc(ClientID, "turret.hammer_recall.ok", u8"炮塔已收回。");
+							GameServer()->SendChatLoc(ClientID, "turret.hammer_recall.ok", "炮塔已收回。");
 						}
 						GameServer()->m_World.CreateSound(pChr->GetPos(), SOUND_PICKUP_ARMOR);
 						Hits++;
@@ -1554,10 +1283,11 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 					Dir = vec2(0.f, -1.f);
 
 				const int HamVanilla = g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage;
-				const int HamPvp = HamVanilla + ExtraDmg;
+				const int HamPvp = RollWeaponDamage(HamVanilla + ExtraDmg, pProf);
 
 				pTarget->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f * MoreForce, Dir * -1, HamPvp,
 					pChr, Weapon);
+				ApplyWeaponLifesteal(pChr, HamPvp, pProf);
 				for(int e = 0; e < ExplosionStacks; e++)
 				{
 					const int OffX = (random_int() % 401) - 200;
@@ -1575,63 +1305,183 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 
 		case WEAPON_GUN:
 		{
-			const int GunDmg = g_pData->m_Weapons.m_aId[WEAPON_GUN].m_Damage + ExtraDmg;
-			new CProjectile(&GameServer()->m_World, WEAPON_GUN,
-				ClientID,
-				ProjStartPos,
-				Direction,
-				(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_GunLifetime),
-				GunDmg, false, MoreForce, -1, WEAPON_GUN);
-
-			GameServer()->m_World.CreateSound(ChrPos, SOUND_GUN_FIRE);
+			const int GunDmg = RollWeaponDamage(g_pData->m_Weapons.m_aId[WEAPON_GUN].m_Damage + ExtraDmg, pProf);
+			const int LifeTicks = (int)(Server()->TickSpeed() * GameServer()->Tuning()->m_GunLifetime);
+			const int FanShots = pProf ? pProf->m_FanShots : 0;
+			const bool Pulse = pProf && pProf->m_Pulse && FanShots < 2;
+			const float PulseReach = pProf ? (float)pProf->m_PulseReach : 400.f;
+			const int HostLaser = pPl ? pPl->GetHolding(ITYPE_SWORD) : -1;
+			if(FanShots >= 2)
+			{
+				const float FanSpread = WeaponFanSpreadRadians(pProf);
+				const vec2 BaseDir = ApplyWeaponSpread(Direction, WeaponExtraSpread(pProf));
+				for(int i = 0; i < FanShots; i++)
+				{
+					const vec2 FireDir = WeaponFanDirection(BaseDir, i, FanShots, FanSpread);
+					SpawnDirectionalProjectile(&GameServer()->m_World, WEAPON_GUN, ClientID, ProjStartPos, FireDir,
+						LifeTicks, GunDmg, WeaponProfileExplosive(pProf, false), MoreForce, -1, pProf);
+				}
+			}
+			else
+			{
+				const int Shots = 1 + (pProf ? pProf->m_Multishot : 0);
+				for(int s = 0; s < Shots; s++)
+				{
+					vec2 FireDir = ApplyWeaponSpread(Direction, WeaponExtraSpread(pProf));
+					if(Shots > 1)
+					{
+						const float Offset = (s - (Shots - 1) * 0.5f) * 4.f * pi / 180.f;
+						const float a = angle(FireDir) + Offset;
+						FireDir = vec2(cosf(a), sinf(a));
+					}
+					if(Pulse)
+					{
+						new CLaser(&GameServer()->m_World, ChrPos, FireDir, PulseReach, ClientID, GunDmg, false, MoreForce, 0, HostLaser);
+						ApplyWeaponLifesteal(pChr, GunDmg, pProf);
+					}
+					else
+					{
+						SpawnDirectionalProjectile(&GameServer()->m_World, WEAPON_GUN, ClientID, ProjStartPos, FireDir,
+							LifeTicks, GunDmg, WeaponProfileExplosive(pProf, false), MoreForce, -1, pProf);
+					}
+				}
+			}
+			ApplyWeaponRecoil(pChr, Direction, pProf);
+			GameServer()->m_World.CreateSound(ChrPos, Pulse ? SOUND_LASER_FIRE : SOUND_GUN_FIRE);
 		}
 		break;
 
 		case WEAPON_SHOTGUN:
 		{
-			const int ShotgunDmg = g_pData->m_Weapons.m_aId[WEAPON_SHOTGUN].m_Damage + ExtraDmg;
-			int ShotSpread = 2;
+			const int ShotgunDmg = RollWeaponDamage(g_pData->m_Weapons.m_aId[WEAPON_SHOTGUN].m_Damage + ExtraDmg, pProf);
+			const int ExtraSpread = WeaponExtraSpread(pProf);
+			const int LifeTicks = (int)(Server()->TickSpeed() * GameServer()->Tuning()->m_ShotgunLifetime);
+			const int PelletCount = pProf ? pProf->m_ShotgunPelletCount : 0;
 
-			for(int i = -ShotSpread; i <= ShotSpread; ++i)
+			if(PelletCount > 0)
 			{
-				float Spreading[] = {-0.185f, -0.070f, 0, 0.070f, 0.185f};
-				float a = angle(Direction);
-				a += Spreading[i + 2];
-				float v = 1 - (absolute(i) / (float) ShotSpread);
-				float Speed = mix((float) GameServer()->Tuning()->m_ShotgunSpeeddiff, 1.0f, v);
-				new CProjectile(&GameServer()->m_World, WEAPON_SHOTGUN,
-					ClientID,
-					ProjStartPos,
-					vec2(cosf(a), sinf(a)) * Speed,
-					(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_ShotgunLifetime),
-					ShotgunDmg, false, MoreForce, -1, WEAPON_SHOTGUN);
+				const vec2 BaseDir = ApplyWeaponSpread(Direction, ExtraSpread);
+				for(int i = 0; i < PelletCount; i++)
+				{
+					const float SpreadAngle = (0.0058945f * (9.0f * PelletCount) / 2.0f) - (0.0058945f * (9.0f * i));
+					const float a = angle(BaseDir) + SpreadAngle;
+					const float Speed = (float)GameServer()->Tuning()->m_ShotgunSpeeddiff + random_float() * 0.2f;
+					SpawnDirectionalProjectile(&GameServer()->m_World, WEAPON_SHOTGUN, ClientID, ProjStartPos,
+						vec2(cosf(a), sinf(a)) * Speed, LifeTicks, ShotgunDmg,
+						WeaponProfileExplosive(pProf, false), MoreForce, -1, pProf);
+				}
+			}
+			else
+			{
+				int ShotSpread = clamp(2 + (pProf ? pProf->m_ShotgunPelletsAdd : 0), 1, 4);
+				for(int i = -ShotSpread; i <= ShotSpread; ++i)
+				{
+					float a = angle(Direction);
+					if(ShotSpread > 0)
+						a += (i / (float)ShotSpread) * 0.185f;
+					if(ExtraSpread > 0)
+					{
+						const float SpreadRad = ExtraSpread * pi / 180.f;
+						a += (random_int() % 2001 - 1000) / 1000.f * SpreadRad;
+					}
+					float v = 1 - (absolute(i) / (float)maximum(1, ShotSpread));
+					float Speed = mix((float) GameServer()->Tuning()->m_ShotgunSpeeddiff, 1.0f, v);
+					SpawnDirectionalProjectile(&GameServer()->m_World, WEAPON_SHOTGUN, ClientID, ProjStartPos,
+						vec2(cosf(a), sinf(a)) * Speed, LifeTicks, ShotgunDmg,
+						WeaponProfileExplosive(pProf, false), MoreForce, -1, pProf);
+				}
 			}
 
+			ApplyWeaponRecoil(pChr, Direction, pProf);
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_SHOTGUN_FIRE);
 		}
 		break;
 
 		case WEAPON_GRENADE:
 		{
-			const int GrenadeDmg = g_pData->m_Weapons.m_aId[WEAPON_GRENADE].m_Damage + ExtraDmg;
-			new CProjectile(&GameServer()->m_World, WEAPON_GRENADE,
-				ClientID,
-				ProjStartPos,
-				Direction,
-				(int) (Server()->TickSpeed() * GameServer()->Tuning()->m_GrenadeLifetime),
-				GrenadeDmg, true, MoreForce, SOUND_GRENADE_EXPLODE, WEAPON_GRENADE);
-
+			const int GrenadeDmg = RollWeaponDamage(g_pData->m_Weapons.m_aId[WEAPON_GRENADE].m_Damage + ExtraDmg, pProf);
+			if(pProf && pProf->m_FireStyle == EMMOFireStyle::HomingGrenade)
+			{
+				const vec2 FireDir = ApplyWeaponSpread(Direction, WeaponExtraSpread(pProf));
+				new CMMOHomingGrenade(&GameServer()->m_World, ClientID, ProjStartPos, FireDir, GrenadeDmg, (float)pProf->m_HomingGrenadeSpeed);
+				ApplyWeaponRecoil(pChr, Direction, pProf);
+				GameServer()->m_World.CreateSound(ChrPos, SOUND_GRENADE_FIRE);
+				break;
+			}
+			const int FanShots = pProf ? pProf->m_FanShots : 0;
+			if(FanShots >= 2)
+			{
+				const float FanSpread = WeaponFanSpreadRadians(pProf);
+				const int LifePct = (pProf && pProf->m_GrenadeSalvoLifetimePercent > 0)
+					? pProf->m_GrenadeSalvoLifetimePercent : 80;
+				const int LifeTicks = (int)(Server()->TickSpeed() * GameServer()->Tuning()->m_GrenadeLifetime * LifePct / 100.f);
+				const vec2 BaseDir = ApplyWeaponSpread(Direction, WeaponExtraSpread(pProf));
+				for(int i = 0; i < FanShots; i++)
+				{
+					const float Center = (FanShots - 1) * 0.5f;
+					const float FanIdx = i - Center;
+					const float a = angle(BaseDir) + FanIdx * FanSpread;
+					const vec2 FireDir = vec2(cosf(a), sinf(a)) * (1.0f - absolute(FanIdx) * 0.1f);
+					SpawnDirectionalProjectile(&GameServer()->m_World, WEAPON_GRENADE, ClientID, ProjStartPos, FireDir,
+						LifeTicks, GrenadeDmg, WeaponProfileExplosive(pProf, true), MoreForce, SOUND_GRENADE_EXPLODE, pProf);
+				}
+			}
+			else
+			{
+				const vec2 FireDir = ApplyWeaponSpread(Direction, WeaponExtraSpread(pProf));
+				const int LifeTicks = (int)(Server()->TickSpeed() * GameServer()->Tuning()->m_GrenadeLifetime);
+				SpawnDirectionalProjectile(&GameServer()->m_World, WEAPON_GRENADE, ClientID, ProjStartPos, FireDir,
+					LifeTicks, GrenadeDmg, WeaponProfileExplosive(pProf, true), MoreForce, SOUND_GRENADE_EXPLODE, pProf);
+			}
+			ApplyWeaponRecoil(pChr, Direction, pProf);
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_GRENADE_FIRE);
 		}
 		break;
 
 		case WEAPON_LASER:
 		{
-			const int LaserDmg = g_pData->m_Weapons.m_aId[WEAPON_LASER].m_Damage + ExtraDmg;
+			const int LaserDmg = RollWeaponDamage(g_pData->m_Weapons.m_aId[WEAPON_LASER].m_Damage + ExtraDmg, pProf);
+			const vec2 BaseDir = ApplyWeaponSpread(Direction, WeaponExtraSpread(pProf));
+			if(pProf && pProf->m_FireStyle != EMMOFireStyle::Default)
+			{
+				bool HandledFireStyle = false;
+				if(pProf->m_FireStyle == EMMOFireStyle::MagneticPulse)
+				{
+					new CMMOMagneticPulse(&GameServer()->m_World, ClientID, (float)pProf->m_MagneticRadius, ProjStartPos, BaseDir);
+					HandledFireStyle = true;
+				}
+				else if(pProf->m_FireStyle == EMMOFireStyle::WallPusher)
+				{
+					const int LifeTicks = pProf->m_WallPusherLifeTicks > 0 ? pProf->m_WallPusherLifeTicks : Server()->TickSpeed() * 5;
+					new CMMOWallPusher(&GameServer()->m_World, ClientID, ProjStartPos, BaseDir, LifeTicks, LaserDmg);
+					HandledFireStyle = true;
+				}
+				else if(pProf->m_FireStyle == EMMOFireStyle::TeslaChain)
+				{
+					const float Falloff = pProf->m_TeslaDamageFalloff / 100.f;
+					new CMMOTeslaChain(&GameServer()->m_World, ClientID, ProjStartPos, BaseDir, LaserDmg,
+						(float)pProf->m_TeslaChainRange, pProf->m_TeslaChainTargets, Falloff);
+					HandledFireStyle = true;
+				}
+				else if(pProf->m_FireStyle == EMMOFireStyle::TrackedPlasma)
+				{
+					new CMMOTrackedPlasma(&GameServer()->m_World, ClientID, ProjStartPos, BaseDir, LaserDmg,
+						(float)pProf->m_TrackedPlasmaSpeedMin, (float)pProf->m_TrackedPlasmaSpeedMax);
+					HandledFireStyle = true;
+				}
+				if(HandledFireStyle)
+				{
+					ApplyWeaponRecoil(pChr, Direction, pProf);
+					GameServer()->m_World.CreateSound(ChrPos, SOUND_LASER_FIRE);
+					break;
+				}
+			}
+			const int FanShots = pProf ? pProf->m_FanShots : 0;
+			const float LaserReach = WeaponLaserReach(GameServer()->Tuning(), pProf);
 			if(Electron > 0)
 			{
-				vec2 Start = ChrPos + Direction * 50.f;
-				float a = angle(Direction);
+				vec2 Start = ChrPos + BaseDir * 50.f;
+				float a = angle(BaseDir);
 				vec2 To = ChrPos + vec2(cosf(a), sinf(a)) * 400.f;
 				GameServer()->Collision()->IntersectLine(Start, To, 0x0, &To);
 				vec2 At;
@@ -1639,14 +1489,28 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 				if(pHit)
 				{
 					To = pHit->GetPos();
-					pHit->TakeHit(Direction, Direction * -1, LaserDmg, pChr, WEAPON_LASER);
+					pHit->TakeHit(BaseDir, BaseDir * -1, LaserDmg, pChr, WEAPON_LASER);
+					ApplyWeaponLifesteal(pChr, LaserDmg, pProf);
 				}
 				int Segments = distance(Start, To) / 100;
 				Segments = clamp(Segments, 2, 4);
 				new CElectro(&GameServer()->m_World, Start, To, vec2(cosf(a * 1.2f), sinf(a * 1.2f)) * 40.f, Segments);
 			}
 			const int HostLaser = pPl ? pPl->GetHolding(ITYPE_SWORD) : -1;
-			new CLaser(&GameServer()->m_World, ChrPos, Direction, GameServer()->Tuning()->m_LaserReach, ClientID, LaserDmg, false, MoreForce, 0, HostLaser);
+			if(FanShots >= 2)
+			{
+				const float FanSpread = WeaponFanSpreadRadians(pProf);
+				for(int i = 0; i < FanShots; i++)
+				{
+					const vec2 FireDir = WeaponFanDirection(BaseDir, i, FanShots, FanSpread);
+					new CLaser(&GameServer()->m_World, ChrPos, FireDir, LaserReach, ClientID, LaserDmg, false, MoreForce, 0, HostLaser);
+				}
+			}
+			else
+			{
+				new CLaser(&GameServer()->m_World, ChrPos, BaseDir, LaserReach, ClientID, LaserDmg, false, MoreForce, 0, HostLaser);
+			}
+			ApplyWeaponRecoil(pChr, Direction, pProf);
 			GameServer()->m_World.CreateSound(ChrPos, SOUND_LASER_FIRE);
 		}
 		break;
@@ -1689,6 +1553,16 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 	if(!ReloadTimer)
 		ReloadTimer = maximum(0, g_pData->m_Weapons.m_aId[Weapon].m_Firedelay * Server()->TickSpeed() / 1000 - LessReload);
 
+	if(pProf && pProf->m_ReloadPercent != 100 && ReloadTimer > 0)
+		ReloadTimer = maximum(1, ReloadTimer * pProf->m_ReloadPercent / 100);
+
+	if(pPl && !pPl->IsDummy() && ReloadTimer > 0)
+	{
+		const int AttackSpd = EffectiveAttackSpeedPercent(pPl, pMMOWeapon, WeaponEnchant);
+		if(AttackSpd != 100)
+			ReloadTimer = maximum(1, ReloadTimer * 100 / AttackSpd);
+	}
+
 	return ReloadTimer;
 }
 
@@ -1698,427 +1572,3 @@ void CGameController::NotifyPlayerConnected(CPlayer *pPlayer)
 		++m_RealPlayerNum;
 }
 
-void CGameController::TdResetPendingRemoves()
-{
-	m_TdDummyRemoveLen = 0;
-	mem_zero(m_aTdDummyRemove, sizeof(m_aTdDummyRemove));
-}
-
-void CGameController::TdDoWarmup(int Seconds)
-{
-	m_TdWarmup = Seconds * Server()->TickSpeed();
-}
-
-bool CGameController::TdSkipWarmup()
-{
-	if(m_TdWarmup <= 0)
-		return false;
-
-	m_TdWarmup = 0;
-	if(m_TdWave > 0 && m_TdGameOverTick == -1)
-		TdStartRound();
-	TdBroadcastGameInfo();
-	return true;
-}
-
-void CGameController::TdPurgeZombieDummies()
-{
-	const int Zombie0 = TdZombieFirstSlot(Config());
-	const int WorldID = GameServer()->GetWorldID();
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		if(Server()->GetClientWorldID(i) != WorldID)
-			continue;
-		if(Server()->IsClientSlotEmpty(i))
-			continue;
-		CPlayer *pP = GameServer()->m_apPlayers[i];
-		if(pP && pP->IsQuestNpc())
-			continue;
-		if(pP && !pP->IsDummy())
-			continue;
-		if(pP && !IsZombiePlayer(pP))
-			continue;
-		Server()->DummyRemove(i);
-	}
-}
-
-void CGameController::TdStartRound()
-{
-	m_TdGameOverTick = -1;
-	TdDestroySpiderBoss();
-	TdPurgeZombieDummies();
-
-	m_TdWave++;
-	TdStartWave(m_TdWave);
-}
-
-void CGameController::TdEndRound()
-{
-	m_TdGameOverTick = Server()->Tick();
-	m_TdWave = 0;
-	mem_zero(m_TdZombie, sizeof(m_TdZombie));
-	TdDestroySpiderBoss();
-	TdPurgeZombieDummies();
-
-	GameServer()->SendChatAllLoc("game.tower_destroyed", "The tower was destroyed! Game over — map will reload.");
-	TdBroadcastGameInfo();
-}
-
-void CGameController::TdDoWincheck()
-{
-	if(!m_pTower)
-		return;
-	if(m_TdGameOverTick != -1)
-		return;
-	if(m_TdWarmup)
-		return;
-	if(m_pTower->GetHealth() <= 0)
-		TdEndRound();
-}
-
-void CGameController::TdStartWave(int Wave)
-{
-	if(!Wave)
-		return;
-
-	m_TdWave = Wave;
-	mem_zero(m_TdZombie, sizeof(m_TdZombie));
-	m_TdBossWave = false;
-	if(Wave % 10 == 0)
-	{
-		m_TdBossWave = true;
-		m_TdZombLeft = 1;
-		GameServer()->SendChatAllLocF("boss.spider.wave", u8"⚠ 第 %d 波 — 蜘蛛机器人 Boss 来袭！", Wave);
-		GameServer()->SendBroadcastLocF(-1, "boss.spider.broadcast", u8"Boss 战：摧毁核心（巨额伤害）或打断四条腿！");
-	}
-	else if(Wave == 1)
-		m_TdZombie[0] = 10;
-	else if(Wave == 2)
-		m_TdZombie[0] = 25;
-	else
-		TdSetWaveAlg(Wave % 3, Wave / 3, Wave);
-
-	if(TWorldController *pCore = GameServer()->Core())
-	{
-		if(pCore->EnemyRegistry())
-			pCore->EnemyRegistry()->ApplyWaveBoost(this, Wave);
-	}
-
-	if(!m_TdBossWave)
-	{
-		TdApplyDifficultyToZombieCounts();
-		m_TdZombLeft = 0;
-		for(unsigned i = 0; i < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); i++)
-			m_TdZombLeft += m_TdZombie[i];
-		if(m_TdZombLeft <= 0)
-		{
-			m_TdZombie[0] = maximum(5, Wave / 2);
-			m_TdZombLeft = m_TdZombie[0];
-		}
-	}
-
-	m_TdZombStart = m_TdZombLeft;
-	if(!m_TdBossWave)
-		GameServer()->SendChatAllLocF("game.wave_start", "Wave %d started — %d zombies!", m_TdWave, m_TdZombLeft);
-	TdBroadcastGameInfo();
-
-	if(m_TdBossWave)
-		TdTrySpawnSpiderBoss();
-}
-
-void CGameController::TdTrySpawnSpiderBoss()
-{
-	if(!m_TdBossWave || m_pSpiderBoss || m_TdSpiderBossPending || TdHasSpiderBossPlayer())
-		return;
-
-	vec2 SpawnPos;
-	if(!CanSpawn(GetDummyTeam(), &SpawnPos))
-		return;
-
-	const int Zombie0 = TdZombieFirstSlot(Config());
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		if(GameServer()->m_apPlayers[i])
-			continue;
-		if(!Server()->IsClientSlotEmpty(i))
-			continue;
-
-		m_TdPendingZomb = ZOMB_SPIDER_BOSS;
-		m_TdSpiderBossPending = true;
-		Server()->DummyJoin(i, "Spider", GameServer()->GetWorldID());
-		return;
-	}
-}
-
-void CGameController::TdCheckZombie()
-{
-	if(m_TdWarmup || !m_TdWave || m_TdGameOverTick != -1)
-		return;
-
-	if(m_TdBossWave)
-		TdTrySpawnSpiderBoss();
-
-	if(TdEndWave())
-		return;
-
-	if(m_TdBossWave)
-		return;
-
-	const int ConcurrentCap = maximum(1, (int)TD_MAX_ACTIVE_ZOMBIES);
-	if(TdCountZombiePopulation() >= ConcurrentCap)
-		return;
-
-	vec2 SpawnPos;
-	if(!CanSpawn(GetDummyTeam(), &SpawnPos))
-		return;
-
-	const int Zombie0 = TdZombieFirstSlot(Config());
-
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		if(GameServer()->m_apPlayers[i])
-			continue;
-		if(!Server()->IsClientSlotEmpty(i))
-			continue;
-
-		const int Random = TdRandZomb();
-		if(Random < 0)
-			break;
-
-		m_TdPendingZomb = Random + 1;
-
-		char aName[16];
-		str_format(aName, sizeof(aName), "z%d", i);
-		Server()->DummyJoin(i, aName, GameServer()->GetWorldID());
-		break;
-	}
-}
-
-int CGameController::TdCountZombiePopulation() const
-{
-	int Count = 0;
-	const int Zombie0 = TdZombieFirstSlot(Config());
-	const int WorldID = GameServer()->GetWorldID();
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		CPlayer *pP = GameServer()->m_apPlayers[i];
-		if(!IsZombiePlayer(pP))
-			continue;
-		if(Server()->GetClientWorldID(i) != WorldID)
-			continue;
-		Count++;
-	}
-	return Count;
-}
-
-void CGameController::TdAddZombiePool(int ZombType, int Count)
-{
-	if(Count <= 0 || ZombType < ZOMB_ZABY || ZombType == ZOMB_SPIDER_BOSS)
-		return;
-	const int Idx = ZombType - ZOMB_ZABY;
-	if(Idx < 0 || Idx >= NUM_TD_ZOMB)
-		return;
-	m_TdZombie[Idx] += Count;
-	m_TdZombLeft += Count;
-}
-
-int CGameController::TdRandZomb()
-{
-	const int size = (int)(sizeof(m_TdZombie) / sizeof(m_TdZombie[0]));
-	int Rand = rand() % size;
-	int Attempts = Config()->m_SvMaxZombieSpawn;
-	while(!m_TdZombie[Rand])
-	{
-		Rand = rand() % size;
-		Attempts--;
-		if(!Attempts)
-			return -1;
-	}
-	return Rand;
-}
-
-bool CGameController::TdIsWaveCleared() const
-{
-	int PlayerCount = 0;
-	for(int k = 0; k < MAX_HUMAN_CLIENTS; k++)
-	{
-		if(GameServer()->m_apPlayers[k])
-		{
-			PlayerCount++;
-			break;
-		}
-	}
-
-	if(!PlayerCount)
-		return true;
-
-	if(m_TdBossWave && m_TdZombLeft > 0)
-		return false;
-
-	for(unsigned j = 0; j < sizeof(m_TdZombie) / sizeof(m_TdZombie[0]); j++)
-	{
-		if(m_TdZombie[j])
-			return false;
-	}
-
-	const int Zombie0 = TdZombieFirstSlot(Config());
-	const int WorldID = GameServer()->GetWorldID();
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		CPlayer *pP = GameServer()->m_apPlayers[i];
-		if(!IsZombiePlayer(pP))
-			continue;
-		if(Server()->GetClientWorldID(i) != WorldID)
-			continue;
-		if(!pP->IsEliminated())
-			return false;
-	}
-
-	return true;
-}
-
-bool CGameController::TdEndWave()
-{
-	if(!TdIsWaveCleared())
-		return false;
-
-	int PlayerCount = 0;
-	for(int k = 0; k < MAX_HUMAN_CLIENTS; k++)
-	{
-		if(GameServer()->m_apPlayers[k])
-		{
-			PlayerCount++;
-			break;
-		}
-	}
-
-	if(!PlayerCount)
-	{
-		TdPurgeZombieDummies();
-		m_TdWave = 0;
-		return true;
-	}
-
-	const int NextBreak = Config()->m_SvZombWarmup + 5 * m_TdWave;
-	GameServer()->SendChatAllLocF("game.wave_cleared", "Wave %d cleared! Break: %d s — prepare for wave %d.", m_TdWave, NextBreak, m_TdWave + 1);
-
-	if(Config()->m_SvTdWaveScoreBonus)
-	{
-		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
-		{
-			CPlayer *pP = GameServer()->m_apPlayers[i];
-			if(!pP || pP->GetTeam() != TEAM_RED || pP->IsDummy())
-				continue;
-			pP->m_Score += m_TdWave;
-		}
-		GameServer()->SendChatAllLocF("game.wave_score_bonus", "Defenders gain %d score for clearing the wave.", m_TdWave);
-	}
-
-	if(m_TdWave % 5 == 0)
-	{
-		GameServer()->SendChatAllLocF("community.broadcast",
-			u8"加群 %d · 赞助 QQ %d — 输入 /community 查看",
-			Config()->m_SvTdQQGroup, Config()->m_SvTdQQSponsor);
-	}
-
-	TdDoWarmup(NextBreak);
-	TdBroadcastGameInfo();
-	if(TWorldController *pCore = GameServer()->Core())
-		pCore->Events().EmitWaveComplete(m_TdWave);
-	return true;
-}
-
-void CGameController::TdDoZombMessage(int Left)
-{
-	if(Left > 1 && (Left <= 5 || !(Left % 10)))
-		GameServer()->SendChatAllLocF("game.wave_left", "Wave %d: %d zombies left", m_TdWave, Left);
-	else if(Left == 1)
-		GameServer()->SendChatAllLocF("game.wave_one_left", "Wave %d: 1 zombie left", m_TdWave);
-}
-
-int CGameController::TdZombieBaseHealth(int Wave)
-{
-	if(Wave <= 0)
-		return 1;
-	return maximum(1, 1 + (Wave - 1) / 5);
-}
-
-void CGameController::TdSetWaveAlg(int Modulus, int WaveThird, int Wave)
-{
-	if(WaveThird > 11)
-	{
-		for(int i = 0; i < NUM_TD_ZOMB; i++)
-			m_TdZombie[i] = Wave + 10;
-		return;
-	}
-
-	if(!Modulus)
-	{
-		m_TdZombie[TdGetZombieOrder(WaveThird)] = 10;
-	}
-	else if(Modulus == 1)
-	{
-		m_TdZombie[TdGetZombieOrder(WaveThird)] = 20;
-	}
-	else if(Modulus == 2)
-	{
-		for(int i = 0; i <= WaveThird; i++)
-			m_TdZombie[TdGetZombieOrder(i)] = Wave;
-	}
-}
-
-int CGameController::TdGetZombieOrder(int WaveThird)
-{
-	return WaveThird % NUM_TD_ZOMB;
-}
-
-void CGameController::TdSetWave(int Wave)
-{
-	m_TdWave = maximum(1, Wave);
-}
-
-void CGameController::TdSetTowerHealth(int Health)
-{
-	if(!m_pTower)
-		return;
-	m_pTower->SetHealth(clamp(Health, 1, TdGetDifficultyTowerMaxHealth()));
-}
-
-void CGameController::ConTdSetDifficulty(IConsole::IResult *pResult, void *pUser)
-{
-	CGameContext *pGameServer = static_cast<CGameContext *>(pUser);
-	CGameController *pCtrl = static_cast<CGameController *>(pGameServer->m_pController);
-	if(!pCtrl->TdSetDifficulty(pResult->GetInteger(0)))
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "td", "cannot change difficulty (only before wave 1)");
-}
-
-void CGameController::ConTdSetWave(IConsole::IResult *pResult, void *pUser)
-{
-	CGameContext *pGameServer = static_cast<CGameContext *>(pUser);
-	static_cast<CGameController *>(pGameServer->m_pController)->TdSetWave(pResult->GetInteger(0));
-}
-
-void CGameController::ConTdSetTowerHealth(IConsole::IResult *pResult, void *pUser)
-{
-	CGameContext *pGameServer = static_cast<CGameContext *>(pUser);
-	static_cast<CGameController *>(pGameServer->m_pController)->TdSetTowerHealth(pResult->GetInteger(0));
-}
-
-void CGameController::ConTdSkipWarmup(IConsole::IResult *pResult, void *pUser)
-{
-	(void)pResult;
-	CGameContext *pGameServer = static_cast<CGameContext *>(pUser);
-	CGameController *pCtrl = static_cast<CGameController *>(pGameServer->m_pController);
-	if(!pCtrl->TdSkipWarmup())
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "td", "no warmup in progress");
-	else
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "td", "warmup skipped — next wave started");
-}
-
-void CGameController::RegisterTeeDefenseConsoleCommands(CGameContext *pCtx)
-{
-	pCtx->Console()->Register("td_set_wave", "i[wave]", CFGFLAG_SERVER, ConTdSetWave, pCtx, "Set next TeeDefense wave number");
-	pCtx->Console()->Register("td_set_tower_health", "i[health]", CFGFLAG_SERVER, ConTdSetTowerHealth, pCtx, "Set main tower current health");
-	pCtx->Console()->Register("td_set_difficulty", "i[0-2]", CFGFLAG_SERVER, ConTdSetDifficulty, pCtx, "Set difficulty: 0=easy 1=normal 2=hard (before wave 1)");
-	pCtx->Console()->Register("td_skip_warmup", "", CFGFLAG_SERVER, ConTdSkipWarmup, pCtx, "Skip inter-wave warmup and start the next wave immediately");
-}

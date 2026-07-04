@@ -39,6 +39,7 @@ public:
 
 protected:
 	friend class TWorldController;
+	friend class CVoteMenuManager;
 
 	CGameContext *m_GameServer;
 	IServer *m_pServer;
@@ -63,7 +64,8 @@ protected:
 	virtual void OnClientReset(int ClientID) {}
 	virtual void OnPlayerLogin(CPlayer *pPlayer) {}
 	virtual void OnCharacterSpawn(CPlayer *pPlayer) {}
-	virtual bool OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs) { (void)pPlayer; (void)pCmd; (void)pArgs; return false; }
+	virtual bool OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason) { (void)pPlayer; (void)pCmd; (void)pArgs; (void)ReasonNumber; (void)pReason; return false; }
+	virtual bool OnVoteMenuPage(int ClientID, int Page) { (void)ClientID; (void)Page; return false; }
 };
 
 #endif

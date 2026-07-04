@@ -27,6 +27,7 @@ public:
 
 	void RegisterVoteCommands(CCommandManager *pMgr);
 	void BuildTraitVotePage(int ClientID);
+	bool OnVoteMenuPage(int ClientID, int Page) override;
 	bool SelectTrait(CPlayer *pPlayer, const char *pTraitId);
 
 	const char *GetPlayerTrait(int ClientID) const;

@@ -1,0 +1,13 @@
+{
+    "effects": "server_content/td/effects.json",
+    "enemies": "server_content/td/enemies.json",
+    "items": "server_content/td/items/index.json",
+    "skills": "server_content/skills.json",
+    "traits": "server_content/traits.json",
+    "portals": "server_content/portals.json",
+    "quests": "server_content/quests.json",
+    "npcs": "server_content/npcs.json",
+    "achievements": "server_content/achievements.json",
+    "duties": "server_content/duties.json",
+    "mmo": "server_content/mmo/"
+}

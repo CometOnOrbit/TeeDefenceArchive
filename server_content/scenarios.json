@@ -1,0 +1,20 @@
+{"scenarios":[
+  {
+    "id": 1,
+    "name": "哥布林洞穴",
+    "spawn_points": [
+      { "world_id": 0, "x": 400, "y": 400 }
+    ],
+    "waves": [
+      { "wave_number": 1, "bot_id": 1, "count": 3, "spawn_delay": 60, "spawn_x": 400, "spawn_y": 300 },
+      { "wave_number": 2, "bot_id": 1, "count": 5, "spawn_delay": 45, "spawn_x": 450, "spawn_y": 350 }
+    ],
+    "objectives": [
+      { "type": 0, "target_id": 1, "count": 8, "description": "击败哥布林 %%d/%%d" }
+    ],
+    "reward": {
+      "gold": 100,
+      "items": []
+    }
+  }
+]}

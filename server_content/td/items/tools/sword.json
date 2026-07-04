@@ -1,0 +1,99 @@
+{
+  "item": {
+    "type": 2,
+    "multiple": [
+      {
+        "id": 8,
+        "name": "木剑",
+        "desc": "一把木头做的剑。",
+        "damage": 2,
+        "proba": 90,
+        "capacity": 0,
+        "max": 0,
+        "formula": {
+          "Log": 25
+        },
+        "name_key": "$td.item.8.name",
+        "description_key": "$td.item.8.desc"
+      },
+      {
+        "id": 11,
+        "name": "铁剑",
+        "desc": "一把铁做的剑。",
+        "damage": 5,
+        "proba": 90,
+        "capacity": 30,
+        "max": 0,
+        "formula": {
+          "Log": 220,
+          "Iron": 25
+        },
+        "name_key": "$td.item.11.name",
+        "description_key": "$td.item.11.desc"
+      },
+      {
+        "id": 16,
+        "name": "金剑",
+        "desc": "一把金子做的剑。",
+        "damage": 10,
+        "proba": 90,
+        "capacity": 35,
+        "max": 0,
+        "formula": {
+          "Log": 500,
+          "Golden": 25
+        },
+        "name_key": "$td.item.16.name",
+        "description_key": "$td.item.16.desc"
+      },
+      {
+        "id": 19,
+        "name": "钻石剑",
+        "desc": "一把钻石做的剑。",
+        "damage": 50,
+        "proba": 80,
+        "capacity": 50,
+        "max": 0,
+        "formula": {
+          "Log": 700,
+          "Diamond": 25
+        },
+        "name_key": "$td.item.19.name",
+        "description_key": "$td.item.19.desc"
+      },
+      {
+        "id": 22,
+        "name": "能量剑",
+        "desc": "一把能量做的剑。",
+        "damage": 100,
+        "proba": 100,
+        "capacity": 100,
+        "max": 0,
+        "formula": {
+          "Log": 2666,
+          "Diamond": 50,
+          "Enegry": 150
+        },
+        "name_key": "$td.item.22.name",
+        "description_key": "$td.item.22.desc"
+      },
+      {
+        "id": 48,
+        "name": "烈焰剑",
+        "desc": "点燃目标的元素剑。",
+        "damage": 35,
+        "proba": 95,
+        "capacity": 80,
+        "max": 0,
+        "effect": "burn_on_hit",
+        "formula": {
+          "Iron Sword": 1,
+          "Coal": 500,
+          "Enegry": 8
+        },
+        "name_key": "$td.item.48.name",
+        "description_key": "$td.item.48.desc"
+      }
+    ]
+  }
+}

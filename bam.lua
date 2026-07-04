@@ -84,7 +84,7 @@ end
 
 function GenerateCommonSettings(settings, conf, arch, compiler)
 	if compiler == "gcc" or compiler == "clang" then
-		settings.cc.flags:Add("-Wall", "-fno-exceptions")
+		settings.cc.flags:Add("-std=gnu++20", "-fno-char8_t", "-Wall", "-fno-exceptions")
 	end
 
 	-- Compile zlib if needed
@@ -101,6 +101,11 @@ function GenerateCommonSettings(settings, conf, arch, compiler)
 
 	local png = Compile(settings, Collect("src/engine/external/pnglite/*.c"))
 	local json = Compile(settings, Collect("src/engine/external/json-parser/*.c"))
+
+	-- MySQL/MariaDB (required)
+	settings.cc.defines:Add("CONF_MYSQL")
+	settings.cc.includes:Add("/usr/include/mariadb")
+	settings.link.libs:Add("mariadb")
 
 	-- globally available libs
 	libs = {zlib=zlib, png=png, json=json}

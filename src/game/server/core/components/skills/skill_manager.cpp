@@ -7,6 +7,7 @@
 #include <game/server/core/components/skills/skill_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/components/vote/vote_menu_types.h>
+#include <game/server/core/components/vote/vote_wrapper.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/entities/character.h>
 #include <game/server/entities/turret.h>
@@ -61,6 +62,10 @@ void CSkillManager::LoadSkills()
 			str_copy(Def.m_aKey, S["key"].u.string.ptr, sizeof(Def.m_aKey));
 		else if(S["id"].type == json_string)
 			str_copy(Def.m_aKey, S["id"].u.string.ptr, sizeof(Def.m_aKey));
+		if(S["name"].type == json_string)
+			str_copy(Def.m_aName, S["name"].u.string.ptr, sizeof(Def.m_aName));
+		else
+			str_copy(Def.m_aName, Def.m_aKey, sizeof(Def.m_aName));
 		Def.m_Passive = S["passive"].type == json_boolean && S["passive"].u.boolean != 0;
 		Def.m_AutoLearn = S["auto_learn"].type == json_boolean && S["auto_learn"].u.boolean != 0;
 		if(S["mana_cost_pct"].type == json_integer)
@@ -173,7 +178,7 @@ bool CSkillManager::Learn(CPlayer *pPlayer, int SkillId)
 	{
 		if(pPlayer->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num < pDef->m_LearnCostHearts)
 		{
-			GS()->SendChatLoc(pPlayer->GetCID(), "skill.learn.need_hearts", u8"僵尸之心不足，无法学习技能。");
+			GS()->SendChatLoc(pPlayer->GetCID(), "skill.learn.need_hearts", "僵尸之心不足，无法学习魔法。");
 			return false;
 		}
 		pPlayer->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num -= pDef->m_LearnCostHearts;
@@ -182,9 +187,34 @@ bool CSkillManager::Learn(CPlayer *pPlayer, int SkillId)
 	}
 
 	pInst->m_Learned = true;
+
+	// Auto-bind to first available emote slot (frequent operations use emote, not commands)
+	{
+		bool aUsed[NUM_SKILL_EMOTICONS] = {false};
+		for(int si = 0; si < m_NumSkills; si++)
+		{
+			const int SID = m_aSkills[si].m_Id;
+			SSkillInstance *pOther = GetInstance(pPlayer, SID);
+			if(pOther && pOther->m_Learned && pOther->m_EmoticonBind >= 0 && pOther->m_EmoticonBind < NUM_SKILL_EMOTICONS)
+				aUsed[pOther->m_EmoticonBind] = true;
+		}
+		for(int bi = 0; bi < NUM_SKILL_EMOTICONS; bi++)
+		{
+			if(!aUsed[bi])
+			{
+				pInst->m_EmoticonBind = bi;
+				char aEmoName[64];
+				str_format(aEmoName, sizeof(aEmoName), "（表情槽 %d: %s）", bi + 1, SkillEmoticonName(bi));
+				GS()->SendChatLoc(pPlayer->GetCID(), "skill.auto_bind", "已自动绑定到表情：");
+				GS()->SendChatTo(pPlayer->GetCID(), aEmoName);
+				break;
+			}
+		}
+	}
+
 	char aKey[48];
 	str_format(aKey, sizeof(aKey), "skill.%s", pDef->m_aKey);
-	GS()->SendChatLocF(pPlayer->GetCID(), "skill.learned", u8"已学习技能：%s", GS()->Loc(pPlayer->GetCID(), aKey, pDef->m_aKey));
+	GS()->SendChatLocF(pPlayer->GetCID(), "skill.learned", "已学习魔法：%s", GS()->Loc(pPlayer->GetCID(), aKey, pDef->m_aKey));
 	return true;
 }
 
@@ -207,7 +237,7 @@ void CSkillManager::CycleEmoticonBind(CPlayer *pPlayer, int SkillId)
 		str_format(aKey, sizeof(aKey), "skill.%s", pDef->m_aKey);
 	else
 		aKey[0] = 0;
-	GS()->SendChatLocF(pPlayer->GetCID(), "skill.emote_bind", u8"[%s] 表情触发：%s",
+	GS()->SendChatLocF(pPlayer->GetCID(), "skill.emote_bind", "[%s] 表情触发：%s",
 		pDef ? GS()->Loc(pPlayer->GetCID(), aKey, pDef->m_aKey) : "?",
 		SkillEmoticonName(pInst->m_EmoticonBind));
 
@@ -319,13 +349,16 @@ bool CSkillManager::ExecuteSkill(CPlayer *pPlayer, const SSkillDescription &Def)
 	if(!pChr || !pChr->IsAlive())
 		return false;
 
+	// ─── Dash (敏捷→距离) ─────────────────────────────────
 	if(str_comp(Def.m_aKey, "dash") == 0 || str_comp(Def.m_aKey, "attack_teleport") == 0)
 	{
 		vec2 Dir = normalize(vec2((float)pChr->LatestInput().m_TargetX, (float)pChr->LatestInput().m_TargetY));
 		if(length(Dir) < 0.01f)
 			Dir = vec2(1.f, 0.f);
 		const float Speed = g_pData->m_Weapons.m_Ninja.m_Velocity;
-		const int MoveTime = Speed > 0.01f ? maximum(1, (int)((float)maximum(32, Def.m_Distance) / Speed + 0.5f)) : 4;
+		// DEX scaling: each DEX adds 2 units to dash distance
+		const int DexBonus = pPlayer->GetStat(AttributeIdentifier::DEX) * 2;
+		const int MoveTime = Speed > 0.01f ? maximum(1, (int)((float)maximum(32, Def.m_Distance + DexBonus) / Speed + 0.5f)) : 4;
 		pChr->GiveNinja();
 		pChr->DoNinjaFire(Dir, MoveTime);
 		const int DurationTicks = g_pData->m_Weapons.m_Ninja.m_Duration * GS()->Server()->TickSpeed() / 1000;
@@ -333,85 +366,257 @@ bool CSkillManager::ExecuteSkill(CPlayer *pPlayer, const SSkillDescription &Def)
 		GS()->m_World.CreateSound(pChr->GetPos(), SOUND_NINJA_FIRE);
 		return true;
 	}
-	if(str_comp(Def.m_aKey, "heal_pulse") == 0 || str_comp(Def.m_aKey, "cure") == 0)
+
+	// ─── Battle Cry (魅力→范围/治疗) ────────────────────────
+	if(str_comp(Def.m_aKey, "battle_cry") == 0)
 	{
 		const vec2 Pos = pChr->GetPos();
-		const float Radius = (float)maximum(64, Def.m_Radius);
+		// CHA: 每点魅力+8范围, +1治疗
+		const int ChaBonus = pPlayer->GetStat(AttributeIdentifier::CHA);
+		const float Radius = (float)maximum(96, Def.m_Radius + ChaBonus * 8);
+		const int Heal = maximum(1, Def.m_Heal + ChaBonus);
+		const int BuffTicks = GS()->Server()->TickSpeed() * 6;
 		for(int i = 0; i < MAX_CLIENTS; i++)
 		{
 			CPlayer *pAlly = GS()->m_apPlayers[i];
 			if(!pAlly || pAlly->IsDummy() || !pAlly->GetCharacter() || !pAlly->GetCharacter()->IsAlive())
 				continue;
 			if(distance(Pos, pAlly->GetCharacter()->GetPos()) <= Radius)
-				pAlly->GetCharacter()->IncreaseHealth(maximum(1, Def.m_Heal));
+			{
+				pAlly->GetCharacter()->IncreaseHealth(Heal);
+				// Apply damage boost status (type 'burn' with negative effect sign = buff)
+				// Use a custom status "atk_boost" that ProcessStatus interprets
+				Core()->StatusManager()->ApplyStatus(pAlly->GetCharacter(), "atk_boost", 1, BuffTicks, 1.0f, 2);
+			}
 		}
+		GS()->m_World.CreateSound(Pos, SOUND_GRENADE_EXPLODE);
 		return true;
 	}
-	if(str_comp(Def.m_aKey, "tower_repair_aura") == 0 || str_comp(Def.m_aKey, "heart_turret") == 0)
-	{
-		const vec2 Pos = pChr->GetPos();
-		const float Radius = (float)maximum(96, Def.m_Radius);
-		for(CGameWorld::TypeRange r = GS()->m_World.DoTypeRange(CGameWorld::ENTTYPE_TURRET); !r.empty(); r.pop_front())
-		{
-			CTurret *pT = static_cast<CTurret *>(r.front());
-			if(!pT || pT->IsBroken())
-				continue;
-			if(distance(Pos, pT->GetPos()) <= Radius)
-				pT->Repair();
-		}
-		return true;
-	}
+
+	// ─── Frost Nova (智力→伤害/冻结时长) ────────────────────
 	if(str_comp(Def.m_aKey, "frost_nova") == 0 && Core() && Core()->StatusManager())
 	{
 		const vec2 Pos = pChr->GetPos();
 		const float Radius = (float)maximum(96, Def.m_Radius);
-		const int SlowTicks = GS()->Server()->TickSpeed() * 3;
+		// INT: 每点智力 +int*3 冰伤, 冻结时间+2tick
+		const int IntVal = pPlayer->GetStat(AttributeIdentifier::INT);
+		const int SlowTicks = GS()->Server()->TickSpeed() * 3 + IntVal * 2;
+		const int FreezeDamage = 8 + IntVal * 3;
+		// Affect ALL enemies (not just zombies)
 		for(int i = 0; i < MAX_CLIENTS; i++)
 		{
-			CPlayer *pZ = GS()->m_apPlayers[i];
-			if(!pZ || !pZ->IsDummy() || pZ->GetZomb() == ZOMB_NONE || !pZ->GetCharacter() || !pZ->GetCharacter()->IsAlive())
+			CPlayer *pTarget = GS()->m_apPlayers[i];
+			if(!pTarget || !pTarget->GetCharacter() || !pTarget->GetCharacter()->IsAlive())
 				continue;
-			if(distance(Pos, pZ->GetCharacter()->GetPos()) <= Radius)
-				Core()->StatusManager()->ApplyStatus(pZ->GetCharacter(), "frost", 1, SlowTicks, 0.55f);
+			if(pTarget == pPlayer)
+				continue;
+			// Skip allies (same team for now, or non-hostile bots)
+			if(!pTarget->IsDummy() && pTarget->GetTeam() == pPlayer->GetTeam())
+				continue;
+			if(distance(Pos, pTarget->GetCharacter()->GetPos()) <= Radius)
+			{
+				CCharacter *pTargetChr = pTarget->GetCharacter();
+				// Check if already frozen → shatter (bonus damage)
+				if(Core()->StatusManager()->GetSlowTicks(pTargetChr) > 0)
+				{
+					// Shatter: deal bonus damage + remove frost
+					pTargetChr->TakeDamage(vec2(0, 0), Pos, FreezeDamage, pPlayer->GetCID(), WEAPON_GAME);
+					GS()->m_World.CreateSound(pTargetChr->GetPos(), SOUND_GRENADE_EXPLODE);
+				}
+				else
+				{
+					Core()->StatusManager()->ApplyStatus(pTargetChr, "frost", 1, SlowTicks, 0.55f);
+				}
+			}
 		}
+		GS()->m_World.CreateSound(Pos, SOUND_WEAPON_SPAWN);
 		return true;
 	}
-	if(str_comp(Def.m_aKey, "poison_cloud") == 0 && Core() && Core()->StatusManager())
+
+	// ─── Arcane Shield (智力→吸收量) ────────────────────────
+	if(str_comp(Def.m_aKey, "arcane_shield") == 0 && Core() && Core()->StatusManager())
+	{
+		const int IntVal = pPlayer->GetStat(AttributeIdentifier::INT);
+		const int Shield = maximum(4, Def.m_Heal + IntVal * 2);
+		Core()->StatusManager()->ApplyStatus(pChr, "shield", 1, GS()->Server()->TickSpeed() * 6, 0.f, Shield);
+		GS()->m_World.CreateSound(pChr->GetPos(), SOUND_PICKUP_ARMOR);
+		return true;
+	}
+
+	// ─── Blink (智力→传送距离) ────────────────────────────────
+	if(str_comp(Def.m_aKey, "blink") == 0)
+	{
+		vec2 Dir = normalize(vec2((float)pChr->LatestInput().m_TargetX, (float)pChr->LatestInput().m_TargetY));
+		if(length(Dir) < 0.01f)
+			Dir = vec2(1.f, 0.f);
+		const int IntVal = pPlayer->GetStat(AttributeIdentifier::INT);
+		const float Distance = (float)maximum(64, Def.m_Distance + IntVal * 4);
+		vec2 NewPos = pChr->GetPos() + Dir * Distance;
+		// Clamp to map bounds
+		CCollision *pColl = GS()->Collision();
+		if(pColl)
+		{
+			NewPos.x = clamp(NewPos.x, 16.0f, (float)(pColl->GetWidth() * 32 - 16));
+			NewPos.y = clamp(NewPos.y, 16.0f, (float)(pColl->GetHeight() * 32 - 16));
+		}
+		pChr->SetCharacterPos(NewPos);
+		GS()->m_World.CreateSound(NewPos, SOUND_NINJA_FIRE);
+		return true;
+	}
+
+	// ─── Renew (智慧→治疗量) ────────────────────────────────
+	if(str_comp(Def.m_aKey, "renew") == 0)
+	{
+		const int WisVal = pPlayer->GetStat(AttributeIdentifier::WIS);
+		const int HealPerTick = maximum(1, Def.m_Heal + WisVal);
+		const int TotalTicks = GS()->Server()->TickSpeed() * 5;
+		pChr->m_RenewTicks = TotalTicks;
+		pChr->m_RenewAmount = HealPerTick;
+		GS()->m_World.CreateSound(pChr->GetPos(), SOUND_PICKUP_HEALTH);
+		return true;
+	}
+
+	// ─── Iron Will (体质→持续时间) ───────────────────────────
+	if(str_comp(Def.m_aKey, "iron_will") == 0)
+	{
+		const int ConVal = pPlayer->GetStat(AttributeIdentifier::CON);
+		const int DurationTicks = GS()->Server()->TickSpeed() * (3 + ConVal / 10);
+		pChr->m_IronWillTicks = DurationTicks;
+		// Slow: apply frost status with weak slow, or just reduce velocity
+		Core()->StatusManager()->ApplyStatus(pChr, "frost", 1, DurationTicks, 0.70f);
+		GS()->m_World.CreateSound(pChr->GetPos(), SOUND_PICKUP_ARMOR);
+		return true;
+	}
+
+	// ─── Ground Slam (力量→伤害/击退) ────────────────────────
+	if(str_comp(Def.m_aKey, "ground_slam") == 0)
 	{
 		const vec2 Pos = pChr->GetPos();
 		const float Radius = (float)maximum(96, Def.m_Radius);
-		const int Stacks = maximum(1, Def.m_Heal);
+		const int StrVal = pPlayer->GetStat(AttributeIdentifier::STR);
+		const int BaseDmg = maximum(2, Def.m_Heal) + StrVal * 3;
+		const int KnockbackForce = 10 + StrVal / 2;
 		for(int i = 0; i < MAX_CLIENTS; i++)
 		{
-			CPlayer *pZ = GS()->m_apPlayers[i];
-			if(!pZ || !pZ->IsDummy() || pZ->GetZomb() == ZOMB_NONE || !pZ->GetCharacter() || !pZ->GetCharacter()->IsAlive())
+			CPlayer *pTarget = GS()->m_apPlayers[i];
+			if(!pTarget || !pTarget->GetCharacter() || !pTarget->GetCharacter()->IsAlive())
 				continue;
-			if(distance(Pos, pZ->GetCharacter()->GetPos()) <= Radius)
-				Core()->StatusManager()->ApplyStatus(pZ->GetCharacter(), "poison", Stacks, GS()->Server()->TickSpeed() * 5);
+			if(pTarget == pPlayer)
+				continue;
+			if(!pTarget->IsDummy() && pTarget->GetTeam() == pPlayer->GetTeam())
+				continue;
+			const vec2 TargetPos = pTarget->GetCharacter()->GetPos();
+			const float Dist = distance(Pos, TargetPos);
+			if(Dist <= Radius)
+			{
+				vec2 KnockDir = normalize(TargetPos - Pos);
+				if(length(KnockDir) < 0.01f)
+					KnockDir = vec2(1.f, 0.f);
+				pTarget->GetCharacter()->TakeDamage(KnockDir * (float)KnockbackForce * (1.0f - Dist / Radius),
+					Pos, BaseDmg, pPlayer->GetCID(), WEAPON_HAMMER);
+			}
 		}
+		GS()->m_World.CreateSound(Pos, SOUND_HAMMER_FIRE);
 		return true;
 	}
-	if(str_comp(Def.m_aKey, "battle_cry") == 0)
+
+	// ─── Entangle (智力→定身时长) ────────────────────────────
+	if(str_comp(Def.m_aKey, "entangle") == 0)
+	{
+		vec2 Dir = normalize(vec2((float)pChr->LatestInput().m_TargetX, (float)pChr->LatestInput().m_TargetY));
+		if(length(Dir) < 0.01f)
+			Dir = vec2(1.f, 0.f);
+		const int IntVal = pPlayer->GetStat(AttributeIdentifier::INT);
+		const float MaxDist = (float)maximum(128, Def.m_Distance + IntVal * 3);
+		const vec2 Start = pChr->GetPos();
+		const vec2 End = Start + Dir * MaxDist;
+		vec2 HitPos = End;
+		vec2 ColPos = End;
+		int HitCID = -1;
+
+		// Raycast: find first character in line
+		CCollision *pColl = GS()->Collision();
+		if(!pColl)
+			return false;
+
+		for(int i = 0; i < MAX_CLIENTS; i++)
+		{
+			CPlayer *pTarget = GS()->m_apPlayers[i];
+			if(!pTarget || !pTarget->GetCharacter() || !pTarget->GetCharacter()->IsAlive())
+				continue;
+			if(pTarget == pPlayer)
+				continue;
+			if(!pTarget->IsDummy() && pTarget->GetTeam() == pPlayer->GetTeam())
+				continue;
+			const vec2 TargetPos = pTarget->GetCharacter()->GetPos();
+			const float Dist = distance(Start, TargetPos);
+			if(Dist > MaxDist)
+				continue;
+			// Simple line-of-sight check: is target in the cone?
+			vec2 ToTarget = normalize(TargetPos - Start);
+			if(dot(Dir, ToTarget) > 0.707f) // ~45 degree cone
+			{
+				// Check line of sight (no solid tiles between)
+				if(!pColl->FastIntersectLine(Start, TargetPos, &HitPos, &ColPos))
+				{
+					if(HitCID < 0 || Dist < distance(Start, GS()->m_apPlayers[HitCID]->GetCharacter()->GetPos()))
+					{
+						HitCID = i;
+						HitPos = TargetPos;
+					}
+				}
+			}
+		}
+
+		if(HitCID >= 0)
+		{
+			CCharacter *pTargetChr = GS()->m_apPlayers[HitCID]->GetCharacter();
+			// Root: apply strong frost with 0.05x slow (effectively roots)
+			const int RootTicks = GS()->Server()->TickSpeed() * (2 + IntVal / 5);
+			Core()->StatusManager()->ApplyStatus(pTargetChr, "frost", 1, RootTicks, 0.05f);
+			GS()->m_World.CreateSound(HitPos, SOUND_HOOK_ATTACH_PLAYER);
+		}
+		GS()->m_World.CreateSound(Start, SOUND_HOOK_LOOP);
+		return true;
+	}
+
+	// ─── Shadow Step (敏捷→隐身时长+暴击倍率) ───────────────
+	if(str_comp(Def.m_aKey, "shadow_step") == 0)
+	{
+		const int DexVal = pPlayer->GetStat(AttributeIdentifier::DEX);
+		const int DurationTicks = GS()->Server()->TickSpeed() * (2 + DexVal / 5);
+		pChr->m_ShadowTicks = DurationTicks;
+		pChr->m_IsInvisible = true;
+		pChr->m_ShadowNextCrit = true;
+		GS()->m_World.CreateSound(pChr->GetPos(), SOUND_WEAPON_SPAWN);
+		return true;
+	}
+
+	// ─── Enlighten (智慧→治疗+增益时长) ──────────────────────
+	if(str_comp(Def.m_aKey, "enlighten") == 0 && Core() && Core()->StatusManager())
 	{
 		const vec2 Pos = pChr->GetPos();
-		const float Radius = (float)maximum(96, Def.m_Radius);
-		const int Heal = maximum(1, Def.m_Heal);
+		const int WisVal = pPlayer->GetStat(AttributeIdentifier::WIS);
+		const float Radius = (float)maximum(96, Def.m_Radius + WisVal * 8);
+		const int Heal = 2 + WisVal;
+		const int DefBuffTicks = GS()->Server()->TickSpeed() * (4 + WisVal / 5);
 		for(int i = 0; i < MAX_CLIENTS; i++)
 		{
 			CPlayer *pAlly = GS()->m_apPlayers[i];
-			if(!pAlly || pAlly->IsDummy() || !pAlly->GetCharacter() || !pAlly->GetCharacter()->IsAlive())
+			if(!pAlly || !pAlly->GetCharacter() || !pAlly->GetCharacter()->IsAlive())
 				continue;
 			if(distance(Pos, pAlly->GetCharacter()->GetPos()) <= Radius)
+			{
 				pAlly->GetCharacter()->IncreaseHealth(Heal);
+				// Purge negative statuses by clearing the status slots
+				// (status manager doesn't have a purge API, so apply atk_boost as placeholder)
+				Core()->StatusManager()->ApplyStatus(pAlly->GetCharacter(), "atk_boost", 1, DefBuffTicks, 1.0f, 2);
+			}
 		}
+		GS()->m_World.CreateSound(Pos, SOUND_PICKUP_HEALTH);
 		return true;
 	}
-	if(str_comp(Def.m_aKey, "arcane_shield") == 0 && Core() && Core()->StatusManager())
-	{
-		const int Shield = maximum(4, Def.m_Heal);
-		Core()->StatusManager()->ApplyStatus(pChr, "shield", 1, GS()->Server()->TickSpeed() * 8, 0.f, Shield);
-		return true;
-	}
+
 	return false;
 }
 
@@ -426,7 +631,7 @@ bool CSkillManager::Use(CPlayer *pPlayer, int SkillId)
 	SSkillInstance *pInst = GetInstance(pPlayer, SkillId);
 	if(!pInst || !pInst->m_Learned)
 	{
-		GS()->SendChatLoc(pPlayer->GetCID(), "skill.not_learned", u8"尚未学习该技能。");
+		GS()->SendChatLoc(pPlayer->GetCID(), "skill.not_learned", "尚未学习该魔法。");
 		return false;
 	}
 
@@ -434,7 +639,7 @@ bool CSkillManager::Use(CPlayer *pPlayer, int SkillId)
 	const int Tick = GS()->Server()->Tick();
 	if(pInst->m_CooldownEnd > Tick)
 	{
-		GS()->SendChatLocF(CID, "skill.cooldown", u8"技能冷却中（%d 秒）",
+		GS()->SendChatLocF(CID, "skill.cooldown", "魔法冷却中（%d 秒）",
 			(pInst->m_CooldownEnd - Tick + GS()->Server()->TickSpeed() - 1) / GS()->Server()->TickSpeed());
 		return false;
 	}
@@ -448,7 +653,7 @@ bool CSkillManager::Use(CPlayer *pPlayer, int SkillId)
 	pInst->m_CooldownEnd = Tick + maximum(1, (int)(pDef->m_CooldownTicks * CdMul + 0.5f));
 	char aKey[48];
 	str_format(aKey, sizeof(aKey), "skill.%s", pDef->m_aKey);
-	GS()->SendChatLocF(CID, "skill.used", u8"已释放技能：%s", GS()->Loc(CID, aKey, pDef->m_aKey));
+	GS()->SendChatLocF(CID, "skill.used", "已释放魔法：%s", GS()->Loc(CID, aKey, pDef->m_aKey));
 	return true;
 }
 
@@ -488,8 +693,9 @@ void CSkillManager::BuildSkillsListPage(int ClientID)
 	CVoteMenuManager *pVote = Core()->VoteMenuManager();
 	CPlayer *pP = GS()->m_apPlayers[ClientID];
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "skill.menu.title", u8"技能"));
-	pVote->AddVote_Separator();
+	CVoteWrapper V(ClientID, GS(), pVote);
+
+	V.GroupTitle(GS()->Loc(ClientID, "skill.menu.title", "魔法"));
 
 	for(int i = 0; i < m_NumSkills; i++)
 	{
@@ -498,16 +704,18 @@ void CSkillManager::BuildSkillsListPage(int ClientID)
 		str_format(aKey, sizeof(aKey), "skill.%s", Def.m_aKey);
 		const char *pName = GS()->Loc(ClientID, aKey, Def.m_aKey);
 		SSkillInstance *pInst = pP ? GetInstance(pP, Def.m_Id) : nullptr;
+
 		char aLine[VOTE_DESC_LENGTH];
 		if(pInst && pInst->m_Learned)
-			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "skill.entry.learned", u8"▹ %s ✓"), pName);
+			str_format(aLine, sizeof(aLine), "%s ✓", pName);
 		else
-			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "skill.entry", u8"▹ %s"), pName);
+			str_copy(aLine, pName, sizeof(aLine));
+
 		char aCmd[48];
 		str_format(aCmd, sizeof(aCmd), "ccv_menuskillsel %d", Def.m_Id);
-		pVote->AddVote(aLine, aCmd, ClientID);
+		V.Option(aCmd, aLine);
 	}
-	pVote->AddVote_PageFooter();
+	V.Footer();
 }
 
 void CSkillManager::BuildSkillDetailPage(int ClientID, int SkillId)
@@ -530,52 +738,99 @@ void CSkillManager::BuildSkillDetailPage(int ClientID, int SkillId)
 	str_format(aDescKey, sizeof(aDescKey), "skill.%s.desc", pDef->m_aKey);
 
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_PageHeader(GS()->Loc(ClientID, aKey, pDef->m_aKey));
-	pVote->AddVote_PageSubtitle(GS()->Loc(ClientID, aDescKey, pDef->m_aKey));
+	CVoteWrapper V(ClientID, GS(), pVote);
+
+	V.GroupTitle(GS()->Loc(ClientID, aKey, pDef->m_aKey));
+	V.Info(GS()->Loc(ClientID, aDescKey, pDef->m_aKey));
+
 	if(!pDef->m_Passive && pInst && pInst->m_Learned)
 	{
 		char aMana[64];
-		str_format(aMana, sizeof(aMana), GS()->Loc(ClientID, "skill.mana_pct", u8"法力消耗：%d%%"), pDef->m_ManaCostPct);
-		pVote->AddVote_TextLine(aMana);
+		str_format(aMana, sizeof(aMana), GS()->Loc(ClientID, "skill.mana_pct", "法力消耗：%d%%"), pDef->m_ManaCostPct);
+		V.Info(aMana);
 	}
-	pVote->AddVote_Separator();
 
 	if(pInst && pInst->m_Learned)
 	{
 		if(!pDef->m_Passive)
 		{
+			V.GroupLine();
 			char aBind[128];
-			str_format(aBind, sizeof(aBind), GS()->Loc(ClientID, "skill.bind_hint", u8"绑定：bind 'F1' say \"/use_skill %d\""), SkillId);
-			pVote->AddVote_TextLine(aBind);
+			str_format(aBind, sizeof(aBind), GS()->Loc(ClientID, "skill.bind_hint", "绑定：bind 'F1' say \"/use_skill %d\""), SkillId);
+			V.Info(aBind);
 			char aEmo[128];
-			str_format(aEmo, sizeof(aEmo), GS()->Loc(ClientID, "skill.emote_current", u8"表情触发：%s"), SkillEmoticonName(pInst->m_EmoticonBind));
-			pVote->AddVote_TextLine(aEmo);
+			str_format(aEmo, sizeof(aEmo), GS()->Loc(ClientID, "skill.emote_current", "表情触发：%s"), SkillEmoticonName(pInst->m_EmoticonBind));
+			V.Info(aEmo);
+
 			char aCmdEmo[48];
 			str_format(aCmdEmo, sizeof(aCmdEmo), "ccv_skillemote %d", SkillId);
-			pVote->AddVote(GS()->Loc(ClientID, "skill.change_emote", u8"切换表情绑定"), aCmdEmo, ClientID);
+			V.Option(aCmdEmo, GS()->Loc(ClientID, "skill.change_emote", "切换表情绑定"));
+
+			for(int si = 0; si < 3; si++)
+			{
+				bool IsBound = (pP->m_aSkillSlots[si] == SkillId);
+				char aSlotBind[96];
+				if(IsBound)
+				{
+					char aSkillName[64];
+					str_copy(aSkillName, GS()->Loc(ClientID, aKey, pDef->m_aKey), sizeof(aSkillName));
+					str_format(aSlotBind, sizeof(aSlotBind), GS()->Loc(ClientID, "skill.slot_bound", "已绑定 [%s] 到键盘 %d"), aSkillName, si + 3);
+				}
+				else
+					str_format(aSlotBind, sizeof(aSlotBind), GS()->Loc(ClientID, "skill.slot_bind", "绑定到键盘 %d"), si + 3);
+				char aSlotCmd[48];
+				str_format(aSlotCmd, sizeof(aSlotCmd), "ccv_skillslot %d %d", SkillId, si);
+				V.Option(aSlotCmd, aSlotBind);
+			}
 
 			if(pInst->m_CooldownEnd <= Tick)
 			{
 				char aUseCmd[48];
 				str_format(aUseCmd, sizeof(aUseCmd), "ccv_skilluse %d", SkillId);
-				pVote->AddVote(GS()->Loc(ClientID, "skill.cast", u8"☝ 立即释放"), aUseCmd, ClientID);
+				V.Option(aUseCmd, GS()->Loc(ClientID, "skill.cast", "立即释放"));
 			}
 		}
 	}
 	else if(!pDef->m_AutoLearn)
 	{
+		V.GroupLine();
 		char aLearn[128];
-		str_format(aLearn, sizeof(aLearn), GS()->Loc(ClientID, "skill.learn_btn", u8"☆ 学习（需僵尸之心 ×%d）"), pDef->m_LearnCostHearts);
+		str_format(aLearn, sizeof(aLearn), GS()->Loc(ClientID, "skill.learn_btn", "学习（需僵尸之心 ×%d）"), pDef->m_LearnCostHearts);
 		char aLearnCmd[48];
 		str_format(aLearnCmd, sizeof(aLearnCmd), "ccv_skilllearn %d", SkillId);
-		pVote->AddVote(aLearn, aLearnCmd, ClientID);
+		V.Option(aLearnCmd, aLearn);
 	}
 	else
 	{
-		pVote->AddVote_EmptyHint(GS()->Loc(ClientID, "skill.auto_learn", u8"登录后自动习得"));
+		V.Info(GS()->Loc(ClientID, "skill.auto_learn", "登录后自动习得"));
 	}
 
-	pVote->AddVote_PageFooter();
+	V.Footer();
+}
+
+bool CSkillManager::OnVoteMenuPage(int ClientID, int Page)
+{
+	if(!GS() || !Core() || !Core()->VoteMenuManager())
+		return false;
+
+	if(Page == PAGE_SKILLS)
+	{
+		Core()->VoteMenuManager()->SetVoteLastPage(PAGE_MENU);
+		BuildSkillsListPage(ClientID);
+		return true;
+	}
+
+	if(Page == PAGE_SKILL_SELECT)
+	{
+		SPlayerVote *pVote = Core()->VoteMenuManager()->GetPlayerVote(ClientID);
+		if(!pVote)
+			return false;
+		Core()->VoteMenuManager()->SetVoteLastPage(pVote->m_LastPage >= 0 ? pVote->m_LastPage : PAGE_SKILLS);
+		BuildSkillDetailPage(ClientID, pVote->m_SkillId);
+		return true;
+	}
+
+	return false;
 }
 
 static void ComChatUseSkill(IConsole::IResult *pResult, void *pUser)
@@ -652,6 +907,54 @@ static void ComVoteSkillUse(IConsole::IResult *pResult, void *pUser)
 		pGame->Core()->SkillManager()->Use(pP, pResult->GetInteger(0));
 }
 
+static void ComVoteSkillSlot(IConsole::IResult *pResult, void *pUser)
+{
+	CCommandManager::SCommandContext *pCtx = static_cast<CCommandManager::SCommandContext *>(pUser);
+	CGameContext *pGame = static_cast<CGameContext *>(pCtx->m_pContext);
+	if(!pGame || !pGame->Core())
+		return;
+	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
+	if(!pP)
+		return;
+	const int SkillId = pResult->GetInteger(0);
+	const int SlotIdx = pResult->GetInteger(1);
+	if(SlotIdx < 0 || SlotIdx >= 3)
+		return;
+
+	// If skill is already bound to this slot, unbind it
+	if(pP->m_aSkillSlots[SlotIdx] == SkillId)
+	{
+		pP->m_aSkillSlots[SlotIdx] = -1;
+		pGame->SendChatLoc(pP->GetCID(), "skill.slot_unbound", "已取消魔法槽位绑定。");
+	}
+	else
+	{
+		// Remove this skill from any other slot it might be in (one skill max)
+		for(int si = 0; si < 3; si++)
+		{
+			if(pP->m_aSkillSlots[si] == SkillId)
+				pP->m_aSkillSlots[si] = -1;
+		}
+		pP->m_aSkillSlots[SlotIdx] = SkillId;
+
+		const SSkillDescription *pDef = pGame->Core()->SkillManager()->FindDescription(SkillId);
+		char aSkillName[64] = "?";
+		if(pDef)
+		{
+			char aKey[48];
+			str_format(aKey, sizeof(aKey), "skill.%s", pDef->m_aKey);
+			str_copy(aSkillName, pGame->Loc(pP->GetCID(), aKey, pDef->m_aKey), sizeof(aSkillName));
+		}
+		pGame->SendChatLocF(pP->GetCID(), "skill.slot_bound", "已绑定 [%s] 到键盘 %d", aSkillName, SlotIdx + 3);
+	}
+
+	// Refresh vote page
+	SPlayerVote *pV = pGame->Core()->VoteMenuManager()->GetPlayerVote(pCtx->m_ClientID);
+	pV->m_SkillId = SkillId;
+	pV->m_Page = PAGE_SKILL_SELECT;
+	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
+}
+
 void CSkillManager::RegisterChatCommands(CCommandManager *pMgr)
 {
 	if(!pMgr || !GS())
@@ -668,4 +971,5 @@ void CSkillManager::RegisterVoteCommands(CCommandManager *pMgr)
 	pMgr->AddCommand("skilllearn", "", "i", ComVoteSkillLearn, GS());
 	pMgr->AddCommand("skillemote", "", "i", ComVoteSkillEmote, GS());
 	pMgr->AddCommand("skilluse", "", "i", ComVoteSkillUse, GS());
+	pMgr->AddCommand("skillslot", "", "ii", ComVoteSkillSlot, GS());
 }

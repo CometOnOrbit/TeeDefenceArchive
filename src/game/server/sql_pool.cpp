@@ -1,8 +1,6 @@
 /* (c) TeeDefenceArchive - 2026 */
 #include "sql_pool.h"
 
-#ifdef CONF_MYSQL
-
 #include <mysql.h>
 
 #include <base/tl/array.h>
@@ -114,46 +112,3 @@ void CSqlConnectionPool::Release(void *pConn)
 	m_pInner->m_Idle.add((MYSQL *)pConn);
 	lock_unlock(m_pInner->m_Lock);
 }
-
-#else // !CONF_MYSQL
-
-CSqlConnectionPool::CSqlConnectionPool()
-{
-	m_pInner = nullptr;
-}
-
-CSqlConnectionPool::~CSqlConnectionPool()
-{
-}
-
-bool CSqlConnectionPool::IsInitialized() const
-{
-	return false;
-}
-
-bool CSqlConnectionPool::Init(int PoolSize, const char *pHost, int Port, const char *pUser, const char *pPassword, const char *pDatabase)
-{
-	(void)PoolSize;
-	(void)pHost;
-	(void)Port;
-	(void)pUser;
-	(void)pPassword;
-	(void)pDatabase;
-	return false;
-}
-
-void CSqlConnectionPool::Shutdown()
-{
-}
-
-void *CSqlConnectionPool::Acquire()
-{
-	return nullptr;
-}
-
-void CSqlConnectionPool::Release(void *pConn)
-{
-	(void)pConn;
-}
-
-#endif

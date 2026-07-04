@@ -1,0 +1,109 @@
+{
+  "item": {
+    "type": 7,
+    "multiple": [
+      {
+        "id": 58,
+        "name": "木制胸甲",
+        "desc": "一件木头做的胸甲。",
+        "defense": 1,
+        "capacity": 0,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Log": 35
+        },
+        "name_key": "$td.item.58.name",
+        "description_key": "$td.item.58.desc"
+      },
+      {
+        "id": 59,
+        "name": "铁质胸甲",
+        "desc": "一件铁做的胸甲。",
+        "defense": 2,
+        "capacity": 20,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Iron": 250
+        },
+        "name_key": "$td.item.59.name",
+        "description_key": "$td.item.59.desc"
+      },
+      {
+        "id": 60,
+        "name": "铜质胸甲",
+        "desc": "一件铜做的胸甲。",
+        "defense": 3,
+        "capacity": 30,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Copper": 500
+        },
+        "name_key": "$td.item.60.name",
+        "description_key": "$td.item.60.desc"
+      },
+      {
+        "id": 61,
+        "name": "钛合金胸甲",
+        "desc": "一件钛合金做的胸甲。",
+        "defense": 4,
+        "capacity": 50,
+        "proba": 85,
+        "max": 0,
+        "formula": {
+          "Iron": 200,
+          "Copper": 200,
+          "Titanium": 100
+        },
+        "name_key": "$td.item.61.name",
+        "description_key": "$td.item.61.desc"
+      },
+      {
+        "id": 62,
+        "name": "钻石胸甲",
+        "desc": "一件钻石做的胸甲。",
+        "defense": 5,
+        "capacity": 80,
+        "proba": 80,
+        "max": 0,
+        "formula": {
+          "Diamond": 500
+        },
+        "name_key": "$td.item.62.name",
+        "description_key": "$td.item.62.desc"
+      },
+      {
+        "id": 63,
+        "name": "能量胸甲",
+        "desc": "一件纯能量做的胸甲。",
+        "defense": 6,
+        "capacity": 120,
+        "proba": 80,
+        "max": 0,
+        "formula": {
+          "Enegry": 25
+        },
+        "name_key": "$td.item.63.name",
+        "description_key": "$td.item.63.desc"
+      },
+      {
+        "id": 64,
+        "name": "虚空碎片胸甲",
+        "desc": "一件由虚空碎片锻造的胸甲。",
+        "defense": 7,
+        "capacity": 150,
+        "proba": 70,
+        "max": 0,
+        "formula": {
+          "Diamond": 200,
+          "Enegry": 50,
+          "Void Shard": 10
+        },
+        "name_key": "$td.item.64.name",
+        "description_key": "$td.item.64.desc"
+      }
+    ]
+  }
+}

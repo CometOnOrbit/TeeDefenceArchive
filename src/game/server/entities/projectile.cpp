@@ -18,15 +18,19 @@
 #include "projectile.h"
 
 CProjectile::CProjectile(CGameWorld *pGameWorld, int Type, int Owner, vec2 Pos, vec2 Dir, int Span,
-	int Damage, bool Explosive, float Force, int SoundImpact, int Weapon) : CChildEntity(pGameWorld, CGameWorld::ENTTYPE_PROJECTILE, 0, vec2(round_to_int(Pos.x), round_to_int(Pos.y)))
+	int Damage, bool Explosive, float Force, int SoundImpact, int Weapon, float SpeedMul, float LifeMul,
+	int Pierce, int LifestealPercent) : CChildEntity(pGameWorld, CGameWorld::ENTTYPE_PROJECTILE, 0, vec2(round_to_int(Pos.x), round_to_int(Pos.y)))
 {
 	m_Type = Type;
 	m_Direction.x = round_to_int(Dir.x * 100.0f) / 100.0f;
 	m_Direction.y = round_to_int(Dir.y * 100.0f) / 100.0f;
-	m_LifeSpan = Span;
+	m_LifeSpan = maximum(1, (int)(Span * (LifeMul > 0.01f ? LifeMul : 1.f)));
 	m_Owner = Owner;
 	m_OwnerTeam = GameServer()->m_apPlayers[Owner]->GetTeam();
 	m_Force = Force;
+	m_SpeedMul = SpeedMul > 0.01f ? SpeedMul : 1.f;
+	m_PierceRemaining = Pierce > 0 ? Pierce : 0;
+	m_LifestealPercent = LifestealPercent > 0 ? LifestealPercent : 0;
 	m_Damage = Damage;
 	m_SoundImpact = SoundImpact;
 	m_Weapon = Weapon;
@@ -58,17 +62,17 @@ vec2 CProjectile::GetPos(float Time)
 	{
 		case WEAPON_GRENADE:
 			Curvature = GameServer()->Tuning()->m_GrenadeCurvature;
-			Speed = GameServer()->Tuning()->m_GrenadeSpeed;
+			Speed = GameServer()->Tuning()->m_GrenadeSpeed * m_SpeedMul;
 			break;
 
 		case WEAPON_SHOTGUN:
 			Curvature = GameServer()->Tuning()->m_ShotgunCurvature;
-			Speed = GameServer()->Tuning()->m_ShotgunSpeed;
+			Speed = GameServer()->Tuning()->m_ShotgunSpeed * m_SpeedMul;
 			break;
 
 		case WEAPON_GUN:
 			Curvature = GameServer()->Tuning()->m_GunCurvature;
-			Speed = GameServer()->Tuning()->m_GunSpeed;
+			Speed = GameServer()->Tuning()->m_GunSpeed * m_SpeedMul;
 			break;
 	}
 
@@ -129,7 +133,9 @@ void CProjectile::Tick()
 
 	m_LifeSpan--;
 
-	if(pTargetEnt || Collide || m_LifeSpan < 0 || GameLayerClipped(CurPos))
+	const bool HitWall = Collide || m_LifeSpan < 0 || GameLayerClipped(CurPos);
+	const bool HitEntity = pTargetEnt != nullptr;
+	if(HitWall || HitEntity)
 	{
 		if(m_LifeSpan >= 0 || m_Weapon == WEAPON_GRENADE)
 			GameWorld()->CreateSound(CurPos, m_SoundImpact);
@@ -180,6 +186,11 @@ void CProjectile::Tick()
 		else if(pTargetEnt)
 		{
 			pTargetEnt->TakeHit(m_Direction * maximum(0.001f, m_Force), m_Direction * -1, m_Damage, this, m_Weapon);
+			if(m_LifestealPercent > 0 && pOwnerChar)
+			{
+				const int Heal = maximum(1, m_Damage * m_LifestealPercent / 100);
+				pOwnerChar->IncreaseHealth(Heal);
+			}
 			if(ChainLightningStacks > 0)
 			{
 				const int LightningDmg = maximum(1, m_Damage / 2);
@@ -199,7 +210,18 @@ void CProjectile::Tick()
 			}
 		}
 
-		GameWorld()->DestroyEntity(this);
+		bool StopProjectile = HitWall || m_Explosive || ExplosionCard;
+		if(HitEntity && !StopProjectile && m_PierceRemaining > 0 &&
+			pTargetEnt->ObjType() == CGameWorld::ENTTYPE_CHARACTER)
+		{
+			m_PierceRemaining--;
+			StopProjectile = false;
+		}
+		else if(HitEntity)
+			StopProjectile = true;
+
+		if(StopProjectile)
+			GameWorld()->DestroyEntity(this);
 	}
 }
 

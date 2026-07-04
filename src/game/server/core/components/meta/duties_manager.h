@@ -38,7 +38,7 @@ public:
 	void OnWaveComplete(int Wave) override;
 
 	void RegisterVoteCommands(CCommandManager *pMgr);
-	bool OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs);
+	bool OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason);
 	void BuildDutiesPage(int ClientID);
 	bool TryClaim(CPlayer *pPlayer, int Idx);
 

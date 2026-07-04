@@ -58,7 +58,7 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 option(DOWNLOAD_DEPENDENCIES "Download dependencies (only available on Windows)" ${AUTO_DEPENDENCIES_DEFAULT})
@@ -420,8 +420,18 @@ foreach(datafile ${DATA})
   file(COPY ${datafile} DESTINATION ${DESTINATION})
 endforeach()
 file(COPY ${PROJECT_SOURCE_DIR}/storage.cfg DESTINATION ${PROJECT_BINARY_DIR})
-file(COPY ${PROJECT_SOURCE_DIR}/server_content DESTINATION ${PROJECT_BINARY_DIR})
-file(COPY ${PROJECT_SOURCE_DIR}/server_items DESTINATION ${PROJECT_BINARY_DIR})
+# Copy shared files (root of server_content)
+file(COPY ${CMAKE_SOURCE_DIR}/server_content/ DESTINATION ${CMAKE_BINARY_DIR}/server_content
+  FILES_MATCHING PATTERN "*.json"
+  PATTERN "td" EXCLUDE
+  PATTERN "mmo" EXCLUDE
+)
+
+# Copy td/ (including items subdirectory)
+file(COPY ${CMAKE_SOURCE_DIR}/server_content/td/ DESTINATION ${CMAKE_BINARY_DIR}/server_content/td)
+
+# Copy mmo/
+file(COPY ${CMAKE_SOURCE_DIR}/server_content/mmo/ DESTINATION ${CMAKE_BINARY_DIR}/server_content/mmo)
 file(COPY ${PROJECT_SOURCE_DIR}/server_lang DESTINATION ${PROJECT_BINARY_DIR})
 # Storage searches $DATADIR (data/) before $CURRENTDIR — keep both in sync.
 file(COPY ${PROJECT_SOURCE_DIR}/server_lang DESTINATION ${PROJECT_BINARY_DIR}/data)
@@ -641,6 +651,8 @@ list(APPEND TARGETS_OWN engine-shared game-shared)
 
 # Sources
 set_src(ENGINE_SERVER GLOB src/engine/server
+  input_events.cpp
+  input_events.h
   multi_worlds.cpp
   multi_worlds.h
   register.cpp
@@ -679,15 +691,74 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   core/components/content/status_manager.h
   core/components/content/trait_manager.cpp
   core/components/content/trait_manager.h
+  core/components/craft/craft_data.cpp
+  core/components/craft/craft_data.h
   core/components/craft/craft_manager.cpp
   core/components/craft/craft_manager.h
   core/components/vote/vote_menu_manager.cpp
   core/components/vote/vote_menu_manager.h
   core/components/vote/vote_menu_types.h
+  core/components/vote/vote_wrapper.cpp
+  core/components/vote/vote_wrapper.h
+  core/components/accounts/profession_data.cpp
+  core/components/accounts/profession_data.h
+  core/components/profession/profession_manager.cpp
+  core/components/profession/profession_manager.h
+  core/components/guilds/guild_data.cpp
+  core/components/guilds/guild_data.h
+  core/components/guilds/guild_manager.cpp
+  core/components/guilds/guild_manager.h
+  core/components/mmo/mmo_types.h
+  core/components/mmo/mmo_item.cpp
+  core/components/mmo/mmo_item.h
+  core/components/mmo/mmo_manager.cpp
+  core/components/mmo/mmo_manager.h
+  core/components/mmo/mmo_vote_menu.cpp
+  core/components/mmo/mmo_inventory.h
+  core/components/mmo/mmo_player_data.cpp
+  core/components/mmo/mmo_group.cpp
+  core/components/mmo/mmo_trade.cpp
+  core/components/mmo/mmo_spawn.cpp
+  core/components/mmo/mmo_mail.cpp
+  core/components/mmo/mmo_commands.cpp
+  core/components/mmo/mmo_housing.cpp
+  core/components/mmo/mmo_world_boss.cpp
+  core/components/mmo/mmo_world_boss.h
+  core/components/inventory/equipped_slots.cpp
+  core/components/inventory/equipped_slots.h
+  core/components/dungeon/dungeon_manager.cpp
+  core/components/dungeon/dungeon_manager.h
+  core/components/tunes/tune_zone_manager.cpp
+  core/components/tunes/tune_zone_manager.h
+  core/tools/tiles_handler.cpp
+  core/tools/tiles_handler.h
+  core/tools/cooldown.h
+  core/tools/motd_menu.cpp
+  core/tools/motd_menu.h
+  core/mmo_context.h
+  account_crypto.h
   entities/CKs.cpp
   entities/CKs.h
   entities/character.cpp
   entities/character.h
+  entities/character_bot_ai.cpp
+  entities/character_bot_ai.h
+  entities/ai_core/base_ai.cpp
+  entities/ai_core/base_ai.h
+  entities/ai_core/mob_ai.cpp
+  entities/ai_core/mob_ai.h
+  entities/ai_core/npc_ai.cpp
+  entities/ai_core/npc_ai.h
+  entities/ai_core/quest_mob_ai.cpp
+  entities/ai_core/quest_mob_ai.h
+  entities/ai_core/quest_npc_ai.cpp
+  entities/ai_core/quest_npc_ai.h
+  entities/ai_core/target_ai.h
+  entities/ai_core/zombie_ai.cpp
+  entities/ai_core/zombie_ai.h
+  core/tools/path_finder.cpp
+  core/tools/path_finder.h
+  core/tools/path_finder_result.h
   entities/electro.cpp
   entities/electro.h
   entities/growingexplosion.cpp
@@ -700,6 +771,20 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entities/pickup.h
   entities/plasma.cpp
   entities/plasma.h
+  entities/mmo/hammer_lamp_bolt.cpp
+  entities/mmo/hammer_lamp_bolt.h
+  entities/mmo/homing_grenade.cpp
+  entities/mmo/homing_grenade.h
+  entities/mmo/magnetic_pulse.cpp
+  entities/mmo/magnetic_pulse.h
+  entities/mmo/mmo_weapon_common.cpp
+  entities/mmo/mmo_weapon_common.h
+  entities/mmo/tesla_chain.cpp
+  entities/mmo/tesla_chain.h
+  entities/mmo/tracked_plasma.cpp
+  entities/mmo/tracked_plasma.h
+  entities/mmo/wall_pusher.cpp
+  entities/mmo/wall_pusher.h
   entities/projectile.cpp
   entities/projectile.h
   entities/tower-main.cpp
@@ -708,6 +793,8 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entities/turret.h
   entities/spider_boss.cpp
   entities/spider_boss.h
+  entities/pet.cpp
+  entities/pet.h
   entity.cpp
   entity.h
   eventhandler.cpp
@@ -724,6 +811,30 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   core/components/npcs/npc_manager.h
   core/components/quests/quest_manager.cpp
   core/components/quests/quest_manager.h
+  core/components/quests/quest_data.cpp
+  core/components/quests/quest_data.h
+  core/components/quests/quest_step_data.cpp
+  core/components/quests/quest_step_data.h
+  core/components/quests/datafile_progress.cpp
+  core/components/quests/datafile_progress.h
+  core/components/quests/quest_board_data.cpp
+  core/components/quests/quest_board_data.h
+  core/components/quests/scenario_data.cpp
+  core/components/quests/scenario_data.h
+  core/components/quests/scenario_manager.cpp
+  core/components/quests/scenario_manager.h
+  core/components/quests/scenario_instance.cpp
+  core/components/quests/scenario_instance.h
+  core/components/quests/entities/dir_navigator.cpp
+  core/components/quests/entities/dir_navigator.h
+  core/components/quests/entities/move_action.cpp
+  core/components/quests/entities/move_action.h
+  core/components/dialogs/dialog_data.h
+  core/components/dialogs/dialog_data.cpp
+  core/components/dialogs/dialog_manager.cpp
+  core/components/dialogs/dialog_manager.h
+  core/components/dialogs/mrpg_dialog.cpp
+  core/components/dialogs/mrpg_dialog.h
   core/components/meta/player_meta.cpp
   core/components/meta/player_meta.h
   core/components/meta/meta_manager.cpp
@@ -761,17 +872,20 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   sql_query.h
   turret_ammo.cpp
   turret_ammo.h
-  zombie_bot.cpp
-  zombie_bot.h
   zombie_nav.cpp
   zombie_nav.h
+  worldmodes/defence.cpp
   worldmodes/defence.h
   worldmodes/hub.cpp
   worldmodes/hub.h
-  worldmodes/story.cpp
-  worldmodes/story.h
+  worldmodes/rpg.cpp
+  worldmodes/rpg.h
   worldmodes/pvp.cpp
   worldmodes/pvp.h
+  global_state.cpp
+  global_state.h
+  data_center.cpp
+  data_center.h
 )
 set(GAME_GENERATED_SERVER
   src/generated/server_data.cpp

@@ -3,8 +3,6 @@
 
 #include "sql_query.h"
 
-#ifdef CONF_MYSQL
-
 #include <mysql.h>
 
 #include <engine/shared/config.h>
@@ -93,5 +91,3 @@ bool SqlExecQuery(void *pSql, CConfig *pConfig, const char *pQuery)
 	}
 	return false;
 }
-
-#endif

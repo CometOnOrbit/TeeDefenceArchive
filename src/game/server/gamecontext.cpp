@@ -27,10 +27,14 @@
 #include "worldmodes/defence.h"
 #include "worldmodes/hub.h"
 #include "worldmodes/pvp.h"
-#include "worldmodes/story.h"
+#include "worldmodes/rpg.h"
 #include <engine/shared/world_detail.h>
 #include "core/tworld_controller.h"
+#include "core/components/dialogs/dialog_manager.h"
 #include "core/components/skills/skill_manager.h"
+#include "core/components/mmo/mmo_manager.h"
+#include "data_center.h"
+#include "global_state.h"
 #include "gamecontroller.h"
 #include "player.h"
 #include "botengine.h"
@@ -186,7 +190,7 @@ const char *CGameContext::LocItemName(int ClientID, int ID, bool IncludeZero) co
 	if(!pH->HasItemDefinition(ID))
 		return Loc(ClientID, "item.name.unknown", "Item");
 
-	char aKey[32];
+	static char aKey[32];
 	pH->FormatItemLocKey(ID, aKey, sizeof(aKey));
 	return Loc(ClientID, aKey, pH->GetItemName(ID, IncludeZero));
 }
@@ -277,7 +281,59 @@ void CGameContext::SendChat(int ChatterClientID, int Mode, int To, const char *p
 	Msg.m_TargetID = -1;
 
 	if(Mode == CHAT_ALL)
-		Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, ChatterClientID == -1 ? To : -1);
+	{
+		if(ChatterClientID < 0)
+		{
+			// System message: send to specific client (To) or world-scoped broadcast
+			if(To < 0)
+			{
+				// World-scoped broadcast: only to clients in this world
+				const int ThisWorld = GetWorldID();
+				for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+				{
+					if(!Server()->ClientIngame(i))
+						continue;
+					if(Server()->GetClientWorldID(i) != ThisWorld)
+						continue;
+					Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+				}
+			}
+			else
+			{
+				Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, To);
+			}
+		}
+		else if(ChatterClientID < VANILLA_MAX_CLIENTS)
+		{
+			// Player message: only to players in the same world
+			const int SenderWorld = Server()->GetClientWorldID(ChatterClientID);
+			for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+			{
+				if(!Server()->ClientIngame(i))
+					continue;
+				if(Server()->GetClientWorldID(i) != SenderWorld)
+					continue;
+				Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+			}
+		}
+		else
+		{
+			// NPC CID >= 64: must map per-recipient, only to same world
+			const int SenderWorld = Server()->GetClientWorldID(ChatterClientID);
+			for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+			{
+				if(!Server()->ClientIngame(i))
+					continue;
+				if(Server()->GetClientWorldID(i) != SenderWorld)
+					continue;
+				const int DisplayID = ClientDisplaySlot(i, ChatterClientID);
+				if(DisplayID < 0)
+					continue;
+				Msg.m_ClientID = DisplayID;
+				Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+			}
+		}
+	}
 	else if(Mode == CHAT_TEAM)
 	{
 		// pack one for the recording only
@@ -289,7 +345,19 @@ void CGameContext::SendChat(int ChatterClientID, int Mode, int To, const char *p
 		for(int i = 0; i < MAX_CLIENTS; i++)
 		{
 			if(m_apPlayers[i] && m_apPlayers[i]->GetTeam() == To)
+			{
+				if(ChatterClientID >= VANILLA_MAX_CLIENTS && i < MAX_HUMAN_CLIENTS)
+				{
+					const int DisplayID = ClientDisplaySlot(i, ChatterClientID);
+					if(DisplayID < 0)
+						continue;
+					Msg.m_ClientID = DisplayID;
+				}
 				Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+				// Restore original CID for next iteration
+				if(ChatterClientID >= VANILLA_MAX_CLIENTS)
+					Msg.m_ClientID = ChatterClientID;
+			}
 		}
 	}
 	else // Mode == CHAT_WHISPER
@@ -334,9 +402,9 @@ void CGameContext::SendCommunityInfo(int ToClientID)
 	if(!Server()->ClientIngame(ToClientID))
 		return;
 
-	SendChatLocF(ToClientID, "community.qq_group", u8"服务器交流 QQ 群：%d", TdQQGroup());
-	SendChatLocF(ToClientID, "community.sponsor", u8"赞助模式 & 服务器请联系作者 QQ：%d", TdQQSponsor());
-	SendChatLoc(ToClientID, "community.menu_hint", u8"按 ESC 打开投票菜单 →「社区与赞助」可再次查看");
+	SendChatLocF(ToClientID, "community.qq_group", "服务器交流 QQ 群：%d", TdQQGroup());
+	SendChatLocF(ToClientID, "community.sponsor", "赞助模式 & 服务器请联系作者 QQ：%d", TdQQSponsor());
+	SendChatLoc(ToClientID, "community.menu_hint", "按 ESC 打开投票菜单 →「社区与赞助」可再次查看");
 }
 
 int CGameContext::TdQQGroup() const
@@ -356,7 +424,7 @@ bool CGameContext::RequiresLoginToPlay(const CPlayer *pPlayer) const
 
 void CGameContext::EnforceSpectatorUntilLogin(CPlayer *pPlayer)
 {
-	if(!RequiresLoginToPlay(pPlayer) || pPlayer->GetAccountId() >= 0)
+	if(!RequiresLoginToPlay(pPlayer) || pPlayer->GetAccountId() >= 0 || pPlayer->IsGuest())
 		return;
 
 	if(pPlayer->GetCharacter())
@@ -371,7 +439,7 @@ void CGameContext::EnterGame(int ClientID)
 	if(ClientID < 0 || ClientID >= MAX_CLIENTS || !m_apPlayers[ClientID])
 		return;
 	CPlayer *pP = m_apPlayers[ClientID];
-	if(!RequiresLoginToPlay(pP) || pP->GetAccountId() < 0)
+	if(!RequiresLoginToPlay(pP) || (pP->GetAccountId() < 0 && !pP->IsGuest()))
 		return;
 
 	if(pP->GetTeam() != TEAM_RED)
@@ -380,17 +448,17 @@ void CGameContext::EnterGame(int ClientID)
 
 	if(IsWorldType(WorldType::PvP))
 	{
-		SendChatLoc(ClientID, "account.enter_game_pvp", u8"已加入 PvP 竞技场，祝你好运！");
-		SendBroadcastLoc(ClientID, "account.enter_game_pvp_broadcast", u8"你已加入 PvP — 击败其他玩家！");
+		SendChatLoc(ClientID, "account.enter_game_pvp", "已加入 PvP 竞技场，祝你好运！");
+		SendBroadcastLoc(ClientID, "account.enter_game_pvp_broadcast", "你已加入 PvP — 击败其他玩家！");
 	}
-	else if(IsWorldType(WorldType::Story))
+	else if(IsWorldType(WorldType::RPG))
 	{
-		SendChatLoc(ClientID, "account.enter_game_story", u8"你踏入了梦境枢纽——现实在这里折叠。");
+		SendChatLoc(ClientID, "account.enter_game_frpg", "欢迎来到 F|RPG 世界——冒险正在等待。");
 	}
 	else
 	{
-		SendChatLoc(ClientID, "account.enter_game", u8"已加入防守方，祝你好运！");
-		SendBroadcastLoc(ClientID, "account.enter_game_broadcast", u8"你已加入游戏 — 守护主塔！");
+		SendChatLoc(ClientID, "account.enter_game", "已加入防守方，祝你好运！");
+		SendBroadcastLoc(ClientID, "account.enter_game_broadcast", "你已加入游戏 — 守护主塔！");
 	}
 
 	vec2 SpawnPos;
@@ -429,11 +497,195 @@ void CGameContext::SendChatAllLocF(const char *pKey, const char *pDefault, ...)
 	va_end(ap);
 }
 
+void CGameContext::OnDaytypeChange(int NewDaytype)
+{
+	const char *pWorldname = Server()->GetWorldName(m_WorldID);
+	switch(NewDaytype)
+	{
+	case IServer::NIGHT_TYPE:
+	{
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "Night has fallen in '%s'!", pWorldname);
+		SendChat(-1, CHAT_ALL, -1, aBuf);
+		break;
+	}
+	case IServer::MORNING_TYPE:
+	{
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "The sun rises over '%s'!", pWorldname);
+		SendChat(-1, CHAT_ALL, -1, aBuf);
+		break;
+	}
+	default:
+		break;
+	}
+}
+
+/* #########################################################################
+	MRPG-STYLE BROADCAST SYSTEM
+	Queued + priority + lifespan, flushes once per tick per client.
+######################################################################### */
+void CGameContext::AddBroadcast(int ClientID, const char *pText, BroadcastPriority Priority, int LifeSpan)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+
+	SBroadcastState &State = m_aBroadcastStates[ClientID];
+	if(LifeSpan > 0)
+	{
+		if(Priority < State.m_TimedPriority)
+			return;
+		str_copy(State.m_aTimedMessage, pText, sizeof(State.m_aTimedMessage));
+		State.m_TimedPriority = Priority;
+		State.m_LifeSpanTick = LifeSpan;
+	}
+	else
+	{
+		if(Priority < State.m_NextPriority)
+			return;
+		str_copy(State.m_aNextMessage, pText, sizeof(State.m_aNextMessage));
+		State.m_NextPriority = Priority;
+	}
+	State.m_Updated = true;
+}
+
+void CGameContext::MarkUpdatedBroadcast(int ClientID)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+	m_aBroadcastStates[ClientID].m_Updated = true;
+}
+
+void CGameContext::FlushBroadcastStats(int ClientID)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+
+	SBroadcastState &State = m_aBroadcastStates[ClientID];
+	if(!m_apPlayers[ClientID] || !Server()->ClientIngame(ClientID))
+		return;
+
+	if(State.m_LifeSpanTick > 0 && State.m_TimedPriority > State.m_NextPriority)
+	{
+		str_copy(State.m_aNextMessage, State.m_aTimedMessage, sizeof(State.m_aNextMessage));
+		State.m_NextPriority = State.m_TimedPriority;
+	}
+
+	if(State.m_TimedPriority < BROADCAST_PRIORITY_MAIN_INFORMATION)
+	{
+		if(m_apPlayers[ClientID])
+		{
+			m_apPlayers[ClientID]->FormatBroadcastBasicStats(
+				State.m_aCompleteMsg,
+				sizeof(State.m_aCompleteMsg),
+				State.m_aNextMessage);
+		}
+		else
+			str_copy(State.m_aCompleteMsg, State.m_aNextMessage, sizeof(State.m_aCompleteMsg));
+	}
+	else
+		str_copy(State.m_aCompleteMsg, State.m_aNextMessage, sizeof(State.m_aCompleteMsg));
+
+	CNetMsg_Sv_Broadcast Msg;
+	Msg.m_pMessage = State.m_aCompleteMsg;
+	Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, ClientID);
+
+	str_copy(State.m_aPrevMessage, State.m_aNextMessage, sizeof(State.m_aPrevMessage));
+	State.m_aCompleteMsg[0] = '\0';
+	State.m_Updated = false;
+	State.m_NoChangeUntil = Server()->Tick() + Server()->TickSpeed() * 3;
+}
+
+void CGameContext::BroadcastTick(int ClientID)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return;
+
+	SBroadcastState &State = m_aBroadcastStates[ClientID];
+	if(!m_apPlayers[ClientID] || !Server()->ClientIngame(ClientID))
+	{
+		// Not ingame — full reset
+		State.m_aPrevMessage[0] = '\0';
+		State.m_aNextMessage[0] = '\0';
+		State.m_NextPriority = BROADCAST_PRIORITY_LOWER;
+		State.m_aTimedMessage[0] = '\0';
+		State.m_TimedPriority = BROADCAST_PRIORITY_LOWER;
+		State.m_LifeSpanTick = 0;
+		State.m_NoChangeUntil = 0;
+		State.m_Updated = false;
+		return;
+	}
+
+	// Timed message overrides one-shot if higher priority
+	if(State.m_LifeSpanTick > 0 && State.m_TimedPriority > State.m_NextPriority)
+	{
+		str_copy(State.m_aNextMessage, State.m_aTimedMessage, sizeof(State.m_aNextMessage));
+		State.m_NextPriority = State.m_TimedPriority;
+	}
+
+	// Send only if updated/changed, or every 3 seconds to fight auto-fade (MRPG)
+	if(State.m_Updated || str_comp(State.m_aPrevMessage, State.m_aNextMessage) != 0 || Server()->Tick() >= State.m_NoChangeUntil)
+	{
+		// Below MainInformation: merge HUD stats/weapons with the message line
+		if(State.m_TimedPriority < BROADCAST_PRIORITY_MAIN_INFORMATION)
+		{
+			if(m_apPlayers[ClientID])
+			{
+				m_apPlayers[ClientID]->FormatBroadcastBasicStats(
+					State.m_aCompleteMsg,
+					sizeof(State.m_aCompleteMsg),
+					State.m_aNextMessage);
+			}
+			else
+				str_copy(State.m_aCompleteMsg, State.m_aNextMessage, sizeof(State.m_aCompleteMsg));
+		}
+		else
+			str_copy(State.m_aCompleteMsg, State.m_aNextMessage, sizeof(State.m_aCompleteMsg));
+
+		CNetMsg_Sv_Broadcast Msg;
+		Msg.m_pMessage = State.m_aCompleteMsg;
+		Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, ClientID);
+
+		str_copy(State.m_aPrevMessage, State.m_aNextMessage, sizeof(State.m_aPrevMessage));
+		State.m_aCompleteMsg[0] = '\0';
+		State.m_Updated = false;
+		State.m_NoChangeUntil = Server()->Tick() + Server()->TickSpeed() * 3;
+	}
+
+	// Decrement timed message lifespan
+	if(State.m_LifeSpanTick > 0)
+	{
+		State.m_LifeSpanTick--;
+		if(State.m_LifeSpanTick <= 0)
+		{
+			State.m_aTimedMessage[0] = '\0';
+			State.m_TimedPriority = BROADCAST_PRIORITY_LOWER;
+		}
+	}
+
+	// Reset one-shot slot for next tick
+	State.m_aNextMessage[0] = '\0';
+	State.m_NextPriority = BROADCAST_PRIORITY_LOWER;
+}
+
+// Legacy API forwards through new system
 void CGameContext::SendBroadcast(int ClientID, const char *pText)
 {
-	CNetMsg_Sv_Broadcast Msg;
-	Msg.m_pMessage = pText;
-	Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, ClientID);
+	if(ClientID < 0)
+	{
+		// World-scoped broadcast: all players in this world
+		const int ThisWorld = GetWorldID();
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			if(!Server()->ClientIngame(i))
+				continue;
+			if(Server()->GetClientWorldID(i) != ThisWorld)
+				continue;
+			AddBroadcast(i, pText, BROADCAST_PRIORITY_GAME_INFORMATION);
+		}
+		return;
+	}
+	AddBroadcast(ClientID, pText, BROADCAST_PRIORITY_GAME_INFORMATION);
 }
 
 void CGameContext::SendBroadcastLoc(int ClientID, const char *pKey, const char *pDefault)
@@ -490,9 +742,25 @@ void CGameContext::SendBroadcastLocF(int ClientID, const char *pKey, const char 
 void CGameContext::SendEmoticon(int ClientID, int Emoticon)
 {
 	CNetMsg_Sv_Emoticon Msg;
-	Msg.m_ClientID = ClientID;
 	Msg.m_Emoticon = Emoticon;
-	Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, -1);
+	if(ClientID < VANILLA_MAX_CLIENTS)
+	{
+		Msg.m_ClientID = ClientID;
+		Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, -1);
+	}
+	else
+	{
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			if(!Server()->ClientIngame(i))
+				continue;
+			const int DisplayID = ClientDisplaySlot(i, ClientID);
+			if(DisplayID < 0)
+				continue;
+			Msg.m_ClientID = DisplayID;
+			Server()->SendPackMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+		}
+	}
 }
 
 void CGameContext::SendWeaponPickup(int ClientID, int Weapon)
@@ -525,7 +793,17 @@ void CGameContext::SendSettings(int ClientID)
 void CGameContext::SendSkinChange(int ClientID, int TargetID)
 {
 	CNetMsg_Sv_SkinChange Msg;
-	Msg.m_ClientID = ClientID;
+	if(ClientID < VANILLA_MAX_CLIENTS)
+	{
+		Msg.m_ClientID = ClientID;
+	}
+	else
+	{
+		const int DisplayID = ClientDisplaySlot(TargetID, ClientID);
+		if(DisplayID < 0)
+			return;
+		Msg.m_ClientID = DisplayID;
+	}
 	for(int p = 0; p < NUM_SKINPARTS; p++)
 	{
 		Msg.m_apSkinPartNames[p] = m_apPlayers[ClientID]->m_TeeInfos.m_aaSkinPartNames[p];
@@ -851,11 +1129,22 @@ void CGameContext::OnTick()
 	}
 
 	// Do not synthesize dummy input here: zombie AI drives bots via PreTick + OnPredictedInput.
+
+	// MRPG-style broadcast queue: flush per-client
+	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	{
+		if(!Server()->ClientIngame(i))
+			continue;
+		BroadcastTick(i);
+	}
 }
 
 // Server hooks
 void CGameContext::OnClientDirectInput(int ClientID, void *pInput)
 {
+	// Skip dummies — they drive their own input in Tick()
+	if(!m_apPlayers[ClientID] || m_apPlayers[ClientID]->IsDummy())
+		return;
 	int NumFailures = m_NetObjHandler.NumObjFailures();
 	if(m_NetObjHandler.ValidateObj(NETOBJTYPE_PLAYERINPUT, pInput, sizeof(CNetObj_PlayerInput)) == -1)
 	{
@@ -872,6 +1161,9 @@ void CGameContext::OnClientDirectInput(int ClientID, void *pInput)
 
 void CGameContext::OnClientPredictedInput(int ClientID, void *pInput)
 {
+	// Skip dummies — they drive their own input in Tick()
+	if(!m_apPlayers[ClientID] || m_apPlayers[ClientID]->IsDummy())
+		return;
 	int NumFailures = m_NetObjHandler.NumObjFailures();
 	if(m_NetObjHandler.ValidateObj(NETOBJTYPE_PLAYERINPUT, pInput, sizeof(CNetObj_PlayerInput)) == -1)
 	{
@@ -910,9 +1202,9 @@ void CGameContext::InitWorld()
 
 	switch(Type)
 	{
-	case WorldType::Story:
-		m_pController = new CGameControllerStory(this);
-		dbg_msg("world init", "world %d (%s) mode=story", m_WorldID, Server()->GetWorldName(m_WorldID));
+	case WorldType::RPG:
+		m_pController = new CGameControllerRPG(this);
+		dbg_msg("world init", "world %d (%s) mode=frpg", m_WorldID, Server()->GetWorldName(m_WorldID));
 		break;
 	case WorldType::Hub:
 		m_pController = new CGameControllerHub(this);
@@ -943,7 +1235,8 @@ static void RestoreChangeWorldPlayer(CGameContext *pCtx, int ClientID, CPlayer *
 	int64 AccountId = -1;
 	SAccSyncData AccData;
 	int AccSize = sizeof(AccData);
-	const bool RestoredSession = pCtx->Server()->PopChangeWorldSession(ClientID, &AccountId, &AccData, &AccSize) && AccountId >= 0;
+	const bool HadSession = pCtx->Server()->PopChangeWorldSession(ClientID, &AccountId, &AccData, &AccSize);
+	const bool RestoredSession = HadSession && (AccountId >= 0 || AccountId == -2);
 	const bool WasReady = pCtx->Server()->GetChangeWorldWasReady(ClientID);
 
 	if(RestoredSession)
@@ -953,6 +1246,8 @@ static void RestoreChangeWorldPlayer(CGameContext *pCtx, int ClientID, CPlayer *
 		pPlayer->m_AccData.m_aPassword[0] = 0;
 		if(pPlayer->m_AccData.m_aLanguage[0])
 			pPlayer->SetLanguage(pPlayer->m_AccData.m_aLanguage);
+		if(AccountId == -2)
+			pPlayer->SetGuest(true);
 	}
 	pPlayer->m_IsReadyToEnter = WasReady || RestoredSession || pPlayer->GetAccountId() >= 0;
 }
@@ -967,7 +1262,7 @@ static void ClientDropNotice(CGameContext *pCtx, int ClientID, const char *pReas
 		(pCtx->Config()->m_SvSilentSpectatorMode && pPlayer->GetTeam() == TEAM_SPECTATORS);
 	const char *pDropReason = pReason && pReason[0] ? pReason : "disconnected";
 
-	pCtx->RebuildLegacySlotMap();
+	pCtx->RebuildLegacySlotMap(false);
 	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
 	{
 		if(SkipSelf && i == ClientID)
@@ -1008,7 +1303,6 @@ static void RemovePlayerFromWorld(CGameContext *pCtx, int ClientID, const char *
 			p->LoseOwner();
 	}
 
-	pPlayer->KillCharacter(WEAPON_WORLD);
 	delete pPlayer;
 	pCtx->m_apPlayers[ClientID] = nullptr;
 	pCtx->m_VoteUpdate = true;
@@ -1052,8 +1346,6 @@ void CGameContext::OnClientEnter(int ClientID)
 
 	m_VoteUpdate = true;
 
-	RebuildLegacySlotMap();
-
 	const bool Silent = Config()->m_SvSilentSpectatorMode && pPlayer->GetTeam() == TEAM_SPECTATORS;
 
 	if(IsDummy)
@@ -1062,16 +1354,19 @@ void CGameContext::OnClientEnter(int ClientID)
 	}
 	else
 	{
-		for(int i = 0; i < MAX_CLIENTS; ++i)
+		m_World.UpdatePlayerMaps(true);
+		MarkUpdatedBroadcast(ClientID);
+		AddBroadcast(ClientID, "", BROADCAST_PRIORITY_GAME_BASIC_STATS, Server()->TickSpeed() * 2);
+
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; ++i)
 		{
 			if(i == ClientID || !m_apPlayers[i] || !Server()->ClientIngame(i))
 				continue;
 
-			if(!m_apPlayers[i]->IsDummy())
-				SendClientInfo(i, ClientID, false, Silent);
+			SendClientInfo(i, ClientID, false, Silent);
 
 			const bool ExistingSilent = Config()->m_SvSilentSpectatorMode && m_apPlayers[i]->GetTeam() == TEAM_SPECTATORS;
-			SendClientInfo(ClientID, i, false, m_apPlayers[i]->IsDummy() || ExistingSilent);
+			SendClientInfo(ClientID, i, false, ExistingSilent);
 		}
 
 		SendClientInfo(ClientID, ClientID, true, Silent);
@@ -1093,7 +1388,7 @@ void CGameContext::OnClientEnter(int ClientID)
 
 	if(ChangeWorldEnter)
 	{
-		if(pPlayer->GetAccountId() >= 0)
+		if(pPlayer->GetAccountId() >= 0 || pPlayer->IsGuest())
 			EnterGame(ClientID);
 		if(SPlayerVote *pV = GetPlayerVote(ClientID))
 			pV->m_Page = PAGE_MENU;
@@ -1121,7 +1416,11 @@ void CGameContext::ReleaseClientPlayer(int ClientID)
 	const bool WasHuman = !m_apPlayers[ClientID]->IsDummy();
 	OnClientDrop(ClientID, "released");
 	if(WasHuman && m_pController && Server()->GetNumPlayersInWorld(m_WorldID) == 0)
-		m_pController->TdPurgeZombieDummies();
+	{
+		auto *pCtrl = dynamic_cast<CGameControllerDefence *>(m_pController);
+		if(pCtrl)
+			pCtrl->TdPurgeZombieDummies();
+	}
 }
 
 void CGameContext::OnClientConnected(int ClientID, bool Dummy, bool AsSpec)
@@ -1135,7 +1434,7 @@ void CGameContext::OnClientConnected(int ClientID, bool Dummy, bool AsSpec)
 	int64 AccountId = -1;
 	SAccSyncData AccData;
 	int AccSize = sizeof(AccData);
-	if(!Dummy && Server()->PopChangeWorldSession(ClientID, &AccountId, &AccData, &AccSize) && AccountId >= 0)
+	if(!Dummy && Server()->PopChangeWorldSession(ClientID, &AccountId, &AccData, &AccSize) && (AccountId >= 0 || AccountId == -2))
 		RestoredSession = true;
 
 	m_apPlayers[ClientID] = new(ClientID) CPlayer(this, ClientID, Dummy, AsSpec || (ForceSpec && !RestoredSession));
@@ -1149,6 +1448,8 @@ void CGameContext::OnClientConnected(int ClientID, bool Dummy, bool AsSpec)
 		m_apPlayers[ClientID]->m_AccData.m_aPassword[0] = 0;
 		if(m_apPlayers[ClientID]->m_AccData.m_aLanguage[0])
 			m_apPlayers[ClientID]->SetLanguage(m_apPlayers[ClientID]->m_AccData.m_aLanguage);
+		if(AccountId == -2)
+			m_apPlayers[ClientID]->SetGuest(true);
 		m_apPlayers[ClientID]->m_IsReadyToEnter = true;
 	}
 	else if(!Dummy && Server()->IsClientChangingWorld(ClientID))
@@ -1201,6 +1502,9 @@ void CGameContext::OnClientDrop(int ClientID, const char *pReason)
 
 		ClientDropNotice(this, ClientID, pReason, false);
 	}
+
+	// Notify friends that this player is offline
+	// (friend notification handled in CMMOManager::OnClientReset via TWorldController)
 
 	RemovePlayerFromWorld(this, ClientID, nullptr, false);
 }
@@ -1288,6 +1592,19 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 				SendChat(ClientID, pMsg->m_Mode, pMsg->m_Target, pMsg->m_pMessage);
 			}
 		}
+		else if(MsgID == NETMSGTYPE_CL_VOTE)
+		{
+			CNetMsg_Cl_Vote *pMsg = (CNetMsg_Cl_Vote *)pRawMsg;
+
+			// MRPG: inject input events + dispatch business logic separately
+			if(pMsg->m_Vote == 1)
+				Server()->Input()->AppendEventKeyClick(ClientID, KEY_EVENT_VOTE_YES);
+			else if(pMsg->m_Vote == -1 || pMsg->m_Vote == 0)
+				Server()->Input()->AppendEventKeyClick(ClientID, KEY_EVENT_VOTE_NO);
+
+			if(pPlayer)
+				pPlayer->ParseVoteOptionResult(pMsg->m_Vote);
+		}
 		else if(MsgID == NETMSGTYPE_CL_CALLVOTE)
 		{
 			CNetMsg_Cl_CallVote *pMsg = (CNetMsg_Cl_CallVote *) pRawMsg;
@@ -1317,8 +1634,26 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 
 			if(IsOptionVote)
 			{
-				if(TryHandleVoteMenuOption(ClientID, pMsg->m_Value))
+				// ---- If a MotdMenu is active, dispatch F3/F4 clicks to it ----
+				CPlayer *pPlayer = m_apPlayers[ClientID];
+				if(pPlayer && pPlayer->m_pMotdMenu)
+				{
+					// The MotdMenu handles input via snapshot edge detection in Tick().
+					// F3/F4 vote messages are not used for menu navigation.
 					return;
+				}
+
+				const int ReasonNumber = clamp(str_toint(pReason), 0, 1000000000);
+
+				if(TryHandleVoteMenuOption(ClientID, pMsg->m_Value, ReasonNumber, pReason))
+					return;
+
+				if(Core() && Core()->VoteMenuManager())
+				{
+					SPlayerVote *pMenuVote = Core()->VoteMenuManager()->GetPlayerVote(ClientID);
+					if(pMenuVote && pMenuVote->m_aVoteOptions.size() > 0)
+						return;
+				}
 
 				if(!pMsg->m_Force)
 				{
@@ -1372,7 +1707,7 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 				if(IsZombieVoteTarget(m_apPlayers[KickID]))
 				{
 					if(!pMsg->m_Force)
-						SendChatLoc(ClientID, "vote.target_zombie", u8"不能对僵尸发起投票。");
+						SendChatLoc(ClientID, "vote.target_zombie", "不能对僵尸发起投票。");
 					return;
 				}
 
@@ -1416,7 +1751,7 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 				if(IsZombieVoteTarget(m_apPlayers[SpectateID]))
 				{
 					if(!pMsg->m_Force)
-						SendChatLoc(ClientID, "vote.target_zombie", u8"不能对僵尸发起投票。");
+						SendChatLoc(ClientID, "vote.target_zombie", "不能对僵尸发起投票。");
 					return;
 				}
 
@@ -1449,30 +1784,6 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 				pPlayer->m_LastVoteCallTick = Now;
 			}
 		}
-		else if(MsgID == NETMSGTYPE_CL_VOTE)
-		{
-			if(!m_VoteCloseTime)
-				return;
-
-			if(pPlayer->m_Vote == VOTE_CHOICE_PASS)
-			{
-				CNetMsg_Cl_Vote *pMsg = (CNetMsg_Cl_Vote *) pRawMsg;
-				if(pMsg->m_Vote == VOTE_CHOICE_PASS)
-					return;
-
-				pPlayer->m_Vote = pMsg->m_Vote;
-				pPlayer->m_VotePos = ++m_VotePos;
-				m_VoteUpdate = true;
-			}
-			else if(m_VoteCreator == pPlayer->GetCID())
-			{
-				CNetMsg_Cl_Vote *pMsg = (CNetMsg_Cl_Vote *) pRawMsg;
-				if(pMsg->m_Vote != VOTE_CHOICE_NO || m_VoteCancelTime < time_get())
-					return;
-
-				m_VoteCloseTime = -1;
-			}
-		}
 		else if(MsgID == NETMSGTYPE_CL_SETTEAM)
 		{
 			CNetMsg_Cl_SetTeam *pMsg = (CNetMsg_Cl_SetTeam *) pRawMsg;
@@ -1492,10 +1803,10 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 				pPlayer->m_TeamChangeTick = Server()->Tick() + Server()->TickSpeed() * 3;
 				m_pController->DoTeamChange(pPlayer, pMsg->m_Team);
 			}
-			else if(RequiresLoginToPlay(pPlayer) && pPlayer->GetAccountId() < 0 && pMsg->m_Team == TEAM_RED)
+			else if(RequiresLoginToPlay(pPlayer) && pPlayer->GetAccountId() < 0 && !pPlayer->IsGuest() && pMsg->m_Team == TEAM_RED)
 			{
-				SendChatLoc(ClientID, "login.hint", u8"本服务器需要 MySQL 账号 — 使用 /register 或 /login");
-				SendBroadcastLoc(ClientID, "login.broadcast", u8"旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
+				SendChatLoc(ClientID, "login.hint", "本服务器需要 MySQL 账号 — 使用 /register 或 /login");
+				SendBroadcastLoc(ClientID, "login.broadcast", "旁观者模式 — 输入 /register 用户名 密码 或 /login 用户名 密码 加入游戏");
 			}
 		}
 		else if(MsgID == NETMSGTYPE_CL_SETSPECTATORMODE)
@@ -1519,8 +1830,9 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 			pPlayer->m_LastEmoteTick = Server()->Tick();
 
 			SendEmoticon(ClientID, pMsg->m_Emoticon);
-			if(Core() && Core()->SkillManager())
-				Core()->SkillManager()->UseSkillsByEmoticon(pPlayer, pMsg->m_Emoticon);
+			// Phase 3: emoticon key → item quick-slot use (replaces old skill-emoticon binding)
+			if(Core() && Core()->GetMMOManager())
+				Core()->GetMMOManager()->UseItemByEmoticon(pPlayer, pMsg->m_Emoticon);
 		}
 		else if(MsgID == NETMSGTYPE_CL_KILL)
 		{
@@ -1927,7 +2239,8 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("clear_votes", "", CFGFLAG_SERVER, ConClearVotes, this, "Clears the voting options");
 	Console()->Register("vote", "r['yes'|'no']", CFGFLAG_SERVER, ConVote, this, "Force a vote to yes/no");
 
-	CGameController::RegisterTeeDefenseConsoleCommands(this);
+	if(auto *pCtrl = dynamic_cast<CGameControllerDefence *>(m_pController))
+		pCtrl->RegisterTeeDefenseConsoleCommands(this);
 
 	if(m_pTWorld)
 		m_pTWorld->OnConsoleInit(m_pConsole);
@@ -1964,6 +2277,9 @@ void CGameContext::OnInit()
 	IMap *pMap = Kernel()->RequestInterface<IMap>(m_WorldID);
 	m_Layers.Init(Kernel(), pMap);
 	m_Collision.Init(&m_Layers);
+	// Initialize global data center before any world initialization
+	CDataCenter::Init(Storage());
+	CGlobalState::Init();
 
 	InitWorld();
 
@@ -1975,8 +2291,12 @@ void CGameContext::OnInit()
 
 	if(!Accounts() || !Accounts()->IsEnabled())
 	{
-		dbg_msg("server", "FATAL: MySQL account system is required but failed to start (check sv_mysql_* and database)");
-		exit(1);
+		if(Config()->m_SvMysqlEnable)
+		{
+			dbg_msg("server", "FATAL: MySQL account system failed (sv_mysql_enable=1 but DB unreachable)");
+			exit(1);
+		}
+		dbg_msg("server", "Running without account system (sv_mysql_enable=0, testing mode)");
 	}
 
 	m_pController->RegisterChatCommands(CommandManager());
@@ -2026,9 +2346,6 @@ void CGameContext::OnShutdown()
 
 void CGameContext::OnSnap(int ClientID)
 {
-	if(ClientID >= 0 && ClientID < MAX_HUMAN_CLIENTS && !ClientUsesExtendedSlots(ClientID))
-		RebuildLegacySlotMap();
-
 	// add tuning to demo
 	CTuningParams StandardTuning;
 	if(ClientID == -1 && Server()->DemoRecorder_IsRecording() && mem_comp(&StandardTuning, &m_Tuning, sizeof(CTuningParams)) != 0)
@@ -2075,7 +2392,7 @@ void CGameContext::OnPostSnap()
 
 bool CGameContext::IsClientBot(int ClientID) const
 {
-	return m_apPlayers[ClientID] && m_apPlayers[ClientID]->IsDummy();
+	return m_apPlayers[ClientID] && (m_apPlayers[ClientID]->IsDummy() || m_apPlayers[ClientID]->IsQuestNpc());
 }
 
 bool CGameContext::IsClientReady(int ClientID) const
@@ -2162,66 +2479,44 @@ int CGameContext::ClientDisplaySlot(int Recipient, int ServerSlot) const
 {
 	if(ServerSlot < 0 || ServerSlot >= MAX_CLIENTS)
 		return -1;
-	if(Recipient < 0 || ClientUsesExtendedSlots(Recipient) || ServerSlot < MAX_CLIENTS)
+	if(Recipient < 0 || ServerSlot < MAX_HUMAN_CLIENTS)
 		return ServerSlot;
-	return m_aLegacyDisplaySlot[ServerSlot];
+
+	int Target = ServerSlot;
+	if(!Server()->Translate(Target, Recipient))
+		return -1;
+	return Target;
 }
 
 int CGameContext::ClientSnapID(int SnappingClient, int ServerSlot) const
 {
-	if(SnappingClient == -1)
+	if(SnappingClient < 0)
 		return ServerSlot;
-	return ClientDisplaySlot(SnappingClient, ServerSlot);
+	int Target = ServerSlot;
+	if(!Server()->Translate(Target, SnappingClient))
+		return -1;
+	return Target;
 }
 
-void CGameContext::RebuildLegacySlotMap()
+void CGameContext::RefreshMappedBotClientInfo(int Recipient)
 {
-	int aOldDisplay[MAX_CLIENTS];
-	for(int i = 0; i < MAX_CLIENTS; i++)
-		aOldDisplay[i] = m_aLegacyDisplaySlot[i];
+	if(Recipient < 0 || Recipient >= MAX_HUMAN_CLIENTS || !Server()->ClientIngame(Recipient))
+		return;
+	if(Server()->GetClientWorldID(Recipient) != m_WorldID)
+		return;
 
-	for(int i = 0; i < MAX_CLIENTS; i++)
-		m_aLegacyDisplaySlot[i] = -1;
-	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
-		m_aLegacyDisplayOwner[i] = -1;
-
-	bool aHumanSlotUsed[MAX_HUMAN_CLIENTS] = {false};
-	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+	int *pMap = Server()->GetIdMap(Recipient);
+	for(int i = MAX_HUMAN_CLIENTS; i < VANILLA_MAX_CLIENTS - 1; i++)
 	{
-		if(m_apPlayers[i] && Server()->ClientIngame(i) && !m_apPlayers[i]->IsDummy())
-			aHumanSlotUsed[i] = true;
+		const int ServerSlot = pMap[i];
+		if(ServerSlot >= 0 && m_apPlayers[ServerSlot])
+			SendClientInfo(Recipient, ServerSlot, false, true);
 	}
+}
 
-	const int Zombie0 = ZombieFirstSlot(Config());
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		if(!m_apPlayers[i] || !m_apPlayers[i]->IsDummy() || m_apPlayers[i]->GetZomb() == ZOMB_NONE)
-			continue;
-
-		const int Old = aOldDisplay[i];
-		if(Old >= 0 && Old < MAX_HUMAN_CLIENTS && !aHumanSlotUsed[Old])
-		{
-			m_aLegacyDisplaySlot[i] = Old;
-			m_aLegacyDisplayOwner[Old] = i;
-		}
-	}
-
-	int NextDisplay = MAX_HUMAN_CLIENTS - 1;
-	for(int i = Zombie0; i < MAX_CLIENTS; i++)
-	{
-		if(m_aLegacyDisplaySlot[i] >= 0)
-			continue;
-		if(!m_apPlayers[i] || !m_apPlayers[i]->IsDummy() || m_apPlayers[i]->GetZomb() == ZOMB_NONE)
-			continue;
-
-		while(NextDisplay >= 0 && (aHumanSlotUsed[NextDisplay] || m_aLegacyDisplayOwner[NextDisplay] >= 0))
-			NextDisplay--;
-		if(NextDisplay < 0)
-			break;
-
-		m_aLegacyDisplaySlot[i] = NextDisplay;
-		m_aLegacyDisplayOwner[NextDisplay] = i;
-	}
+void CGameContext::RebuildLegacySlotMap(bool ForceMapUpdate)
+{
+	(void)ForceMapUpdate;
 }
 
 void CGameContext::SendClientInfo(int Recipient, int ServerSlot, bool Local, bool Silent)
@@ -2252,13 +2547,9 @@ void CGameContext::SendClientInfo(int Recipient, int ServerSlot, bool Local, boo
 
 void CGameContext::BroadcastClientInfo(int ServerSlot, bool Silent)
 {
-	RebuildLegacySlotMap();
-	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
-	{
-		if(!Server()->ClientIngame(i))
-			continue;
-		SendClientInfo(i, ServerSlot, false, Silent);
-	}
+	(void)ServerSlot;
+	(void)Silent;
+	m_World.UpdatePlayerMaps(true);
 }
 
 CAccountSystem *CGameContext::Accounts()
@@ -2372,16 +2663,16 @@ void CGameContext::CountItemNum(int ClientID)
 		pV->CountItemNum(ClientID);
 }
 
-bool CGameContext::TryHandleVoteMenuOption(int ClientID, const char *pDescription)
+bool CGameContext::TryHandleVoteMenuOption(int ClientID, const char *pDescription, int ReasonNumber, const char *pReason)
 {
 	CVoteMenuManager *pV = VoteMgr(this);
-	return pV ? pV->TryHandleVoteMenuOption(ClientID, pDescription) : false;
+	return pV ? pV->TryHandleVoteMenuOption(ClientID, pDescription, ReasonNumber, pReason) : false;
 }
 
-void CGameContext::ProcessVoteMenuCommand(int ClientID, const char *pCmdLine)
+void CGameContext::ProcessVoteMenuCommand(int ClientID, const char *pCmdLine, int ReasonNumber, const char *pReason)
 {
 	if(CVoteMenuManager *pV = VoteMgr(this))
-		pV->ProcessVoteMenuCommand(ClientID, pCmdLine);
+		pV->ProcessVoteMenuCommand(ClientID, pCmdLine, ReasonNumber, pReason);
 }
 
 IGameServer *CreateGameServer() { return new CGameContext; }

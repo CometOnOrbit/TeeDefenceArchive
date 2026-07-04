@@ -15,7 +15,8 @@ class CProjectile : public CChildEntity
 {
 public:
 	CProjectile(CGameWorld *pGameWorld, int Type, int Owner, vec2 Pos, vec2 Dir, int Span,
-		int Damage, bool Explosive, float Force, int SoundImpact, int Weapon);
+		int Damage, bool Explosive, float Force, int SoundImpact, int Weapon, float SpeedMul = 1.f,
+		float LifeMul = 1.f, int Pierce = 0, int LifestealPercent = 0);
 
 	vec2 GetPos(float Time);
 	void FillInfo(CNetObj_Projectile *pProj);
@@ -36,6 +37,9 @@ private:
 	int m_SoundImpact;
 	int m_Weapon;
 	float m_Force;
+	float m_SpeedMul;
+	int m_PierceRemaining;
+	int m_LifestealPercent;
 	int m_StartTick;
 	bool m_Explosive;
 };

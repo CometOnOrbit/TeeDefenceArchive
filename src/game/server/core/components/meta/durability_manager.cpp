@@ -121,7 +121,7 @@ void CDurabilityManager::DamageHoldingTool(CPlayer *pPlayer, int HoldKind, int A
 	SetDurability(pExtra, sizeof(pPlayer->m_AccData.m_aItems[ItemId].m_aExtra), Dur);
 	if(Dur <= 0)
 	{
-		GS()->SendChatLocF(pPlayer->GetCID(), "durability.broken", u8"%s 已损坏，请修理。", GS()->LocItemName(pPlayer->GetCID(), ItemId));
+		GS()->SendChatLocF(pPlayer->GetCID(), "durability.broken", "%s 已损坏，请修理。", GS()->LocItemName(pPlayer->GetCID(), ItemId));
 		pPlayer->m_AccData.m_Holding[HoldKind] = 0;
 	}
 	if(GS()->Accounts() && GS()->Accounts()->IsEnabled() && pPlayer->GetAccountId() >= 0)
@@ -167,18 +167,18 @@ bool CDurabilityManager::TryRepair(CPlayer *pPlayer, int ItemId, char *pErr, int
 	};
 
 	if(!pPlayer || !GS())
-		return Fail("durability.repair.err.invalid_player", u8"无效玩家。");
+		return Fail("durability.repair.err.invalid_player", "无效玩家。");
 	CItemHelper *pH = GS()->ItemHelper();
 	if(!pH || !ItemHasDurability(pH, ItemId))
-		return Fail("durability.repair.err.no_need", u8"该物品无需修理。");
+		return Fail("durability.repair.err.no_need", "该物品无需修理。");
 	if(pPlayer->m_AccData.m_aItems[ItemId].m_Num <= 0)
-		return Fail("durability.repair.err.not_owned", u8"你没有该物品。");
+		return Fail("durability.repair.err.not_owned", "你没有该物品。");
 
 	char *pExtra = pPlayer->m_AccData.m_aItems[ItemId].m_aExtra;
 	EnsureDurability(pExtra, sizeof(pPlayer->m_AccData.m_aItems[ItemId].m_aExtra));
 	const int Dur = GetDurability(pH, ItemId, pExtra);
 	if(Dur >= DURABILITY_MAX)
-		return Fail("durability.repair.err.full", u8"耐久已满。");
+		return Fail("durability.repair.err.full", "耐久已满。");
 
 	int Cost = maximum(1, (DURABILITY_MAX - Dur) / 5);
 	if(Core() && Core()->MiniEventsManager())
@@ -187,7 +187,7 @@ bool CDurabilityManager::TryRepair(CPlayer *pPlayer, int ItemId, char *pErr, int
 		Cost = maximum(1, Cost * (100 - Disc) / 100);
 	}
 	if(pPlayer->m_AccData.m_aItems[ITEM_GOLD].m_Num < Cost)
-		return Fail("durability.repair.err.no_gold", u8"金币不足。");
+		return Fail("durability.repair.err.no_gold", "金币不足。");
 
 	pPlayer->m_AccData.m_aItems[ITEM_GOLD].m_Num -= Cost;
 	SetDurability(pExtra, sizeof(pPlayer->m_AccData.m_aItems[ItemId].m_aExtra), DURABILITY_MAX);
@@ -211,7 +211,7 @@ static void ComVoteRepair(IConsole::IResult *pResult, void *pUser)
 	if(!pGame->Core()->DurabilityManager()->TryRepair(pP, pResult->GetInteger(0), aErr, sizeof(aErr), aErrKey, sizeof(aErrKey)))
 		pGame->SendChatLoc(pCtx->m_ClientID, aErrKey[0] ? aErrKey : "err.unknown", aErr);
 	else
-		pGame->SendChatLoc(pCtx->m_ClientID, "durability.repaired", u8"修理完成。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "durability.repaired", "修理完成。");
 	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
 }
 
@@ -222,10 +222,12 @@ void CDurabilityManager::RegisterVoteCommands(CCommandManager *pMgr)
 	pMgr->AddCommand("menurepair", "", "i", ComVoteRepair, GS());
 }
 
-bool CDurabilityManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs)
+bool CDurabilityManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)
 {
 	(void)pPlayer;
 	(void)pCmd;
 	(void)pArgs;
+	(void)ReasonNumber;
+	(void)pReason;
 	return false;
 }

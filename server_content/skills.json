@@ -3,55 +3,121 @@
         {
             "id": 1,
             "key": "dash",
+            "name": "冲刺",
+            "description": "向前方快速冲刺一段距离",
+            "icon": "icon_dash",
             "auto_learn": true,
             "cooldown_ticks": 150,
             "params": { "distance": 400 }
         },
         {
             "id": 2,
-            "key": "heal_pulse",
+            "key": "battle_cry",
+            "name": "战吼",
+            "description": "发出振奋的吼声，范围内友军回复生命并提升攻击力",
+            "icon": "icon_battlecry",
             "auto_learn": true,
-            "cooldown_ticks": 450,
-            "params": { "radius": 200, "heal": 3 }
+            "cooldown_ticks": 600,
+            "params": { "radius": 220, "heal": 3 }
         },
         {
             "id": 3,
-            "key": "tower_repair_aura",
-            "auto_learn": false,
-            "learn_cost_hearts": 2,
-            "cooldown_ticks": 600,
-            "params": { "radius": 320, "repair": 20 }
-        },
-        {
-            "id": 4,
             "key": "frost_nova",
+            "name": "霜冻新星",
+            "description": "释放冰霜冲击波，减速并冻结周围的敌人。冰冻状态下的敌人受到额外伤害",
+            "icon": "icon_frost",
             "auto_learn": false,
-            "learn_cost_hearts": 50,
+            "learn_cost_hearts": 30,
             "cooldown_ticks": 500,
             "params": { "radius": 240 }
         },
         {
-            "id": 5,
-            "key": "poison_cloud",
+            "id": 4,
+            "key": "arcane_shield",
+            "name": "奥术护盾",
+            "description": "用奥术能量包裹自身，吸收即将到来的伤害",
+            "icon": "icon_shield",
             "auto_learn": false,
-            "learn_cost_hearts": 100,
-            "cooldown_ticks": 480,
-            "params": { "radius": 200, "heal": 5 }
+            "learn_cost_hearts": 50,
+            "cooldown_ticks": 700,
+            "params": { "heal": 8 }
+        },
+        {
+            "id": 5,
+            "key": "blink",
+            "name": "瞬步",
+            "description": "朝准星方向瞬间传送一段距离，可穿越障碍物",
+            "icon": "icon_blink",
+            "auto_learn": false,
+            "learn_cost_hearts": 40,
+            "cooldown_ticks": 400,
+            "params": { "distance": 350 }
         },
         {
             "id": 6,
-            "key": "battle_cry",
-            "auto_learn": true,
-            "cooldown_ticks": 400,
-            "params": { "radius": 220, "heal": 2 }
+            "key": "renew",
+            "name": "复苏之风",
+            "description": "激发体内生命能量，5秒内持续恢复生命值",
+            "icon": "icon_renew",
+            "auto_learn": false,
+            "learn_cost_hearts": 30,
+            "cooldown_ticks": 600,
+            "params": { "heal": 4 }
         },
         {
             "id": 7,
-            "key": "arcane_shield",
+            "key": "iron_will",
+            "name": "钢铁意志",
+            "description": "钢铁般的意志，4秒内减少50%所受伤害并免疫控制效果，移动速度降低",
+            "icon": "icon_ironwill",
             "auto_learn": false,
-            "learn_cost_hearts": 100,
+            "learn_cost_hearts": 50,
+            "cooldown_ticks": 800,
+            "params": {}
+        },
+        {
+            "id": 8,
+            "key": "ground_slam",
+            "name": "震地",
+            "description": "猛击地面，对周围敌人造成伤害并将其击退",
+            "icon": "icon_groundslam",
+            "auto_learn": false,
+            "learn_cost_hearts": 30,
+            "cooldown_ticks": 500,
+            "params": { "radius": 180, "heal": 4 }
+        },
+        {
+            "id": 9,
+            "key": "entangle",
+            "name": "缠绕",
+            "description": "朝准星方向射出藤蔓，命中敌人后将其定身2秒",
+            "icon": "icon_entangle",
+            "auto_learn": false,
+            "learn_cost_hearts": 40,
+            "cooldown_ticks": 500,
+            "params": { "distance": 600 }
+        },
+        {
+            "id": 10,
+            "key": "shadow_step",
+            "name": "暗影步",
+            "description": "遁入暗影3秒，隐形且下一次攻击必定造成额外伤害",
+            "icon": "icon_shadow",
+            "auto_learn": false,
+            "learn_cost_hearts": 50,
             "cooldown_ticks": 700,
-            "params": { "heal": 12 }
+            "params": {}
+        },
+        {
+            "id": 11,
+            "key": "enlighten",
+            "name": "灵光",
+            "description": "释放圣洁灵光，净化范围内友军的负面状态并提升防御力",
+            "icon": "icon_enlighten",
+            "auto_learn": false,
+            "learn_cost_hearts": 30,
+            "cooldown_ticks": 600,
+            "params": { "radius": 200 }
         }
     ]
 }

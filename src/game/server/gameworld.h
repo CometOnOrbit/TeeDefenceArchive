@@ -49,6 +49,10 @@ private:
 	class CConfig *m_pConfig;
 	class IServer *m_pServer;
 
+	bool m_aBotsActive[MAX_CLIENTS];
+	int m_aMarkedBotsActive[MAX_CLIENTS];
+	int m_NumMarkedBotsActive;
+
 public:
 	class CGameContext *GameServer() { return m_pGameServer; }
 	class CConfig *Config() { return m_pConfig; }
@@ -177,6 +181,12 @@ public:
 
 	*/
 	void Tick();
+
+	void UpdatePlayerMaps(bool Force = false);
+	bool IsBotActive(int ClientID) const
+	{
+		return ClientID >= 0 && ClientID < MAX_CLIENTS && m_aBotsActive[ClientID];
+	}
 
 	// helper functions
 	bool IsHumanDefenderOwner(int OwnerCid);

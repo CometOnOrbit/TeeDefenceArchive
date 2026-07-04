@@ -1,0 +1,270 @@
+{
+  "quests": [
+    {
+      "id": "ch1_awakening",
+      "title_key": "quest.ch1_awakening",
+      "title_cn": "星的消逝",
+      "auto_grant": true,
+      "next_quest": "ch1_ancestor",
+      "steps": [
+        {
+          "type": "talk_npc",
+          "npc": "guardian_ancestor",
+          "description": "与守梦人Flower对话"
+        }
+      ],
+      "rewards": {
+        "exp": 50,
+        "gold": 10,
+        "items": [
+          {
+            "id": 8,
+            "num": 1
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "ch1_ancestor",
+      "title_key": "quest.ch1_ancestor",
+      "title_cn": "打听消息",
+      "auto_grant": false,
+      "next_quest": "ch1_first_defence",
+      "steps": [
+        {
+          "type": "talk_npc",
+          "npc": "town_elder",
+          "description": "前往城镇中心询问线索"
+        }
+      ],
+      "rewards": {
+        "exp": 80,
+        "gold": 20,
+        "items": [
+          {
+            "id": 10,
+            "num": 5
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "ch1_first_defence",
+      "title_key": "quest.ch1_first_defence",
+      "title_cn": "初次防御",
+      "auto_grant": false,
+      "next_quest": "ch1_tower_repair",
+      "steps": [
+        {
+          "type": "kill_enemy",
+          "bot": 1,
+          "count": 5,
+          "description": "消灭5只入侵的怪物"
+        }
+      ],
+      "rewards": {
+        "exp": 120,
+        "gold": 30,
+        "items": [
+          {
+            "id": 10,
+            "num": 3
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "ch1_tower_repair",
+      "title_key": "quest.ch1_tower_repair",
+      "title_cn": "修复高塔",
+      "auto_grant": false,
+      "next_quest": "ch1_vow",
+      "steps": [
+        {
+          "type": "collect_item",
+          "item": 30,
+          "count": 10,
+          "description": "收集10块铜矿石"
+        }
+      ],
+      "rewards": {
+        "exp": 150,
+        "gold": 40,
+        "items": [
+          {
+            "id": 10,
+            "num": 5
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "ch1_vow",
+      "title_key": "quest.ch1_vow",
+      "title_cn": "誓约之地",
+      "auto_grant": false,
+      "next_quest": "ch1_unlock_td",
+      "steps": [
+        {
+          "type": "reach_zone",
+          "x": 640,
+          "y": 512,
+          "world": 0,
+          "description": "前往城镇东边的誓约之地"
+        }
+      ],
+      "rewards": {
+        "exp": 200,
+        "gold": 50,
+        "items": [
+          {
+            "id": 10,
+            "num": 5
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "ch1_unlock_td",
+      "title_key": "quest.ch1_unlock_td",
+      "title_cn": "开启新路",
+      "auto_grant": false,
+      "next_quest": "",
+      "steps": [
+        {
+          "type": "talk_npc",
+          "npc": "quest_master",
+          "description": "回去找任务大师了解下一步"
+        }
+      ],
+      "rewards": {
+        "exp": 250,
+        "gold": 60,
+        "items": [
+          {
+            "id": 122,
+            "num": 1
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "newbie_first_hunt",
+      "title_key": "quest.newbie_first_hunt.title",
+      "title_cn": "初次狩猎",
+      "auto_grant": true,
+      "next_quest": "newbie_gather_herbs",
+      "steps": [
+        {
+          "type": "kill_enemy",
+          "bot": 1,
+          "count": 5,
+          "description": "消灭5只史莱姆或巨鼠"
+        }
+      ],
+      "rewards": {
+        "exp": 100,
+        "gold": 50,
+        "items": [
+          {
+            "id": 10,
+            "num": 3
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "newbie_gather_herbs",
+      "title_key": "quest.newbie_gather_herbs.title",
+      "title_cn": "采集草药",
+      "auto_grant": false,
+      "next_quest": "newbie_clear_cave",
+      "steps": [
+        {
+          "type": "collect_item",
+          "item": 40,
+          "count": 3,
+          "description": "采集3株治疗草药"
+        }
+      ],
+      "rewards": {
+        "exp": 150,
+        "gold": 30,
+        "items": [
+          {
+            "id": 10,
+            "num": 5
+          },
+          {
+            "id": 14,
+            "num": 3
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "newbie_clear_cave",
+      "title_key": "quest.newbie_clear_cave.title",
+      "title_cn": "清理洞穴",
+      "auto_grant": false,
+      "next_quest": "newbie_defeat_boss",
+      "steps": [
+        {
+          "type": "kill_enemy",
+          "bot": 4,
+          "count": 10,
+          "description": "在洞穴中消灭10只怪物"
+        }
+      ],
+      "rewards": {
+        "exp": 250,
+        "gold": 80,
+        "items": [
+          {
+            "id": 122,
+            "num": 1
+          }
+        ]
+      },
+      "unlocks": []
+    },
+    {
+      "id": "newbie_defeat_boss",
+      "title_key": "quest.newbie_defeat_boss.title",
+      "title_cn": "首领之敌",
+      "auto_grant": false,
+      "next_quest": "",
+      "steps": [
+        {
+          "type": "kill_enemy",
+          "bot": 50,
+          "count": 15,
+          "description": "击败哥布林首领"
+        }
+      ],
+      "rewards": {
+        "exp": 500,
+        "gold": 150,
+        "items": [
+          {
+            "id": 145,
+            "num": 1
+          },
+          {
+            "id": 10,
+            "num": 10
+          }
+        ]
+      },
+      "unlocks": []
+    }
+  ]
+}

@@ -3,7 +3,9 @@
 #include <engine/shared/config.h>
 
 #include <game/server/gamecontext.h>
+#include <game/server/data_center.h>
 #include <game/server/gamecontroller.h>
+#include <game/server/worldmodes/defence.h>
 #include <game/server/item_system.h>
 #include <game/server/player.h>
 #include <generated/server_data.h>
@@ -13,13 +15,31 @@
 #include <game/server/core/components/content/content_types.h>
 #include <game/server/core/components/content/effect_registry.h>
 #include <game/server/core/components/content/status_manager.h>
+#include <game/server/core/components/mmo/mmo_manager.h>
+#include <game/server/core/components/mmo/mmo_item.h>
+#include <game/server/core/components/mmo/mmo_types.h>
+#include <game/server/core/components/mmo/mmo_world_boss.h>
 #include <game/server/core/tworld_controller.h>
+#include <game/server/core/components/tunes/tune_zone_manager.h>
+#include <game/server/core/components/skills/skill_manager.h>
 
 #include "character.h"
+#include <game/server/account.h>
+#include <game/server/sql_pool.h>
+#include <game/server/sql_query.h>
+#include <mysql.h>
 /*
 #include "laser.h"
 */
+#include "character_bot_ai.h"
 #include "projectile.h"
+
+// Helper — spider boss core check only applies in defence mode
+static inline bool CheckSpiderBossCore(CGameContext *pGS, CCharacter *pChr)
+{
+	auto *pCtrl = dynamic_cast<CGameControllerDefence *>(pGS->m_pController);
+	return pCtrl && pCtrl->IsSpiderBossCore(pChr);
+}
 
 // input count
 struct CInputCount
@@ -67,9 +87,16 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	m_EmoteStop = -1;
 	m_LastAction = -1;
 	m_LastNoAmmoSound = -1;
-	m_ActiveWeapon = WEAPON_GUN;
+	m_ActiveWeapon = WEAPON_HAMMER;
 	m_LastWeapon = WEAPON_HAMMER;
 	m_QueuedWeapon = -1;
+	m_aCategoryLastWeapon[WEAPONCAT_MELEE] = WEAPON_HAMMER;
+	m_aCategoryLastWeapon[WEAPONCAT_RANGED] = WEAPON_GUN;
+	m_ActiveCategory = WEAPONCAT_MELEE;
+	m_ActiveSkillSlot = 0;
+	m_ActiveMeleeLoadoutIdx = 0;
+	m_ActiveRangedLoadoutIdx = 0;
+	m_ActiveWeaponItemID = -1;
 
 	m_pPlayer = pPlayer;
 	m_Pos = Pos;
@@ -91,9 +118,21 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	m_LockedCK = false;
 	m_LockPos = vec2(0.0f, 0.0f);
 	m_CardElectronTicks = 0;
-	m_MaxHealth = GameServer()->Config()->m_SvPlayerMaxHealth;
+	// Apply MMO level-based HP scaling for real players (not bots/dummies)
+	if(m_pPlayer && !m_pPlayer->IsDummy() && m_pPlayer->m_MMOLevel > 0)
+		m_MaxHealth = m_pPlayer->GetMaxHealth();
+	else
+		m_MaxHealth = GameServer()->Config()->m_SvPlayerMaxHealth;
 	m_RetaliationExpireTick = 0;
 	m_RetaliationStacks = 0;
+
+	// Reset skill runtime states
+	m_RenewTicks = 0;
+	m_RenewAmount = 0;
+	m_IronWillTicks = 0;
+	m_ShadowTicks = 0;
+	m_ShadowNextCrit = false;
+	m_IsInvisible = false;
 
 	for(int i = 0; i < NUM_WEAPONS; i++)
 		m_aWeapons[i].m_Valid = true;
@@ -106,7 +145,32 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	m_LatestInput.m_TargetY = -1;
 	m_LatestPrevInput.m_TargetY = -1;
 
+	// Initialize MRPG extensions
+	m_Mana = 0;
+	m_WaterAir = 0;
+	m_aZoneName[0] = '\0';
+	m_SafeTickFlags = 0;
+	m_TuneZoneOverride = 0;
+	m_MoveRestrictions = 0;
+	m_PrevPos = vec2(0, 0);
+	m_pTilesHandler = new CTileHandler(GameServer()->Collision(), this);
+
 	GameServer()->m_pController->OnCharacterSpawn(this);
+
+	if(m_pPlayer && !m_pPlayer->IsDummy() && m_pPlayer->GetAccountId() > 0)
+	{
+		if(TWorldController *pCore = GameServer()->Core())
+		{
+			if(CMMOManager *pMMO = pCore->GetMMOManager())
+			{
+				m_pPlayer->MigrateWeaponLoadoutFromEquippedSlots();
+				pMMO->ApplyEquippedWeapon(m_pPlayer);
+			}
+		}
+	}
+
+	if(m_pPlayer && !m_pPlayer->IsDummy())
+		GameServer()->MarkUpdatedBroadcast(m_pPlayer->GetCID());
 
 	return true;
 }
@@ -115,6 +179,17 @@ void CCharacter::Destroy()
 {
 	GameWorld()->m_Core.m_apCharacters[m_pPlayer->GetCID()] = 0;
 	m_Alive = false;
+	delete m_pTilesHandler;
+	m_pTilesHandler = nullptr;
+}
+
+// Classify weapon as melee (hammer/sword) or ranged (gun/shotgun/grenade/laser)
+int CCharacter::WeaponCategoryForWeapon(int Weapon)
+{
+	if(Weapon == WEAPON_HAMMER)
+		return WEAPONCAT_MELEE;
+	// All other standard weapons are ranged
+	return WEAPONCAT_RANGED;
 }
 
 void CCharacter::SetWeapon(int W)
@@ -125,11 +200,16 @@ void CCharacter::SetWeapon(int W)
 	m_LastWeapon = m_ActiveWeapon;
 	m_QueuedWeapon = -1;
 	m_ActiveWeapon = W;
+	m_ActiveCategory = WeaponCategoryForWeapon(W);
+	m_aCategoryLastWeapon[m_ActiveCategory] = W;
 	GameWorld()->CreateSound(m_Pos, SOUND_WEAPON_SWITCH);
 
 	if(m_ActiveWeapon < 0 || m_ActiveWeapon >= NUM_WEAPONS)
 		m_ActiveWeapon = 0;
 	m_aWeapons[m_ActiveWeapon].m_AmmoRegenStart = -1;
+
+	if(m_pPlayer && !m_pPlayer->IsDummy())
+		GameServer()->MarkUpdatedBroadcast(m_pPlayer->GetCID());
 }
 
 bool CCharacter::IsGrounded()
@@ -230,45 +310,156 @@ void CCharacter::DoWeaponSwitch()
 	SetWeapon(m_QueuedWeapon);
 }
 
+bool CCharacter::TryActivateLoadoutIdx(int Category, int LoadoutIdx)
+{
+	if(!m_pPlayer || LoadoutIdx < 0 || LoadoutIdx >= CPlayer::MMO_WEAPON_LOADOUT_SIZE)
+		return false;
+
+	int ItemID = -1;
+	int EngineWpn = -1;
+
+	if(Category == WEAPONCAT_MELEE)
+	{
+		ItemID = m_pPlayer->m_aMeleeLoadout[LoadoutIdx];
+		if(ItemID <= 0)
+			return false;
+		EngineWpn = WEAPON_HAMMER;
+	}
+	else if(Category == WEAPONCAT_RANGED)
+	{
+		ItemID = m_pPlayer->m_aRangedLoadout[LoadoutIdx];
+		if(ItemID <= 0)
+			return false;
+		const CMMOItemDescription *pDef = CMMOItemDescription::Get(ItemID);
+		if(!pDef)
+			return false;
+		EngineWpn = MMOItemTypeToWeapon(pDef->GetType());
+		if(EngineWpn < 0 || EngineWpn >= NUM_WEAPONS)
+			return false;
+	}
+	else
+		return false;
+
+	if(!m_aWeapons[EngineWpn].m_Got || !m_aWeapons[EngineWpn].m_Valid)
+		return false;
+
+	m_ActiveCategory = Category;
+	m_ActiveWeaponItemID = ItemID;
+	if(Category == WEAPONCAT_MELEE)
+		m_ActiveMeleeLoadoutIdx = LoadoutIdx;
+	else
+		m_ActiveRangedLoadoutIdx = LoadoutIdx;
+
+	m_aCategoryLastWeapon[Category] = EngineWpn;
+	if(EngineWpn != m_ActiveWeapon)
+		m_QueuedWeapon = EngineWpn;
+
+	return true;
+}
+
+void CCharacter::CycleLoadoutInCategory(int Direction)
+{
+	if(!m_pPlayer || Direction == 0)
+		return;
+	if(m_ActiveCategory != WEAPONCAT_MELEE && m_ActiveCategory != WEAPONCAT_RANGED)
+		return;
+
+	int aSlots[CPlayer::MMO_WEAPON_LOADOUT_SIZE];
+	int Num = 0;
+	for(int i = 0; i < CPlayer::MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		const int ItemID = m_ActiveCategory == WEAPONCAT_MELEE
+			? m_pPlayer->m_aMeleeLoadout[i]
+			: m_pPlayer->m_aRangedLoadout[i];
+		if(ItemID > 0)
+			aSlots[Num++] = i;
+	}
+	if(Num <= 1)
+		return;
+
+	const int CurIdx = m_ActiveCategory == WEAPONCAT_MELEE
+		? m_ActiveMeleeLoadoutIdx
+		: m_ActiveRangedLoadoutIdx;
+
+	int CurPos = 0;
+	for(int i = 0; i < Num; i++)
+	{
+		if(aSlots[i] == CurIdx)
+		{
+			CurPos = i;
+			break;
+		}
+	}
+
+	const int NextPos = (CurPos + Direction + Num) % Num;
+	TryActivateLoadoutIdx(m_ActiveCategory, aSlots[NextPos]);
+}
+
 void CCharacter::HandleWeaponSwitch()
 {
-	int WantedWeapon = m_ActiveWeapon;
-	if(m_QueuedWeapon != -1)
-		WantedWeapon = m_QueuedWeapon;
+	// ── Direct slot selection: 1 → melee, 2 → ranged (priority over 3/4/5) ──
+	if(m_LatestInput.m_WantedWeapon == 1 || m_LatestInput.m_WantedWeapon == 2)
+	{
+		const int Category = (m_LatestInput.m_WantedWeapon == 1) ? WEAPONCAT_MELEE : WEAPONCAT_RANGED;
+		int LoadoutIdx = Category == WEAPONCAT_MELEE ? m_ActiveMeleeLoadoutIdx : m_ActiveRangedLoadoutIdx;
+		if(LoadoutIdx < 0 || LoadoutIdx >= CPlayer::MMO_WEAPON_LOADOUT_SIZE)
+			LoadoutIdx = 0;
 
-	// select Weapon
+		if(!TryActivateLoadoutIdx(Category, LoadoutIdx))
+		{
+			for(int i = 0; i < CPlayer::MMO_WEAPON_LOADOUT_SIZE; i++)
+			{
+				if(TryActivateLoadoutIdx(Category, i))
+					break;
+			}
+		}
+
+		DoWeaponSwitch();
+		if(m_pPlayer && !m_pPlayer->IsDummy())
+			GameServer()->FlushBroadcastStats(m_pPlayer->GetCID());
+		return;
+	}
+
+	// ── Magic bar: 3/4/5 select skill slot (cast on fire) ──
+	if(m_LatestInput.m_WantedWeapon >= 3 && m_LatestInput.m_WantedWeapon <= 5)
+	{
+		if(m_LatestPrevInput.m_WantedWeapon != m_LatestInput.m_WantedWeapon)
+		{
+			m_ActiveCategory = WEAPONCAT_MAGIC;
+			m_ActiveSkillSlot = m_LatestInput.m_WantedWeapon - 3;
+			m_QueuedWeapon = -1;
+			if(m_pPlayer && !m_pPlayer->IsDummy())
+			{
+				GameWorld()->CreateSound(m_Pos, SOUND_WEAPON_SWITCH);
+				GameServer()->FlushBroadcastStats(m_pPlayer->GetCID());
+			}
+		}
+		return;
+	}
+
+	if(m_ActiveCategory == WEAPONCAT_MAGIC)
+		return;
+
+	// ── Scroll wheel: cycle within current melee/ranged loadout only ──
 	int Next = CountInput(m_LatestPrevInput.m_NextWeapon, m_LatestInput.m_NextWeapon).m_Presses;
 	int Prev = CountInput(m_LatestPrevInput.m_PrevWeapon, m_LatestInput.m_PrevWeapon).m_Presses;
 
-	if(Next < 128) // make sure we only try sane stuff
-	{
-		while(Next) // Next Weapon selection
-		{
-			WantedWeapon = (WantedWeapon + 1) % NUM_WEAPONS;
-			if(m_aWeapons[WantedWeapon].m_Got && m_aWeapons[WantedWeapon].m_Valid)
-				Next--;
-		}
-	}
+	const int PrevItemID = m_ActiveWeaponItemID;
 
-	if(Prev < 128) // make sure we only try sane stuff
-	{
-		while(Prev) // Prev Weapon selection
-		{
-			WantedWeapon = (WantedWeapon - 1) < 0 ? NUM_WEAPONS - 1 : WantedWeapon - 1;
-			if(m_aWeapons[WantedWeapon].m_Got && m_aWeapons[WantedWeapon].m_Valid)
-				Prev--;
-		}
-	}
+	if(Next > 0 && Next < 128)
+		CycleLoadoutInCategory(1);
+	else if(Prev > 0 && Prev < 128)
+		CycleLoadoutInCategory(-1);
+	else
+		return;
 
-	// Direct Weapon selection
-	if(m_LatestInput.m_WantedWeapon)
-		WantedWeapon = m_Input.m_WantedWeapon - 1;
+	const bool LoadoutChanged = m_ActiveWeaponItemID != PrevItemID;
 
-	// check for insane values
-	if(WantedWeapon >= 0 && WantedWeapon < NUM_WEAPONS && WantedWeapon != m_ActiveWeapon && m_aWeapons[WantedWeapon].m_Got && m_aWeapons[WantedWeapon].m_Valid)
-		m_QueuedWeapon = WantedWeapon;
+	if(m_QueuedWeapon != -1)
+		DoWeaponSwitch();
 
-	DoWeaponSwitch();
+	if(LoadoutChanged && m_pPlayer && !m_pPlayer->IsDummy())
+		GameServer()->FlushBroadcastStats(m_pPlayer->GetCID());
 }
 
 void CCharacter::FireWeapon()
@@ -276,7 +467,33 @@ void CCharacter::FireWeapon()
 	if(m_ReloadTimer != 0)
 		return;
 
-	DoWeaponSwitch();
+	if(m_ActiveCategory != WEAPONCAT_MAGIC)
+		DoWeaponSwitch();
+
+	// Magic bar: left click casts the selected skill slot
+	if(m_ActiveCategory == WEAPONCAT_MAGIC)
+	{
+		if(!CountInput(m_LatestPrevInput.m_Fire, m_LatestInput.m_Fire).m_Presses)
+			return;
+
+		CPlayer *pPl = GetPlayer();
+		if(!pPl)
+			return;
+
+		const int SkillId = pPl->m_aSkillSlots[m_ActiveSkillSlot];
+		if(SkillId >= 0)
+		{
+			if(CSkillManager *pSM = GameServer()->Core()->SkillManager())
+				pSM->Use(pPl, SkillId);
+		}
+
+		m_AttackTick = Server()->Tick();
+		m_ReloadTimer = 125 * Server()->TickSpeed() / 1000;
+		if(m_pPlayer && !m_pPlayer->IsDummy())
+			GameServer()->MarkUpdatedBroadcast(m_pPlayer->GetCID());
+		return;
+	}
+
 	vec2 Direction = normalize(vec2(m_LatestInput.m_TargetX, m_LatestInput.m_TargetY));
 
 	// check if we gonna fire
@@ -330,8 +547,47 @@ void CCharacter::HandleWeapons()
 		return;
 	}
 
+	// MRPG-style: block fire when menu/modal is active
+	if(m_pPlayer)
+	{
+		IInputEvents *pInput = Server()->Input();
+		if(pInput && pInput->IsBlockedInputGroup(m_pPlayer->GetCID(), BLOCK_INPUT_FIRE))
+		{
+			m_ReloadTimer = 10;
+			return;
+		}
+	}
+
 	// fire Weapon, if wanted
 	FireWeapon();
+
+	// MMO finite ammo regen (MRPG-style)
+	if(m_pPlayer && m_pPlayer->UsesMMOFiniteAmmo() && m_aWeapons[m_ActiveWeapon].m_Ammo >= 0)
+	{
+		const int MaxAmmo = m_pPlayer->GetMMOMaxAmmo();
+		if(m_aWeapons[m_ActiveWeapon].m_Ammo < MaxAmmo)
+		{
+			const int Speed = maximum(1, 100 * m_pPlayer->GetMMOAmmoRegenPercent() / 100);
+			const int AmmoRegenTime = 500 / Speed;
+			if(m_ReloadTimer <= 0)
+			{
+				if(m_aWeapons[m_ActiveWeapon].m_AmmoRegenStart < 0)
+				{
+					m_aWeapons[m_ActiveWeapon].m_AmmoRegenStart = Server()->Tick() +
+						(m_ActiveWeapon == WEAPON_GUN ? (Server()->TickSpeed() / 2) : (AmmoRegenTime * Server()->TickSpeed()));
+				}
+
+				if(m_aWeapons[m_ActiveWeapon].m_AmmoRegenStart <= Server()->Tick())
+				{
+					m_aWeapons[m_ActiveWeapon].m_Ammo = minimum(m_aWeapons[m_ActiveWeapon].m_Ammo + 1, MaxAmmo);
+					m_aWeapons[m_ActiveWeapon].m_AmmoRegenStart = -1;
+				}
+			}
+			else
+				m_aWeapons[m_ActiveWeapon].m_AmmoRegenStart = -1;
+		}
+		return;
+	}
 
 	// ammo regen
 	int AmmoRegenTime = g_pData->m_Weapons.m_aId[m_ActiveWeapon].m_Ammoregentime;
@@ -453,13 +709,37 @@ void CCharacter::HandleWeapons()
 
 bool CCharacter::GiveWeapon(int Weapon, int Ammo)
 {
+	bool IsNew = !m_aWeapons[Weapon].m_Got;
 	if(m_aWeapons[Weapon].m_Ammo < g_pData->m_Weapons.m_aId[Weapon].m_Maxammo || !m_aWeapons[Weapon].m_Got)
 	{
 		m_aWeapons[Weapon].m_Got = true;
 		m_aWeapons[Weapon].m_Ammo = minimum(g_pData->m_Weapons.m_aId[Weapon].m_Maxammo, Ammo);
+		// Track this weapon in its category (first weapon of category becomes default)
+		if(IsNew)
+		{
+			int Cat = WeaponCategoryForWeapon(Weapon);
+			int CurrentDefault = m_aCategoryLastWeapon[Cat];
+			// If the current default isn't actually acquired yet, replace it
+			if(!m_aWeapons[CurrentDefault].m_Got || !m_aWeapons[CurrentDefault].m_Valid)
+				m_aCategoryLastWeapon[Cat] = Weapon;
+		}
 		return true;
 	}
 	return false;
+}
+
+void CCharacter::SyncMMOWeaponAmmo(int MaxAmmo)
+{
+	MaxAmmo = maximum(1, MaxAmmo);
+	for(int W = WEAPON_GUN; W <= WEAPON_LASER; W++)
+	{
+		if(!m_aWeapons[W].m_Got)
+			continue;
+		if(m_aWeapons[W].m_Ammo < 0)
+			m_aWeapons[W].m_Ammo = MaxAmmo;
+		else
+			m_aWeapons[W].m_Ammo = clamp(m_aWeapons[W].m_Ammo, 0, MaxAmmo);
+	}
 }
 
 void CCharacter::AddWeaponAmmo(int Weapon, int Bonus)
@@ -602,8 +882,202 @@ void CCharacter::Tick()
 		m_Core.m_HookState = HOOK_IDLE;
 	}
 
+	// ─── Auto Pathfinding / Follow ──────────────────────────────
+	if(m_pPlayer && m_pPlayer->m_AutoMoving)
+	{
+		// Update target position if in follow mode
+		if(m_pPlayer->m_FollowTargetCID >= 0)
+		{
+			CPlayer *pTarget = GameServer()->m_apPlayers[m_pPlayer->m_FollowTargetCID];
+			if(pTarget && pTarget->GetCharacter())
+			{
+				m_pPlayer->m_AutoTargetX = (int)pTarget->GetCharacter()->m_Core.m_Pos.x;
+				m_pPlayer->m_AutoTargetY = (int)pTarget->GetCharacter()->m_Core.m_Pos.y;
+			}
+			else
+			{
+				GameServer()->SendChatTo(m_pPlayer->GetCID(), "跟随目标已离开，停止跟随。");
+				m_pPlayer->m_AutoMoving = false;
+				m_pPlayer->m_FollowTargetCID = -1;
+			}
+		}
+
+		// Compute distance to target
+		float dx = m_pPlayer->m_AutoTargetX - m_Core.m_Pos.x;
+		float dy = m_pPlayer->m_AutoTargetY - m_Core.m_Pos.y;
+		float dist = sqrtf(dx*dx + dy*dy);
+
+		if(dist < 48.0f)
+		{
+			// Arrived — stop
+			m_pPlayer->m_AutoMoving = false;
+			m_pPlayer->m_FollowTargetCID = -1;
+		}
+		else
+		{
+			// Set horizontal direction
+			if(dx > 0) m_Input.m_Direction = 1;
+			else if(dx < 0) m_Input.m_Direction = -1;
+
+			// Jump over obstacles: check if there's a wall in front
+			vec2 CheckPos = m_Core.m_Pos + vec2(m_Input.m_Direction * 32.f, 0);
+			if(GameServer()->Collision()->CheckPoint(CheckPos))
+			{
+				m_Input.m_Jump = 1;
+			}
+			// Jump if target is above and we're on ground
+			if(IsGrounded() && dy < -64.f)
+			{
+				m_Input.m_Jump = 1;
+			}
+		}
+	}
+
 	m_Core.m_Input = m_Input;
 	m_Core.Tick(true);
+
+	// Handle tile processing
+	int MapIndex = GameServer()->Collision()->GetPureMapIndex(m_Pos.x, m_Pos.y);
+	m_pTilesHandler->Handle(MapIndex);
+
+	// MRPG extensions - safe zone check BEFORE HandleSafeFlags for immediate effect
+	HandleTuning();
+
+	// Handle safe zone tile (MRPG) - clears when leaving zone
+	if(m_pTilesHandler && m_pTilesHandler->IsActive(TILE_SW_ZONE))
+		SetSafeFlags();
+	else
+		m_SafeTickFlags = 0;
+
+	// Zone name overlay (MRPG: merged into HUD via GameBasicStats)
+	if(m_pPlayer && !m_pPlayer->IsDummy() && m_pTilesHandler)
+	{
+		if(m_pTilesHandler->IsActive(TILE_SW_ZONE))
+		{
+			CCollision::ZoneDetail Zone;
+			if(GameServer()->Collision()->GetZonedetail(m_Pos, &Zone))
+			{
+				if((Server()->Tick() % Server()->TickSpeed() == 0) || str_comp(m_aZoneName, Zone.Name.c_str()) != 0)
+				{
+					str_copy(m_aZoneName, Zone.Name.c_str(), sizeof(m_aZoneName));
+					GameServer()->Broadcast(m_pPlayer->GetCID(), CGameContext::BROADCAST_PRIORITY_GAME_BASIC_STATS, 50,
+						"%s 区域 (%s)", Zone.Name.c_str(), Zone.PVP ? "PVP" : "安全");
+				}
+			}
+		}
+		else if(m_pTilesHandler->IsExit(TILE_SW_ZONE))
+		{
+			m_aZoneName[0] = '\0';
+			GameServer()->Broadcast(m_pPlayer->GetCID(), CGameContext::BROADCAST_PRIORITY_GAME_BASIC_STATS, 50, "");
+		}
+	}
+
+	HandleSafeFlags();
+
+	// ─── MRPG Tile Interactions ────────────────────────────────────
+	if(m_pTilesHandler)
+	{
+		static vec2 s_LastTelePos = vec2(0, 0);
+		static int s_TeleCooldownTick = 0;
+
+		// NPC interaction tile
+		if(m_pTilesHandler->IsEnter(TILE_NPC_INTERACT))
+		{
+			CPlayer *pPlayer = GetPlayer();
+			if(pPlayer && !pPlayer->IsDummy())
+				GameServer()->SendChatLoc(pPlayer->GetCID(), "npc.interact_hint", "用锤子敲击 NPC 开始对话");
+		}
+
+		// Info zone
+		if(m_pTilesHandler->IsEnter(TILE_INFO_ZONE))
+		{
+			GameServer()->SendChat(-1, CHAT_ALL, -1, "You entered a special zone.");
+		}
+
+		// Teleport FROM tile with hammer confirmation
+		if(m_pTilesHandler->IsActive(TILE_TELE_FROM_CONFIRM))
+		{
+			CCollision *pColl = GameServer()->Collision();
+			if(pColl)
+			{
+				// Find matching TILE_TELE_OUT by teleport layer number
+				const int Index = pColl->GetMapIndex(m_Pos);
+				if(Index >= 0)
+				{
+					const CTeleTile &Tile = pColl->GetTeleTile(Index);
+					const unsigned char Number = Tile.m_Number;
+
+					// Scan all tiles for TILE_TELE_OUT with matching teleport number
+					int TotalTiles = pColl->GetWidth() * pColl->GetHeight();
+					for(int i = 0; i < TotalTiles; i++)
+					{
+						const CTeleTile &CheckTile = pColl->GetTeleTile(i);
+						if(CheckTile.m_Type == TILE_TELE_OUT && CheckTile.m_Number == Number)
+						{
+							int nx = i % pColl->GetWidth();
+							int ny = i / pColl->GetWidth();
+							vec2 TelePos = vec2((float)nx + 0.5f, (float)ny + 0.5f);
+
+							if(m_pPlayer)
+							{
+								GameServer()->Broadcast(m_pPlayer->GetCID(), CGameContext::BROADCAST_PRIORITY_TITLE,
+									Server()->TickSpeed(), "用锤子进入");
+								if(m_ActiveWeapon == WEAPON_HAMMER && m_AttackTick == Server()->Tick() - 1)
+								{
+									m_Core.m_Pos = TelePos;
+									m_Pos = TelePos;
+								}
+							}
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		// Teleport FROM tile
+		if(m_pTilesHandler->IsActive(TILE_TELE_FROM))
+		{
+			if(Server()->Tick() >= s_TeleCooldownTick)
+			{
+				CCollision *pColl = GameServer()->Collision();
+				if(pColl)
+				{
+					// Scan all tiles for TILE_TELE_OUT
+					int TotalTiles = pColl->GetWidth() * pColl->GetHeight();
+					for(int i = 0; i < TotalTiles; i++)
+					{
+						int MainTile = pColl->GetMainTileIndex(i);
+						int FrontTile = pColl->GetFrontTileIndex(i);
+						int ExtraTile = pColl->GetExtraTileIndex(i);
+						if(MainTile == TILE_TELE_OUT || FrontTile == TILE_TELE_OUT || ExtraTile == TILE_TELE_OUT)
+						{
+							// Convert 1D index to tile coords then to world pos (centered)
+							int nx = i % pColl->GetWidth();
+							int ny = i / pColl->GetWidth();
+							vec2 TelePos = vec2((float)nx + 0.5f, (float)ny + 0.5f);
+
+							m_Core.m_Pos = TelePos;
+							m_Pos = TelePos;
+							s_LastTelePos = TelePos;
+							s_TeleCooldownTick = Server()->Tick() + Server()->TickSpeed() * 3; // 3s cooldown
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		// Shop zone
+		if(m_pTilesHandler->IsEnter(TILE_SHOP_ZONE))
+		{
+			GameServer()->SendChat(-1, CHAT_ALL, -1, "Welcome to the shop! Use /shop to browse items.");
+		}
+		if(m_pTilesHandler->IsExit(TILE_SHOP_ZONE))
+		{
+			GameServer()->SendChat(-1, CHAT_ALL, -1, "Left the shop zone.");
+		}
+	}
 
 	if(m_pPlayer && !m_pPlayer->IsDummy() && GameServer()->ItemHelper())
 	{
@@ -618,7 +1092,13 @@ void CCharacter::Tick()
 			IncreaseHealth(RegenStacks);
 	}
 
-	if(GameServer()->m_pController->IsSpiderBossCore(this))
+	// ─── Mount Speed Bonus ────────────────────────────────────
+	if(m_pPlayer && m_pPlayer->m_IsMounted)
+	{
+		m_Core.m_Vel.x *= 1.f + (float)m_pPlayer->m_MountSpeedBonus / 100.f;
+	}
+
+	if(CheckSpiderBossCore(GameServer(), this))
 	{
 		m_Input.m_Direction = 0;
 		m_Input.m_Jump = 0;
@@ -633,6 +1113,38 @@ void CCharacter::Tick()
 	{
 		m_Core.m_Vel *= 0.86f;
 		m_CardElectronTicks--;
+	}
+
+	// Skill tick-based effects
+	// Renew: regen over time
+	if(m_RenewTicks > 0 && (Server()->Tick() % Server()->TickSpeed()) == 0)
+	{
+		IncreaseHealth(m_RenewAmount);
+		m_RenewTicks -= Server()->TickSpeed();
+		if(m_RenewTicks <= 0)
+			m_RenewTicks = 0;
+	}
+
+	// Iron Will: countdown (effect applied in TakeDamage)
+	if(m_IronWillTicks > 0)
+	{
+		m_IronWillTicks--;
+		// Speed reduction is applied in ApplyMoveRestrictions or Handle move
+		// Iron Will slow is handled automatically here
+		if(m_IronWillTicks <= 0)
+			m_IronWillTicks = 0;
+	}
+
+	// Shadow Step: invisibility countdown
+	if(m_ShadowTicks > 0)
+	{
+		m_ShadowTicks--;
+		m_IsInvisible = true;
+		if(m_ShadowTicks <= 0)
+		{
+			m_ShadowTicks = 0;
+			m_IsInvisible = false;
+		}
 	}
 
 	if(m_LockedCK)
@@ -654,6 +1166,106 @@ void CCharacter::Tick()
 		m_InMining = false;
 	if(m_MiningTick > -1)
 		m_MiningTick--;
+
+	// ─── Fashion Aura Effects ──────────────────────────────────
+	if(m_pPlayer && m_pPlayer->m_FashionItemID > 0)
+	{
+		TickFashionAura();
+	}
+}
+
+// ─── Fashion/Transmog visual aura effect ─────────────────────────────
+void CCharacter::TickFashionAura()
+{
+	if(!m_pPlayer || !GameWorld())
+		return;
+
+	const int FID = m_pPlayer->m_FashionItemID;
+	if(FID <= 0)
+		return;
+
+	const int Tick = Server()->Tick();
+	const vec2 MyPos = m_Core.m_Pos;
+
+	// Effect type based on FashionItemID range
+	enum
+	{
+		EFFECT_SPARKLE = 0, // 金色小圈
+		EFFECT_FIRE,        // 火焰橙红光
+		EFFECT_ICE,         // 冰蓝光
+		EFFECT_THUNDER,     // 闪电紫光
+		EFFECT_DARK,        // 暗黑紫黑
+	};
+
+	int Effect = EFFECT_SPARKLE;
+	int SoundID = -1;
+	if(FID <= 100)         { Effect = EFFECT_SPARKLE; SoundID = -1; }
+	else if(FID <= 200)    { Effect = EFFECT_FIRE;    SoundID = SOUND_GUN_FIRE; }
+	else if(FID <= 300)    { Effect = EFFECT_ICE;     SoundID = SOUND_PLAYER_AIRJUMP; }
+	else if(FID <= 400)    { Effect = EFFECT_THUNDER; SoundID = SOUND_GRENADE_FIRE; }
+	else                   { Effect = EFFECT_DARK;    SoundID = SOUND_PLAYER_DIE; }
+
+	// ── Visual pulse: small ring / glow every ~5 ticks ────────
+	if(Tick % 5 == 0)
+	{
+		// Random offset in a ring around the player
+		float Angle = (float)(Tick % 100) * 0.0628f + (float)(FID * 0.1f);
+		float Radius = 32.0f;
+		vec2 Off = vec2(cosf(Angle) * Radius, sinf(Angle) * Radius);
+
+		switch(Effect)
+		{
+		case EFFECT_SPARKLE:
+			GameWorld()->CreateHammerHit(MyPos + Off);
+			break;
+		case EFFECT_FIRE:
+			GameWorld()->CreateHammerHit(MyPos + Off);
+			break;
+		case EFFECT_ICE:
+			GameWorld()->CreatePlayerSpawn(MyPos + Off);
+			break;
+		case EFFECT_THUNDER:
+			GameWorld()->CreateHammerHit(MyPos + vec2(Off.x, 0));
+			GameWorld()->CreateHammerHit(MyPos + vec2(0, Off.y));
+			break;
+		case EFFECT_DARK:
+			GameWorld()->CreateDeath(MyPos + Off, m_pPlayer->GetCID());
+			break;
+		}
+	}
+
+	// ── Sound effect every ~15 ticks ───────────────────────────
+	if(SoundID >= 0 && Tick % 15 == 0)
+	{
+		GameWorld()->CreateSound(MyPos, SoundID);
+	}
+
+	// ── Big burst effect every ~45 ticks ───────────────────────
+	if(Tick % 45 == 0)
+	{
+		switch(Effect)
+		{
+		case EFFECT_SPARKLE:
+			GameWorld()->CreatePlayerSpawn(MyPos);
+			break;
+		case EFFECT_FIRE:
+			GameWorld()->CreateExplosion(MyPos, (CEntity*)this, WEAPON_GRENADE, 0);
+			break;
+		case EFFECT_ICE:
+			GameWorld()->CreatePlayerSpawn(MyPos + vec2(0, -32));
+			break;
+		case EFFECT_THUNDER:
+			GameWorld()->CreateHammerHit(MyPos + vec2(-20, -20));
+			GameWorld()->CreateHammerHit(MyPos + vec2(20, -20));
+			GameWorld()->CreateHammerHit(MyPos + vec2(-20, 20));
+			GameWorld()->CreateHammerHit(MyPos + vec2(20, 20));
+			break;
+		case EFFECT_DARK:
+			GameWorld()->CreateDeath(MyPos, m_pPlayer->GetCID());
+			GameWorld()->CreateSound(MyPos, SOUND_PLAYER_DIE);
+			break;
+		}
+	}
 }
 
 void CCharacter::TickDefered()
@@ -681,13 +1293,17 @@ void CCharacter::TickDefered()
 	vec2 StartVel = m_Core.m_Vel;
 	bool StuckBefore = GameServer()->Collision()->TestBox(m_Core.m_Pos, ColBox);
 
-	if(!GameServer()->m_pController->IsSpiderBossCore(this))
+	if(!CheckSpiderBossCore(GameServer(), this))
 		m_Core.Move();
 
 	bool StuckAfterMove = GameServer()->Collision()->TestBox(m_Core.m_Pos, ColBox);
 	m_Core.Quantize();
 	bool StuckAfterQuant = GameServer()->Collision()->TestBox(m_Core.m_Pos, ColBox);
 	m_Pos = m_Core.m_Pos;
+
+	// MRPG extensions: apply move restrictions and save position for stuck detection
+	ApplyMoveRestrictions();
+	m_PrevPos = m_Pos;
 
 	if(!StuckBefore && (StuckAfterMove || StuckAfterQuant))
 	{
@@ -789,6 +1405,8 @@ void CCharacter::SetHealthDirect(int Amount)
 {
 	const int Max = GameServer()->Config()->m_SvPlayerMaxHealth;
 	m_Health = clamp(Amount, 0, Max);
+	if(m_pPlayer && !m_pPlayer->IsDummy())
+		GameServer()->MarkUpdatedBroadcast(m_pPlayer->GetCID());
 }
 
 void CCharacter::SetBossHealth(int Amount)
@@ -827,6 +1445,9 @@ void CCharacter::Die(int Killer, int Weapon)
 {
 	if(!m_Alive)
 		return;
+
+	delete m_pTilesHandler;
+	m_pTilesHandler = nullptr;
 
 	// we got to wait 0.5 secs before respawning
 	m_Alive = false;
@@ -906,7 +1527,7 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	if(m_pPlayer->m_ZamerDetonating)
 		return false;
 
-	if(GameServer()->m_pController->IsSpiderBossCore(this) && From == m_pPlayer->GetCID())
+	if(CheckSpiderBossCore(GameServer(), this) && From == m_pPlayer->GetCID())
 		return false;
 
 	m_Core.m_Vel += Force;
@@ -915,6 +1536,17 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 	{
 		if(GameServer()->m_pController->IsFriendlyFire(m_pPlayer->GetCID(), From, Dmg))
 			return false;
+		// NPCs (Quest Npcs) are invulnerable
+		if(m_pPlayer && m_pPlayer->IsQuestNpc())
+			return false;
+
+		// Check AI damage rules for bot characters
+		if(dynamic_cast<CCharacterBotAI*>(this))
+		{
+			CCharacterBotAI *pBotAI = static_cast<CCharacterBotAI*>(this);
+			if(!pBotAI->IsAllowedPVP(From))
+				return false;
+		}
 		if(GameServer()->m_apPlayers[From] && !GameServer()->m_apPlayers[From]->IsDummy())
 		{
 			if(Weapon != WEAPON_LASER && Weapon != WEAPON_WORLD && Weapon != WEAPON_SELF && Weapon != WEAPON_NINJA)
@@ -997,22 +1629,58 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 		}
 	}
 
+	// Iron Will: 50% damage reduction
+	if(m_IronWillTicks > 0)
+		Dmg = maximum(1, Dmg / 2);
+
 	if(Config()->m_SvContentFramework && GameServer()->Core() && GameServer()->Core()->StatusManager())
 		GameServer()->Core()->StatusManager()->AbsorbDamage(this, Dmg);
 
-	// Apply armor defense reduction
-	if(Dmg > 0 && m_pPlayer && !m_pPlayer->IsDummy() && GameServer()->ItemHelper())
+	// Apply MMO defense reduction (EquippedSlots + player CON defense stat)
+	if(Dmg > 0 && m_pPlayer && !m_pPlayer->IsDummy())
 	{
-		const int HelmetId = m_pPlayer->GetHolding(ITYPE_HELMET);
-		const int ChestId = m_pPlayer->GetHolding(ITYPE_CHEST);
-		const int LegsId = m_pPlayer->GetHolding(ITYPE_LEGS);
-		const int Defense = GameServer()->ItemHelper()->GetDefense(HelmetId)
-			+ GameServer()->ItemHelper()->GetDefense(ChestId)
-			+ GameServer()->ItemHelper()->GetDefense(LegsId);
-		if(Defense > 0)
+		int TotalDefense = 0;
+
+		// Read defense from equipped helmets (3 types)
+		const ItemType aHelmets[] = {ItemType::EquipHelmetTank, ItemType::EquipHelmetDPS, ItemType::EquipHelmetHealer};
+		for(int i = 0; i < 3; i++)
 		{
-			Dmg = maximum(1, Dmg - Defense);
+			const int SlotItemID = m_pPlayer->m_EquippedSlots.getSlot(aHelmets[i]);
+			if(SlotItemID > 0)
+			{
+				const CMMOItemDescription *pDef = CMMOItemDescription::Get(SlotItemID);
+				if(pDef) TotalDefense += pDef->GetAttributeValue(AttributeIdentifier::Defense, 0);
+			}
 		}
+
+		// Read defense from equipped armor/chest (3 types)
+		const ItemType aArmors[] = {ItemType::EquipArmorTank, ItemType::EquipArmorDPS, ItemType::EquipArmorHealer};
+		for(int i = 0; i < 3; i++)
+		{
+			const int SlotItemID = m_pPlayer->m_EquippedSlots.getSlot(aArmors[i]);
+			if(SlotItemID > 0)
+			{
+				const CMMOItemDescription *pDef = CMMOItemDescription::Get(SlotItemID);
+				if(pDef) TotalDefense += pDef->GetAttributeValue(AttributeIdentifier::Defense, 0);
+			}
+		}
+
+		// Add player defense stat from CON (TRPG)
+		TotalDefense += m_pPlayer->GetEffectiveDefense();
+
+		// Fallback: old system legacy items (may return 0 if server_items JSONs deleted)
+		if(GameServer()->ItemHelper())
+		{
+			const int OldHelmet = m_pPlayer->GetHolding(ITYPE_HELMET);
+			const int OldChest = m_pPlayer->GetHolding(ITYPE_CHEST);
+			const int OldLegs = m_pPlayer->GetHolding(ITYPE_LEGS);
+			TotalDefense += GameServer()->ItemHelper()->GetDefense(OldHelmet)
+				+ GameServer()->ItemHelper()->GetDefense(OldChest)
+				+ GameServer()->ItemHelper()->GetDefense(OldLegs);
+		}
+
+		if(TotalDefense > 0)
+			Dmg = maximum(1, Dmg - TotalDefense);
 	}
 
 	int OldHealth = m_Health, OldArmor = m_Armor;
@@ -1116,6 +1784,21 @@ bool CCharacter::TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weap
 		GameWorld()->CreateSound(GameServer()->m_apPlayers[From]->m_ViewPos, SOUND_HIT, Mask);
 	}
 
+	// ─── World Boss damage tracking ────────────────────────────────
+	if(Dealt > 0 && From >= 0 && From < MAX_CLIENTS && m_pPlayer && m_pPlayer->m_IsWorldBoss)
+	{
+		if(TWorldController *pCore = GameServer()->Core())
+		{
+			if(CWorldBossManager *pWB = pCore->GetWorldBossManager())
+			{
+				pWB->RecordDamage(m_pPlayer->GetCID(), From, Dealt);
+			}
+		}
+	}
+
+	if(Dealt > 0 && m_pPlayer && !m_pPlayer->IsDummy())
+		GameServer()->MarkUpdatedBroadcast(m_pPlayer->GetCID());
+
 	// check for death
 	if(m_Health <= 0)
 	{
@@ -1168,11 +1851,17 @@ void CCharacter::Snap(int SnappingClient)
 		if(NetworkClippedLine(SnappingClient, m_Pos, m_Core.m_HookPos))
 			return;
 	}
-	const int SnapID = GameServer()->ClientSnapID(SnappingClient, m_pPlayer->GetCID());
-	if(SnapID < 0)
-		return;
 
-	CNetObj_Character *pCharacter = static_cast<CNetObj_Character *>(Server()->SnapNewItem(NETOBJTYPE_CHARACTER, SnapID, sizeof(CNetObj_Character)));
+	int ID = m_pPlayer->GetCID();
+	if(SnappingClient >= 0 && ID >= MAX_HUMAN_CLIENTS)
+	{
+		if(!m_pPlayer->IsVisibleForClient(SnappingClient))
+			return;
+		if(!Server()->Translate(ID, SnappingClient))
+			return;
+	}
+
+	CNetObj_Character *pCharacter = static_cast<CNetObj_Character *>(Server()->SnapNewItem(NETOBJTYPE_CHARACTER, ID, sizeof(CNetObj_Character)));
 	if(!pCharacter)
 		return;
 
@@ -1190,10 +1879,10 @@ void CCharacter::Snap(int SnappingClient)
 		m_SendCore.Write(pCharacter);
 	}
 
-	if(SnappingClient >= 0 && !GameServer()->ClientUsesExtendedSlots(SnappingClient) && pCharacter->m_HookedPlayer >= MAX_HUMAN_CLIENTS)
+	if(pCharacter->m_HookedPlayer != -1)
 	{
-		const int HookedSnap = GameServer()->ClientSnapID(SnappingClient, pCharacter->m_HookedPlayer);
-		pCharacter->m_HookedPlayer = HookedSnap >= 0 ? HookedSnap : -1;
+		if(SnappingClient >= 0 && !Server()->Translate(pCharacter->m_HookedPlayer, SnappingClient))
+			pCharacter->m_HookedPlayer = -1;
 	}
 
 	pCharacter->m_Emote = m_EmoteType;
@@ -1203,7 +1892,7 @@ void CCharacter::Snap(int SnappingClient)
 	pCharacter->m_Armor = 0;
 	pCharacter->m_TriggeredEvents = m_TriggeredEvents;
 
-	pCharacter->m_Weapon = m_ActiveWeapon;
+	pCharacter->m_Weapon = (m_ActiveCategory == WEAPONCAT_MAGIC) ? WEAPON_VISUAL_NONE : m_ActiveWeapon;
 	pCharacter->m_AttackTick = m_AttackTick;
 
 	pCharacter->m_Direction = m_Input.m_Direction;
@@ -1213,7 +1902,9 @@ void CCharacter::Snap(int SnappingClient)
 	{
 		pCharacter->m_Health = m_Health;
 		pCharacter->m_Armor = m_Armor;
-		if(m_ActiveWeapon == WEAPON_NINJA)
+		if(m_ActiveCategory == WEAPONCAT_MAGIC)
+			pCharacter->m_AmmoCount = 0;
+		else if(m_ActiveWeapon == WEAPON_NINJA)
 			pCharacter->m_AmmoCount = m_Ninja.m_ActivationTick + g_pData->m_Weapons.m_Ninja.m_Duration * Server()->TickSpeed() / 1000;
 		else if(m_aWeapons[m_ActiveWeapon].m_Ammo > 0)
 			pCharacter->m_AmmoCount = m_aWeapons[m_ActiveWeapon].m_Ammo;
@@ -1224,9 +1915,163 @@ void CCharacter::Snap(int SnappingClient)
 		if(5 * Server()->TickSpeed() - ((Server()->Tick() - m_LastAction) % (5 * Server()->TickSpeed())) < 5)
 			pCharacter->m_Emote = EMOTE_BLINK;
 	}
+
+	// Mount visual cue: make character smile/happy when mounted
+	if(m_pPlayer && m_pPlayer->m_IsMounted)
+		pCharacter->m_Emote = EMOTE_HAPPY;
+
+	// Fashion visual: offset angle to indicate fashion is equipped (client-side visual cue)
+	if(m_pPlayer && m_pPlayer->m_FashionItemID > 0)
+	{
+		pCharacter->m_Angle += 512; // offset aim angle as fashion marker
+	}
+
 }
 
 void CCharacter::PostSnap()
 {
 	m_TriggeredEvents = 0;
+}
+
+void CCharacter::HandleSafeFlags()
+{
+	// Reset all safety flags first (MRPG-style)
+	m_Core.m_CollisionDisabled = false;
+	m_Core.m_HookHitDisabled = false;
+	m_Core.m_DamageDisabled = false;
+	m_Core.m_Super = false;
+	// m_NewHook is controlled by tuning, not safe flags
+
+	// Apply current safe tick flags
+	if(m_SafeTickFlags & SAFEFLAG_COLLISION_DISABLED)
+		m_Core.m_CollisionDisabled = true;
+	if(m_SafeTickFlags & SAFEFLAG_HOOK_HIT_DISABLED)
+		m_Core.m_HookHitDisabled = true;
+	if(m_SafeTickFlags & SAFEFLAG_DAMAGE_DISABLED)
+		m_Core.m_DamageDisabled = true;
+	if(m_SafeTickFlags & SAFEFLAG_SUPER)
+		m_Core.m_Super = true;
+}
+
+void CCharacter::ApplyMoveRestrictions()
+{
+	if(m_MoveRestrictions & MOVERESTRICTION_PREVENT_LEFT)
+		m_Core.m_Vel.x = maximum(m_Core.m_Vel.x, 0.0f);
+	if(m_MoveRestrictions & MOVERESTRICTION_PREVENT_RIGHT)
+		m_Core.m_Vel.x = minimum(m_Core.m_Vel.x, 0.0f);
+	if(m_MoveRestrictions & MOVERESTRICTION_PREVENT_UP)
+		m_Core.m_Vel.y = maximum(m_Core.m_Vel.y, 0.0f);
+	if(m_MoveRestrictions & MOVERESTRICTION_PREVENT_DOWN)
+		m_Core.m_Vel.y = minimum(m_Core.m_Vel.y, 0.0f);
+}
+
+bool CCharacter::IncreaseMana(int Amount)
+{
+	if(m_Mana + Amount > 10)
+		return false;
+	m_Mana += Amount;
+	return true;
+}
+
+bool CCharacter::TryUseMana(int Mana)
+{
+	if(m_Mana < Mana)
+		return false;
+	m_Mana -= Mana;
+	return true;
+}
+
+void CCharacter::HandleIndependentTuning()
+{
+	// Move restrictions are already applied by ApplyMoveRestrictions()
+	// called directly from Tick(), so no need to handle them here.
+
+	// Handle water physics and oxygen
+	HandleWater();
+
+	// Handle buffs and status effects
+	HandleBuff();
+}
+
+void CCharacter::HandleWater()
+{
+	const int MaxWaterAir = 60;
+
+	// Not in water or no tiles handler → recover oxygen (MRPG-style)
+	if(!m_pTilesHandler || !m_pTilesHandler->IsActive(TILE_WATER))
+	{
+		if(Server()->Tick() % Server()->TickSpeed() == 0)
+		{
+			if(m_WaterAir < MaxWaterAir)
+				m_WaterAir++;
+		}
+		return;
+	}
+
+	// Apply water zone tuning via CTuneZoneManager (MRPG-style)
+	// The predefined WATER params handle gravity/friction/control
+	m_TuneZoneOverride = static_cast<int>(ETuneZone::WATER);
+
+	SetEmote(EMOTE_BLINK, Server()->Tick() + Server()->TickSpeed() / 2);
+
+	// Check if head is submerged (MRPG-style: check 16px above position)
+	const bool HeadSubmerged = GameServer()->Collision()->CheckPoint(
+		vec2(m_Core.m_Pos.x, m_Core.m_Pos.y - 16.f),
+		CCollision::COLFLAG_WATER);
+
+	if(HeadSubmerged)
+	{
+		// Submerged → consume oxygen
+		if(m_WaterAir > 0)
+		{
+			if(Server()->Tick() % Server()->TickSpeed() == 0)
+			{
+				m_WaterAir--;
+				// MRPG-style: broadcast air level to player
+				if(m_pPlayer)
+				{
+					GameServer()->Broadcast(m_pPlayer->GetCID(), CGameContext::BROADCAST_PRIORITY_GAME_WARNING,
+						Server()->TickSpeed(), "氧气: %d/%d", m_WaterAir, MaxWaterAir);
+				}
+			}
+		}
+	}
+	else
+	{
+		// Head above water but still in water tile → recover oxygen slowly (MRPG-style)
+		if(Server()->Tick() % (Server()->TickSpeed() / 2) == 0)
+		{
+			if(m_WaterAir < MaxWaterAir)
+				m_WaterAir++;
+		}
+	}
+}
+
+void CCharacter::HandleBuff()
+{
+	// Handle water drowning damage (oxygen depleted, MRPG-style)
+	if(m_pTilesHandler && m_pTilesHandler->IsActive(TILE_WATER))
+	{
+		const bool HeadSubmerged = GameServer()->Collision()->CheckPoint(
+			vec2(m_Core.m_Pos.x, m_Core.m_Pos.y - 16.f),
+			CCollision::COLFLAG_WATER);
+		if(HeadSubmerged && m_WaterAir <= 0)
+		{
+			if(Server()->Tick() % (Server()->TickSpeed() / 2) == 0)
+				TakeDamage(vec2(0, 0), m_Pos, 2, -1, WEAPON_WORLD);
+		}
+	}
+
+	// CStatusManager already handles DOT (burn/bleed/poison) effects globally
+	// via its OnTick() → TickCharacter() call, and slow effects (electron_slow/frost)
+	// are applied directly to m_Vel in ProcessStatus(). No duplication needed.
+}
+
+void CCharacter::HandleTuning()
+{
+	// Reset tune zone override each tick (MRPG-style: base state before independent tuning)
+	m_TuneZoneOverride = -1;
+
+	// Process move restrictions, water, and buffs in order
+	HandleIndependentTuning();
 }

@@ -8,6 +8,7 @@ enum class WorldType
 	Defence,
 	Hub,
 	PvP,
+	RPG,
 	Story,
 };
 
@@ -19,6 +20,9 @@ static inline WorldType WorldTypeFromString(const char *pType)
 		return WorldType::Hub;
 	if(str_comp_nocase(pType, "pvp") == 0)
 		return WorldType::PvP;
+	if(str_comp_nocase(pType, "rpg") == 0 || str_comp_nocase(pType, "frpg") == 0 ||
+		str_comp_nocase(pType, "f|rpg") == 0)
+		return WorldType::RPG;
 	if(str_comp_nocase(pType, "story") == 0)
 		return WorldType::Story;
 	return WorldType::Defence;
@@ -30,6 +34,7 @@ static inline const char *WorldTypeName(WorldType Type)
 	{
 	case WorldType::Hub: return "hub";
 	case WorldType::PvP: return "pvp";
+	case WorldType::RPG: return "frpg";
 	case WorldType::Story: return "story";
 	default: return "defence";
 	}
@@ -42,6 +47,7 @@ class CWorldDetail
 	int m_JailWorldID;
 	int m_RequiredLevel;
 	bool m_TravelLocked;
+	bool m_NoDaytime;
 	char m_aRequiredQuest[32];
 
 public:
@@ -52,6 +58,7 @@ public:
 		m_JailWorldID = 0;
 		m_RequiredLevel = 0;
 		m_TravelLocked = false;
+		m_NoDaytime = false;
 		m_aRequiredQuest[0] = 0;
 	}
 
@@ -62,6 +69,7 @@ public:
 		m_JailWorldID = JailWorldID;
 		m_RequiredLevel = RequiredLevel;
 		m_TravelLocked = TravelLocked;
+		m_NoDaytime = false;
 		m_aRequiredQuest[0] = 0;
 		if(pRequiredQuest && pRequiredQuest[0])
 			str_copy(m_aRequiredQuest, pRequiredQuest, sizeof(m_aRequiredQuest));
@@ -72,6 +80,7 @@ public:
 	int GetJailWorldID() const { return m_JailWorldID; }
 	int GetRequiredLevel() const { return m_RequiredLevel; }
 	bool GetTravelLocked() const { return m_TravelLocked; }
+	bool GetNoDaytime() const { return m_NoDaytime; }
 	const char *GetRequiredQuest() const { return m_aRequiredQuest; }
 };
 

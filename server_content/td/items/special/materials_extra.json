@@ -1,0 +1,30 @@
+{
+  "item": {
+    "type": 4,
+    "multiple": [
+      {
+        "id": 39,
+        "name": "钛锭",
+        "desc": "中期的精炼矿石",
+        "formula": {
+          "Iron": 50,
+          "Coal": 25
+        },
+        "name_key": "$td.item.39.name",
+        "description_key": "$td.item.39.desc"
+      },
+      {
+        "id": 40,
+        "name": "虚空碎片",
+        "desc": "高级合成的稀有水晶",
+        "formula": {
+          "Diamond": 50,
+          "Enegry": 2,
+          "Zombie's Heart": 10
+        },
+        "name_key": "$td.item.40.name",
+        "description_key": "$td.item.40.desc"
+      }
+    ]
+  }
+}

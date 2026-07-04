@@ -110,7 +110,7 @@ void CTurret::Tick()
 	{
 		if(Server()->Tick() - m_LastBrokenWarnTick >= Server()->TickSpeed() * 3)
 		{
-			GameServer()->SendChatLoc(m_Owner, "turret.broken", u8"炮塔已损坏，请在菜单中修复。");
+			GameServer()->SendChatLoc(m_Owner, "turret.broken", "炮塔已损坏，请在菜单中修复。");
 			m_LastBrokenWarnTick = Server()->Tick();
 		}
 		return;

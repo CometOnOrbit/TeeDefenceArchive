@@ -1,0 +1,1053 @@
+{
+  "mobs": [
+    {
+      "id": 1,
+      "name": "Slime",
+      "name_cn": "史莱姆",
+      "skin": "bluestripe",
+      "color_body": 255,
+      "color_feet": 131586,
+      "level": 1,
+      "hp": 50,
+      "attack": 1,
+      "defense": 2,
+      "exp_reward": 10,
+      "respawn_ticks": 300,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 1,
+        "max": 3
+      },
+      "drops": [
+        {
+          "item_id": 50,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 30,
+          "chance": 30,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Giant Rat",
+      "name_cn": "巨鼠",
+      "skin": "brownbear",
+      "color_body": 8355712,
+      "color_feet": 4210752,
+      "level": 1,
+      "hp": 75,
+      "attack": 1,
+      "defense": 2,
+      "exp_reward": 8,
+      "respawn_ticks": 250,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 1,
+        "max": 2
+      },
+      "drops": [
+        {
+          "item_id": 56,
+          "chance": 50,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 42,
+          "chance": 25,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Goblin Scout",
+      "name_cn": "哥布林侦察兵",
+      "skin": "brownpyramid",
+      "color_body": 65535,
+      "color_feet": 32768,
+      "level": 2,
+      "hp": 100,
+      "attack": 3,
+      "defense": 3,
+      "exp_reward": 20,
+      "respawn_ticks": 400,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 2,
+        "max": 5
+      },
+      "drops": [
+        {
+          "item_id": 51,
+          "chance": 50,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item_id": 30,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Cave Bat",
+      "name_cn": "洞穴蝙蝠",
+      "skin": "warpaint",
+      "color_body": 4210752,
+      "color_feet": 65535,
+      "level": 3,
+      "hp": 75,
+      "attack": 4,
+      "defense": 4,
+      "exp_reward": 25,
+      "respawn_ticks": 350,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 2,
+        "max": 6
+      },
+      "drops": [
+        {
+          "item_id": 53,
+          "chance": 45,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 40,
+          "chance": 20,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Miner Zombie",
+      "name_cn": "矿工僵尸",
+      "skin": "saddo",
+      "color_body": 12632256,
+      "color_feet": 6710886,
+      "level": 4,
+      "hp": 125,
+      "attack": 6,
+      "defense": 5,
+      "exp_reward": 35,
+      "respawn_ticks": 500,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 3,
+        "max": 8
+      },
+      "drops": [
+        {
+          "item_id": 30,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item_id": 31,
+          "chance": 20,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 42,
+          "chance": 30,
+          "min_count": 1,
+          "max_count": 2
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Dire Wolf",
+      "name_cn": "恐狼",
+      "skin": "coala",
+      "color_body": 4210816,
+      "color_feet": 4210752,
+      "level": 4,
+      "hp": 140,
+      "attack": 6,
+      "defense": 5,
+      "exp_reward": 40,
+      "respawn_ticks": 500,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 4,
+        "max": 10
+      },
+      "drops": [
+        {
+          "item_id": 52,
+          "chance": 60,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 45,
+          "chance": 30,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 25,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Skeleton Warrior",
+      "name_cn": "骷髅战士",
+      "skin": "brownbear",
+      "color_body": 16777215,
+      "color_feet": 8421504,
+      "level": 5,
+      "hp": 175,
+      "attack": 7,
+      "defense": 6,
+      "exp_reward": 55,
+      "respawn_ticks": 600,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 5,
+        "max": 14
+      },
+      "drops": [
+        {
+          "item_id": 55,
+          "chance": 50,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 31,
+          "chance": 25,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 55,
+          "chance": 10,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Goblin Berserker",
+      "name_cn": "哥布林狂战士",
+      "skin": "redstripe",
+      "color_body": 16711680,
+      "color_feet": 8323072,
+      "level": 6,
+      "hp": 200,
+      "attack": 9,
+      "defense": 7,
+      "exp_reward": 75,
+      "respawn_ticks": 700,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 8,
+        "max": 20
+      },
+      "drops": [
+        {
+          "item_id": 51,
+          "chance": 70,
+          "min_count": 2,
+          "max_count": 4
+        },
+        {
+          "item_id": 31,
+          "chance": 30,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 10,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Forest Spider",
+      "name_cn": "森林蜘蛛",
+      "skin": "twili",
+      "color_body": 16711680,
+      "color_feet": 0,
+      "level": 7,
+      "hp": 150,
+      "attack": 10,
+      "defense": 8,
+      "exp_reward": 65,
+      "respawn_ticks": 550,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 6,
+        "max": 15
+      },
+      "drops": [
+        {
+          "item_id": 54,
+          "chance": 50,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item_id": 32,
+          "chance": 10,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "AMBIENT_CHAT"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Dark Elf Mage",
+      "name_cn": "暗精灵法师",
+      "skin": "warpaint",
+      "color_body": 5898240,
+      "color_feet": 3932160,
+      "level": 8,
+      "hp": 175,
+      "attack": 12,
+      "defense": 9,
+      "exp_reward": 100,
+      "respawn_ticks": 800,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 12,
+        "max": 30
+      },
+      "drops": [
+        {
+          "item_id": 32,
+          "chance": 35,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 41,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 43,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "AMBIENT_CHAT",
+        "POISONOUS"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Wandering Ghost",
+      "name_cn": "游魂",
+      "skin": "bluewarmth",
+      "color_body": 12632256,
+      "color_feet": 16777215,
+      "level": 9,
+      "hp": 125,
+      "attack": 13,
+      "defense": 10,
+      "exp_reward": 120,
+      "respawn_ticks": 700,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 14,
+        "max": 35
+      },
+      "drops": [
+        {
+          "item_id": 60,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 2,
+          "chance": 20,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 32,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "AMBIENT_CHAT",
+        "SLEEPY"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Elder Treant",
+      "name_cn": "远古树人",
+      "skin": "saddo",
+      "color_body": 3329330,
+      "color_feet": 8947848,
+      "level": 10,
+      "hp": 250,
+      "attack": 15,
+      "defense": 11,
+      "exp_reward": 160,
+      "respawn_ticks": 900,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 18,
+        "max": 40
+      },
+      "drops": [
+        {
+          "item_id": 63,
+          "chance": 45,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 39,
+          "chance": 10,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 38,
+          "chance": 40,
+          "min_count": 2,
+          "max_count": 4
+        }
+      ],
+      "behaviors": [
+        "AMBIENT_CHAT",
+        "SLOWER"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Stone Golem",
+      "name_cn": "石巨人",
+      "skin": "saddo",
+      "color_body": 8947848,
+      "color_feet": 6710886,
+      "level": 11,
+      "hp": 300,
+      "attack": 16,
+      "defense": 12,
+      "exp_reward": 180,
+      "respawn_ticks": 1200,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 20,
+        "max": 45
+      },
+      "drops": [
+        {
+          "item_id": 67,
+          "chance": 50,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 31,
+          "chance": 45,
+          "min_count": 2,
+          "max_count": 4
+        },
+        {
+          "item_id": 32,
+          "chance": 20,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 95,
+          "chance": 5,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "SLOWER"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Lava Spirit",
+      "name_cn": "熔岩之灵",
+      "skin": "redstripe",
+      "color_body": 16711680,
+      "color_feet": 16776960,
+      "level": 12,
+      "hp": 175,
+      "attack": 18,
+      "defense": 13,
+      "exp_reward": 200,
+      "respawn_ticks": 1000,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 22,
+        "max": 50
+      },
+      "drops": [
+        {
+          "item_id": 61,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 33,
+          "chance": 25,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 98,
+          "chance": 5,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "POISONOUS"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Shadow Stalker",
+      "name_cn": "暗影猎手",
+      "skin": "warpaint",
+      "color_body": 2631720,
+      "color_feet": 0,
+      "level": 13,
+      "hp": 200,
+      "attack": 19,
+      "defense": 14,
+      "exp_reward": 220,
+      "respawn_ticks": 1100,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 25,
+        "max": 55
+      },
+      "drops": [
+        {
+          "item_id": 68,
+          "chance": 35,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 33,
+          "chance": 20,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 99,
+          "chance": 5,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "AMBIENT_CHAT",
+        "SLEEPY"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Elder Wyvern",
+      "name_cn": "远古双足飞龙",
+      "skin": "bluewarmth",
+      "color_body": 16711680,
+      "color_feet": 16776960,
+      "level": 15,
+      "hp": 400,
+      "attack": 22,
+      "defense": 16,
+      "exp_reward": 300,
+      "respawn_ticks": 1500,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 30,
+        "max": 70
+      },
+      "drops": [
+        {
+          "item_id": 75,
+          "chance": 30,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 34,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 36,
+          "chance": 25,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 95,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "POISONOUS",
+        "AMBIENT_CHAT"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Void Knight",
+      "name_cn": "虚空骑士",
+      "skin": "warpaint",
+      "color_body": 0,
+      "color_feet": 15790320,
+      "level": 16,
+      "hp": 350,
+      "attack": 24,
+      "defense": 17,
+      "exp_reward": 350,
+      "respawn_ticks": 1600,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 35,
+        "max": 80
+      },
+      "drops": [
+        {
+          "item_id": 68,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 96,
+          "chance": 10,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 97,
+          "chance": 5,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "NEUTRAL"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Crystal Golem",
+      "name_cn": "水晶巨人",
+      "skin": "twili",
+      "color_body": 16776960,
+      "color_feet": 15790320,
+      "level": 18,
+      "hp": 500,
+      "attack": 27,
+      "defense": 19,
+      "exp_reward": 400,
+      "respawn_ticks": 1800,
+      "is_boss": false,
+      "gold_reward": {
+        "min": 40,
+        "max": 100
+      },
+      "drops": [
+        {
+          "item_id": 76,
+          "chance": 25,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 36,
+          "chance": 30,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 99,
+          "chance": 10,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 96,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "SLOWER",
+        "AMBIENT_CHAT"
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Goblin Chief",
+      "name_cn": "哥布林首领",
+      "skin": "redstripe",
+      "color_body": 16776960,
+      "color_feet": 16711680,
+      "level": 5,
+      "hp": 300,
+      "attack": 12,
+      "defense": 10,
+      "exp_reward": 250,
+      "respawn_ticks": 3600,
+      "is_boss": true,
+      "gold_reward": {
+        "min": 60,
+        "max": 150
+      },
+      "drops": [
+        {
+          "item_id": 51,
+          "chance": 100,
+          "min_count": 3,
+          "max_count": 5
+        },
+        {
+          "item_id": 31,
+          "chance": 60,
+          "min_count": 2,
+          "max_count": 4
+        },
+        {
+          "item_id": 116,
+          "chance": 20,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 95,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "AMBIENT_CHAT"
+      ]
+    },
+    {
+      "id": 51,
+      "name": "Skeleton Lord",
+      "name_cn": "骷髅领主",
+      "skin": "brownbear",
+      "color_body": 16711680,
+      "color_feet": 8421504,
+      "level": 8,
+      "hp": 600,
+      "attack": 20,
+      "defense": 16,
+      "exp_reward": 550,
+      "respawn_ticks": 5400,
+      "is_boss": true,
+      "gold_reward": {
+        "min": 120,
+        "max": 300
+      },
+      "drops": [
+        {
+          "item_id": 70,
+          "chance": 100,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 11,
+          "chance": 50,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 95,
+          "chance": 30,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 32,
+          "chance": 60,
+          "min_count": 2,
+          "max_count": 4
+        }
+      ],
+      "behaviors": [
+        "NEUTRAL"
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Ancient Treant",
+      "name_cn": "上古树人",
+      "skin": "saddo",
+      "color_body": 16777215,
+      "color_feet": 8947848,
+      "level": 12,
+      "hp": 1500,
+      "attack": 30,
+      "defense": 24,
+      "exp_reward": 800,
+      "respawn_ticks": 5400,
+      "is_boss": true,
+      "gold_reward": {
+        "min": 200,
+        "max": 500
+      },
+      "drops": [
+        {
+          "item_id": 39,
+          "chance": 80,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item_id": 63,
+          "chance": 100,
+          "min_count": 2,
+          "max_count": 4
+        },
+        {
+          "item_id": 98,
+          "chance": 30,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 95,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 2
+        }
+      ],
+      "behaviors": [
+        "SLEEPY",
+        "SLOWER"
+      ]
+    },
+    {
+      "id": 53,
+      "name": "Stone Colossus",
+      "name_cn": "巨石像",
+      "skin": "saddo",
+      "color_body": 3355443,
+      "color_feet": 8947848,
+      "level": 15,
+      "hp": 2250,
+      "attack": 37,
+      "defense": 30,
+      "exp_reward": 1200,
+      "respawn_ticks": 7200,
+      "is_boss": true,
+      "gold_reward": {
+        "min": 300,
+        "max": 800
+      },
+      "drops": [
+        {
+          "item_id": 67,
+          "chance": 100,
+          "min_count": 3,
+          "max_count": 5
+        },
+        {
+          "item_id": 33,
+          "chance": 60,
+          "min_count": 2,
+          "max_count": 4
+        },
+        {
+          "item_id": 98,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 96,
+          "chance": 25,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 97,
+          "chance": 10,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "SLOWER",
+        "AMBIENT_CHAT"
+      ]
+    },
+    {
+      "id": 54,
+      "name": "Shadow Dragon",
+      "name_cn": "暗影龙",
+      "skin": "bluewarmth",
+      "color_body": 262144,
+      "color_feet": 16777215,
+      "level": 20,
+      "hp": 5000,
+      "attack": 50,
+      "defense": 40,
+      "exp_reward": 2500,
+      "respawn_ticks": 10800,
+      "is_boss": true,
+      "gold_reward": {
+        "min": 500,
+        "max": 1500
+      },
+      "drops": [
+        {
+          "item_id": 75,
+          "chance": 100,
+          "min_count": 2,
+          "max_count": 4
+        },
+        {
+          "item_id": 34,
+          "chance": 50,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 96,
+          "chance": 40,
+          "min_count": 2,
+          "max_count": 4
+        },
+        {
+          "item_id": 97,
+          "chance": 20,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 37,
+          "chance": 15,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 69,
+          "chance": 60,
+          "min_count": 2,
+          "max_count": 4
+        }
+      ],
+      "behaviors": [
+        "POISONOUS",
+        "AMBIENT_CHAT"
+      ]
+    },
+    {
+      "id": 55,
+      "name": "Fallen Celestial",
+      "name_cn": "堕落天使",
+      "skin": "standard",
+      "color_body": 16776960,
+      "color_feet": 16777215,
+      "level": 25,
+      "hp": 9000,
+      "attack": 62,
+      "defense": 50,
+      "exp_reward": 5000,
+      "respawn_ticks": 14400,
+      "is_boss": true,
+      "gold_reward": {
+        "min": 1000,
+        "max": 3000
+      },
+      "drops": [
+        {
+          "item_id": 76,
+          "chance": 100,
+          "min_count": 2,
+          "max_count": 3
+        },
+        {
+          "item_id": 35,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 96,
+          "chance": 60,
+          "min_count": 3,
+          "max_count": 5
+        },
+        {
+          "item_id": 97,
+          "chance": 40,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item_id": 183,
+          "chance": 5,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item_id": 182,
+          "chance": 10,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ],
+      "behaviors": [
+        "POISONOUS",
+        "NEUTRAL",
+        "AMBIENT_CHAT"
+      ]
+    }
+  ]
+}

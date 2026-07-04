@@ -1,0 +1,109 @@
+{
+  "item": {
+    "type": 6,
+    "multiple": [
+      {
+        "id": 51,
+        "name": "木制头盔",
+        "desc": "一顶木头做的头盔。",
+        "defense": 1,
+        "capacity": 0,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Log": 20
+        },
+        "name_key": "$td.item.51.name",
+        "description_key": "$td.item.51.desc"
+      },
+      {
+        "id": 52,
+        "name": "铁质头盔",
+        "desc": "一顶铁做的头盔。",
+        "defense": 2,
+        "capacity": 20,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Iron": 250
+        },
+        "name_key": "$td.item.52.name",
+        "description_key": "$td.item.52.desc"
+      },
+      {
+        "id": 53,
+        "name": "铜质头盔",
+        "desc": "一顶铜做的头盔。",
+        "defense": 3,
+        "capacity": 30,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Copper": 500
+        },
+        "name_key": "$td.item.53.name",
+        "description_key": "$td.item.53.desc"
+      },
+      {
+        "id": 54,
+        "name": "钛合金头盔",
+        "desc": "一顶钛合金做的头盔。",
+        "defense": 4,
+        "capacity": 50,
+        "proba": 85,
+        "max": 0,
+        "formula": {
+          "Iron": 200,
+          "Copper": 200,
+          "Titanium": 100
+        },
+        "name_key": "$td.item.54.name",
+        "description_key": "$td.item.54.desc"
+      },
+      {
+        "id": 55,
+        "name": "钻石头盔",
+        "desc": "一顶钻石做的头盔。",
+        "defense": 5,
+        "capacity": 80,
+        "proba": 80,
+        "max": 0,
+        "formula": {
+          "Diamond": 500
+        },
+        "name_key": "$td.item.55.name",
+        "description_key": "$td.item.55.desc"
+      },
+      {
+        "id": 56,
+        "name": "能量头盔",
+        "desc": "一顶纯能量做的头盔。",
+        "defense": 6,
+        "capacity": 120,
+        "proba": 80,
+        "max": 0,
+        "formula": {
+          "Enegry": 25
+        },
+        "name_key": "$td.item.56.name",
+        "description_key": "$td.item.56.desc"
+      },
+      {
+        "id": 57,
+        "name": "虚空碎片头盔",
+        "desc": "一顶由虚空碎片锻造的头盔。",
+        "defense": 7,
+        "capacity": 150,
+        "proba": 70,
+        "max": 0,
+        "formula": {
+          "Diamond": 200,
+          "Enegry": 50,
+          "Void Shard": 10
+        },
+        "name_key": "$td.item.57.name",
+        "description_key": "$td.item.57.desc"
+      }
+    ]
+  }
+}

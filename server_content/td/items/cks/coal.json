@@ -1,0 +1,11 @@
+{
+  "item": {
+    "type": 4,
+    "id": 1,
+    "name": "煤炭",
+    "desc": "火焰！火焰！火焰！",
+    "health": 8000,
+    "name_key": "$td.cks.coal",
+    "description_key": "$td.cks.1.desc"
+  }
+}

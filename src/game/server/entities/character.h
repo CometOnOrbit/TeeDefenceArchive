@@ -7,6 +7,26 @@
 
 #include <game/gamecore.h>
 #include <game/server/entity.h>
+#include <game/server/core/tools/tiles_handler.h>
+
+// MRPG safety flags for safe zones
+enum
+{
+	SAFEFLAG_DAMAGE_DISABLED = 1 << 0,
+	SAFEFLAG_HAMMER_HIT_DISABLED = 1 << 1,
+	SAFEFLAG_COLLISION_DISABLED = 1 << 2,
+	SAFEFLAG_HOOK_HIT_DISABLED = 1 << 3,
+	SAFEFLAG_SUPER = 1 << 4,
+};
+
+// Move restrictions for world boundaries and zones
+enum
+{
+	MOVERESTRICTION_PREVENT_LEFT = 1 << 0,
+	MOVERESTRICTION_PREVENT_RIGHT = 1 << 1,
+	MOVERESTRICTION_PREVENT_UP = 1 << 2,
+	MOVERESTRICTION_PREVENT_DOWN = 1 << 3,
+};
 
 class CCharacter : public CHitableEntity
 {
@@ -64,25 +84,80 @@ public:
 	void SetBossHealth(int Amount);
 	void SetHitRadius(float Radius);
 	void SyncSpiderBody(vec2 Pos);
+	void SetInput(const CNetObj_PlayerInput &NewInput) { m_Input = NewInput; }
 
 	bool GiveWeapon(int Weapon, int Ammo);
 	void AddWeaponAmmo(int Weapon, int Bonus);
+	void SyncMMOWeaponAmmo(int MaxAmmo);
 	void GiveNinja();
 	void SetNinjaActivationTick(int Tick) { m_Ninja.m_ActivationTick = Tick; }
 
 	void SetEmote(int Emote, int Tick);
+	void SetCharacterPos(vec2 NewPos) { m_Core.m_Pos = NewPos; m_Pos = NewPos; }
+	// Weapon category: classifies a weapon index (WEAPON_HAMMER etc.) into melee or ranged
+	static int WeaponCategoryForWeapon(int Weapon);
 
 	bool IsAlive() const { return m_Alive; }
 	int GetHealth() const { return m_Health; }
+	int GetArmor() const { return m_Armor; }
 	class CPlayer *GetPlayer() { return m_pPlayer; }
 	int GetCID();
 	vec2 GetVelocity() const { return m_Core.m_Vel; }
 	int WeaponAmmo(int Weapon) const;
 	int HookState() const { return m_Core.m_HookState; }
 	int GetActiveWeapon() const { return m_ActiveWeapon; }
+	int GetActiveCategory() const { return m_ActiveCategory; }
+	int GetActiveSkillSlot() const { return m_ActiveSkillSlot; }
+	int GetActiveMeleeLoadoutIdx() const { return m_ActiveMeleeLoadoutIdx; }
+	int GetActiveRangedLoadoutIdx() const { return m_ActiveRangedLoadoutIdx; }
+	int GetActiveWeaponItemID() const { return m_ActiveWeaponItemID; }
+	bool TryActivateLoadoutIdx(int Category, int LoadoutIdx);
+	void CycleLoadoutInCategory(int Direction);
 	const CNetObj_PlayerInput &LatestInput() const { return m_LatestInput; }
+	const CNetObj_PlayerInput &LatestPrevInput() const { return m_LatestPrevInput; }
 	CCharacterCore *GetCore() { return &m_Core; }
 	const CCharacterCore *GetCore() const { return &m_Core; }
+
+	// MRPG extensions
+	int m_Mana{};
+	int m_WaterAir{};
+	char m_aZoneName[64]{};
+	int m_SafeTickFlags{};
+	int m_TuneZoneOverride{};
+	int m_MoveRestrictions{};
+	vec2 m_PrevPos{};
+	CTileHandler *m_pTilesHandler{};
+
+	// Weapon category: melee / ranged / magic (3/4/5 skill bar)
+	enum { WEAPONCAT_MELEE = 0, WEAPONCAT_RANGED = 1, WEAPONCAT_MAGIC = 2 };
+	enum { WEAPON_VISUAL_NONE = -1 }; // empty hands in CNetObj_Character snap
+	enum { NUM_WEAPON_SLOT_CATEGORIES = 2 }; // stored last weapon per melee/ranged slot
+	int m_aCategoryLastWeapon[NUM_WEAPON_SLOT_CATEGORIES];
+	int m_ActiveCategory;
+	int m_ActiveSkillSlot; // 0..2 → keys 3/4/5 when WEAPONCAT_MAGIC
+	int m_ActiveMeleeLoadoutIdx;  // 0..3 active melee loadout slot
+	int m_ActiveRangedLoadoutIdx; // 0..3 active ranged loadout slot
+	int m_ActiveWeaponItemID; // current MMO item for stats/HUD (-1 = default hammer)
+
+	// Skill runtime states (no class system, any player can use any skill)
+	int m_RenewTicks;          // renew: remaining regen ticks
+	int m_RenewAmount;         // renew: HP per tick
+	int m_IronWillTicks;       // iron_will: remaining ticks
+	int m_ShadowTicks;         // shadow_step: remaining invisibility ticks
+	bool m_ShadowNextCrit;     // shadow_step: next attack deals bonus
+	bool m_IsInvisible;        // shadow_step: hidden from enemies
+
+	void SetSafeFlags(int Flags = SAFEFLAG_DAMAGE_DISABLED | SAFEFLAG_COLLISION_DISABLED | SAFEFLAG_HOOK_HIT_DISABLED) { m_SafeTickFlags = Flags; }
+	void HandleWater();
+	void HandleBuff();
+	void HandleTuning();
+	void HandleIndependentTuning();
+	void HandleSafeFlags();
+	void ApplyMoveRestrictions();
+	void TickFashionAura();
+	bool IncreaseMana(int Amount);
+	bool TryUseMana(int Mana);
+	int Mana() const { return m_Mana; }
 
 	bool m_InMining;
 	int m_MiningTick;
@@ -102,6 +177,15 @@ public:
 	void RemoveWeapon(int WeaponID);
 
 private:
+	friend class CCharacterBotAI;
+	friend class CBaseAI;
+	friend class CMobAI;
+	friend class CNpcAI;
+	friend class CQuestMobAI;
+	friend class CQuestNpcAI;
+	friend class CTargetAI;
+	friend class CWorldBossManager;
+
 	// player controlling this character
 	class CPlayer *m_pPlayer;
 

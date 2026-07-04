@@ -1,0 +1,561 @@
+{
+  "item": {
+    "type": 5,
+    "multiple": [
+      {
+        "id": 27,
+        "name": "卡牌：速射",
+        "desc": "加快武器装填速度（炮塔射速）",
+        "effects": [
+          "reload_haste"
+        ],
+        "capacity": 10,
+        "placeable": [
+          0,
+          1,
+          2,
+          3,
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 5,
+        "formula": {
+          "Log": 70,
+          "Golden": 40,
+          "Zombie's Heart": 50
+        },
+        "name_key": "$td.item.27.name",
+        "description_key": "$td.item.27.desc"
+      },
+      {
+        "id": 28,
+        "name": "卡牌：快装",
+        "desc": "加快弹药恢复速度",
+        "effects": [
+          "ammo_regen"
+        ],
+        "capacity": 10,
+        "placeable": [
+          0,
+          1,
+          2,
+          3,
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 5,
+        "formula": {
+          "Log": 70,
+          "Golden": 40,
+          "Zombie's Heart": 50
+        },
+        "name_key": "$td.item.28.name",
+        "description_key": "$td.item.28.desc"
+      },
+      {
+        "id": 29,
+        "name": "卡牌：伤害",
+        "desc": "提升攻击伤害",
+        "effects": [
+          "damage_bonus"
+        ],
+        "capacity": 10,
+        "placeable": [
+          0,
+          1,
+          2,
+          3,
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 5,
+        "formula": {
+          "Log": 70,
+          "Iron": 40,
+          "Zombie's Heart": 100
+        },
+        "name_key": "$td.item.29.name",
+        "description_key": "$td.item.29.desc"
+      },
+      {
+        "id": 30,
+        "name": "卡牌：爆炸",
+        "desc": "攻击附带爆炸效果",
+        "effects": [
+          "explosive"
+        ],
+        "capacity": 15,
+        "max_place": 2,
+        "placeable": [
+          2,
+          3
+        ],
+        "max": 0,
+        "formula": {
+          "Log": 70,
+          "Iron": 30,
+          "Coal": 100,
+          "Zombie's Heart": 50
+        },
+        "name_key": "$td.item.30.name",
+        "description_key": "$td.item.30.desc"
+      },
+      {
+        "id": 31,
+        "name": "卡牌：电击",
+        "desc": "电击敌人，降低移速",
+        "effects": [
+          "electron_chain",
+          "electron_slow"
+        ],
+        "capacity": 30,
+        "placeable": [
+          2,
+          3
+        ],
+        "max": 0,
+        "max_place": 2,
+        "formula": {
+          "Log": 70,
+          "Copper": 200,
+          "Iron": 30,
+          "Coal": 100,
+          "Zombie's Heart": 50
+        },
+        "name_key": "$td.item.31.name",
+        "description_key": "$td.item.31.desc"
+      },
+      {
+        "id": 32,
+        "name": "卡牌：聚变",
+        "desc": "大范围聚变爆炸",
+        "effects": [
+          "fusion_bloom"
+        ],
+        "capacity": 60,
+        "placeable": [
+          2,
+          3
+        ],
+        "max": 0,
+        "max_place": 2,
+        "formula": {
+          "Log": 7000,
+          "Copper": 2000,
+          "Iron": 2000,
+          "Coal": 5000,
+          "Enegry": 1500,
+          "Zombie's Heart": 3000
+        },
+        "name_key": "$td.item.32.name",
+        "description_key": "$td.item.32.desc"
+      },
+      {
+        "id": 33,
+        "name": "卡牌：推力",
+        "desc": "击退敌人",
+        "effects": [
+          "knockback"
+        ],
+        "capacity": 10,
+        "placeable": [
+          2,
+          3,
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 2,
+        "formula": {
+          "Log": 70,
+          "Zombie's Heart": 50
+        },
+        "name_key": "$td.item.33.name",
+        "description_key": "$td.item.33.desc"
+      },
+      {
+        "id": 34,
+        "name": "卡牌：手动瞄准",
+        "desc": "炮塔改为手动瞄准射击",
+        "effects": [
+          "turret_manual"
+        ],
+        "capacity": 0,
+        "placeable": [
+          3
+        ],
+        "max": 0,
+        "max_place": 1,
+        "formula": {
+          "Log": 100,
+          "Coal": 100,
+          "Copper": 100,
+          "Iron": 100,
+          "Golden": 100,
+          "Diamond": 10,
+          "Enegry": 5,
+          "Zombie's Heart": 1000
+        },
+        "name_key": "$td.item.34.name",
+        "description_key": "$td.item.34.desc"
+      },
+      {
+        "id": 41,
+        "name": "卡牌：吸血",
+        "desc": "攻击时恢复生命",
+        "capacity": 20,
+        "placeable": [
+          2,
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 3,
+        "effects": [
+          "lifesteal"
+        ],
+        "formula": {
+          "Log": 200,
+          "Zombie's Heart": 500,
+          "Void Shard": 50
+        },
+        "name_key": "$td.item.41.name",
+        "description_key": "$td.item.41.desc"
+      },
+      {
+        "id": 42,
+        "name": "卡牌：破甲",
+        "desc": "削减敌人护甲",
+        "capacity": 15,
+        "placeable": [
+          2,
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 2,
+        "effects": [
+          "armor_shred"
+        ],
+        "formula": {
+          "Coal": 2000,
+          "Iron": 500,
+          "Titanium": 200
+        },
+        "name_key": "$td.item.42.name",
+        "description_key": "$td.item.42.desc"
+      },
+      {
+        "id": 43,
+        "name": "卡牌：连锁闪电",
+        "desc": "额外连锁闪电",
+        "capacity": 25,
+        "placeable": [
+          2,
+          3
+        ],
+        "max": 0,
+        "max_place": 2,
+        "effects": [
+          "chain_lightning",
+          "electron_chain"
+        ],
+        "formula": {
+          "Copper": 2000,
+          "Coal": 3000,
+          "Enegry": 20
+        },
+        "name_key": "$td.item.43.name",
+        "description_key": "$td.item.43.desc"
+      },
+      {
+        "id": 44,
+        "name": "卡牌：采矿好运",
+        "desc": "提高采矿暴击几率",
+        "capacity": 20,
+        "placeable": [
+          0,
+          1,
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 3,
+        "effects": [
+          "mining_luck"
+        ],
+        "proba": 15,
+        "formula": {
+          "Log": 300,
+          "Golden": 500
+        },
+        "name_key": "$td.item.44.name",
+        "description_key": "$td.item.44.desc"
+      },
+      {
+        "id": 45,
+        "name": "卡牌：迅捷",
+        "desc": "通用攻速提升（比速射更轻量）",
+        "capacity": 20,
+        "placeable": [
+          0,
+          1,
+          2,
+          3,
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 3,
+        "effects": [
+          "haste"
+        ],
+        "formula": {
+          "Log": 100,
+          "Iron": 400,
+          "Titanium": 20
+        },
+        "name_key": "$td.item.45.name",
+        "description_key": "$td.item.45.desc"
+      },
+      {
+        "id": 50,
+        "name": "卡牌：生机",
+        "desc": "提升最大生命值",
+        "capacity": 5,
+        "placeable": [
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 20,
+        "effects": [
+          "max_health_bonus"
+        ],
+        "formula": {
+          "Log": 200,
+          "Zombie's Heart": 20,
+          "Iron": 100,
+          "Void Shard": 20
+        },
+        "name_key": "$td.item.50.name",
+        "description_key": "$td.item.50.desc"
+      },
+      {
+        "id": 72,
+        "name": "卡牌：荆棘",
+        "desc": "受到伤害时反弹部分伤害给攻击者",
+        "capacity": 10,
+        "placeable": [
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 3,
+        "effects": [
+          "thorns"
+        ],
+        "formula": {
+          "Log": 150,
+          "Iron": 80,
+          "Zombie's Heart": 50
+        },
+        "name_key": "$td.item.72.name",
+        "description_key": "$td.item.72.desc"
+      },
+      {
+        "id": 73,
+        "name": "卡牌：再生",
+        "desc": "每3秒自动恢复生命值",
+        "capacity": 8,
+        "placeable": [
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 5,
+        "effects": [
+          "regeneration"
+        ],
+        "formula": {
+          "Log": 120,
+          "Golden": 100,
+          "Zombie's Heart": 40
+        },
+        "name_key": "$td.item.73.name",
+        "description_key": "$td.item.73.desc"
+      },
+      {
+        "id": 74,
+        "name": "卡牌：强化",
+        "desc": "每次受击减免固定伤害",
+        "capacity": 12,
+        "placeable": [
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 3,
+        "effects": [
+          "fortification"
+        ],
+        "formula": {
+          "Coal": 150,
+          "Iron": 300,
+          "Titanium": 15
+        },
+        "name_key": "$td.item.74.name",
+        "description_key": "$td.item.74.desc"
+      },
+      {
+        "id": 75,
+        "name": "卡牌：护盾",
+        "desc": "受击时有概率获得临时护盾",
+        "capacity": 15,
+        "placeable": [
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 2,
+        "effects": [
+          "absorption_shield"
+        ],
+        "formula": {
+          "Copper": 200,
+          "Iron": 200,
+          "Golden": 100,
+          "Zombie's Heart": 50
+        },
+        "name_key": "$td.item.75.name",
+        "description_key": "$td.item.75.desc"
+      },
+      {
+        "id": 76,
+        "name": "卡牌：幸运",
+        "desc": "拾取物品时有概率获得双倍",
+        "capacity": 10,
+        "placeable": [
+          8
+        ],
+        "max": 0,
+        "max_place": 3,
+        "effects": [
+          "fortune"
+        ],
+        "proba": 10,
+        "formula": {
+          "Log": 250,
+          "Golden": 80,
+          "Diamond": 5
+        },
+        "name_key": "$td.item.76.name",
+        "description_key": "$td.item.76.desc"
+      },
+      {
+        "id": 77,
+        "name": "卡牌：疾步",
+        "desc": "提升移动速度（仅护腿）",
+        "capacity": 10,
+        "placeable": [
+          8
+        ],
+        "max": 0,
+        "max_place": 5,
+        "effects": [
+          "swiftness"
+        ],
+        "formula": {
+          "Log": 100,
+          "Iron": 50,
+          "Golden": 100
+        },
+        "name_key": "$td.item.77.name",
+        "description_key": "$td.item.77.desc"
+      },
+      {
+        "id": 78,
+        "name": "卡牌：复仇",
+        "desc": "受伤后短时间内提升攻击力",
+        "capacity": 12,
+        "placeable": [
+          6,
+          7
+        ],
+        "max": 0,
+        "max_place": 3,
+        "effects": [
+          "retribution"
+        ],
+        "formula": {
+          "Iron": 120,
+          "Zombie's Heart": 60,
+          "Void Shard": 3
+        },
+        "name_key": "$td.item.78.name",
+        "description_key": "$td.item.78.desc"
+      },
+      {
+        "id": 79,
+        "name": "卡牌：不屈",
+        "desc": "生命值低于50%时减少所受伤害",
+        "capacity": 15,
+        "placeable": [
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 2,
+        "effects": [
+          "resilience"
+        ],
+        "formula": {
+          "Iron": 200,
+          "Titanium": 20,
+          "Zombie's Heart": 80
+        },
+        "name_key": "$td.item.79.name",
+        "description_key": "$td.item.79.desc"
+      },
+      {
+        "id": 80,
+        "name": "卡牌：免伤",
+        "desc": "每件防具减少30%自伤，三件齐全完全免疫",
+        "capacity": 10,
+        "placeable": [
+          6,
+          7,
+          8
+        ],
+        "max": 0,
+        "max_place": 1,
+        "effects": [
+          "self_harm_immunity"
+        ],
+        "formula": {
+          "Log": 300,
+          "Iron": 150,
+          "Diamond": 15,
+          "Void Shard": 10
+        },
+        "name_key": "$td.item.80.name",
+        "description_key": "$td.item.80.desc"
+      }
+    ]
+  }
+}

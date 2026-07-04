@@ -21,7 +21,7 @@ void CMiniEventsManager::LoadDefs()
 		return;
 
 	CJsonParser Parser;
-	json_value *pRoot = Parser.ParseFile("server_content/mini_events.json", Storage());
+	json_value *pRoot = Parser.ParseFile("server_content/mmo/mini_events.json", Storage());
 	if(!pRoot)
 	{
 		dbg_msg("mini", "mini_events.json: %s", Parser.Error());
@@ -73,7 +73,7 @@ void CMiniEventsManager::StartEvent(int Idx)
 	m_ActiveIdx = Idx;
 	const int DurTicks = GS()->Server()->TickSpeed() * m_aEvents[Idx].m_DurationSec;
 	m_EndTick = GS()->Server()->Tick() + DurTicks;
-	GS()->SendChatAllLocF("mini.event.start", u8"限时活动：%s（%d 秒）", m_aEvents[Idx].m_aTitle, m_aEvents[Idx].m_DurationSec);
+	GS()->SendChatAllLocF("mini.event.start", "限时活动：%s（%d 秒）", m_aEvents[Idx].m_aTitle, m_aEvents[Idx].m_DurationSec);
 }
 
 void CMiniEventsManager::TryRollEvent()
@@ -94,7 +94,7 @@ void CMiniEventsManager::OnTick()
 	const int Now = GS()->Server()->Tick();
 	if(m_ActiveIdx >= 0 && Now >= m_EndTick)
 	{
-		GS()->SendChatAllLoc("mini.event.end", u8"限时活动已结束。");
+		GS()->SendChatAllLoc("mini.event.end", "限时活动已结束。");
 		m_ActiveIdx = -1;
 	}
 	if(Now >= m_NextRollTick)

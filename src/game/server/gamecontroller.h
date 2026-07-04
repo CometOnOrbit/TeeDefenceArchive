@@ -12,20 +12,7 @@
 
 #include <generated/protocol.h>
 
-class CTowerMain;
 class CPlayer;
-class CSpiderBoss;
-
-enum
-{
-	NUM_TD_ZOMB = 16,
-	TD_MAX_ACTIVE_ZOMBIES = MAX_ZOMBIE_CLIENTS,
-	TD_REMOVE_QUEUE = MAX_CLIENTS,
-	TD_DIFF_EASY = 0,
-	TD_DIFF_NORMAL = 1,
-	TD_DIFF_HARD = 2,
-	NUM_TD_DIFF = 3,
-};
 
 /*
 	Class: Game Controller
@@ -44,54 +31,7 @@ class CGameController
 
 	int ClampTeam(int Team) const;
 
-	// TeeDefense (private state)
-	int m_TdWarmup;
-	int m_TdGameOverTick;
-	int m_TdZombStart;
-	int m_TdWave;
-	int m_TdZombie[NUM_TD_ZOMB];
-	int m_TdZombLeft;
-	int m_aTdDummyRemove[TD_REMOVE_QUEUE];
-	int m_TdDummyRemoveLen;
-	CTowerMain *m_pTower;
-	class CZombieBot *m_apZombieBots[MAX_CLIENTS];
-	class CSpiderBoss *m_pSpiderBoss;
-	bool m_TdBossWave;
-	bool m_TdSpiderBossPending;
 
-	int m_TdPendingZomb;
-	int m_TdDifficulty;
-
-	float TdDifficultyZombieMul() const;
-	float TdDifficultyHealthMul() const;
-	float TdDifficultyTowerMul() const;
-	void TdApplyDifficultyToZombieCounts();
-	void TdRefreshTowerMaxHealth();
-
-	void TdResetPendingRemoves();
-	void TdDoWarmup(int Seconds);
-	bool TdSkipWarmup();
-	void TdStartRound();
-	void TdEndRound();
-	void TdDoWincheck();
-	void TdStartWave(int Wave);
-	void TdCheckZombie();
-	void TdTrySpawnSpiderBoss();
-	int TdRandZomb();
-	int TdCountZombiePopulation() const;
-	bool TdIsWaveCleared() const;
-	bool TdEndWave();
-	void TdDoZombMessage(int Left);
-	void TdSetWaveAlg(int Modulus, int WaveThird, int Wave);
-	static int TdZombieBaseHealth(int Wave);
-	int TdGetZombieOrder(int WaveThird);
-	void TdBroadcastGameInfo();
-	void TdBroadcastBossHealth();
-	void TdRunZombieBrain(class CPlayer *pP);
-	void TdClearZombieBot(int ClientID);
-	void TdDestroySpiderBoss();
-	bool TdHasSpiderBossPlayer() const;
-	vec2 TdGetZombieRallyPos() const;
 
 protected:
 	// spawn
@@ -127,19 +67,13 @@ protected:
 	int m_RealPlayerNum;
 
 public:
-	void SendGameInfo(int ClientID);
+	virtual void SendGameInfo(int ClientID);
 	CGameController(class CGameContext *pGameServer);
 	virtual ~CGameController();
 
-	void PreTick();
+	virtual void PreTick();
 	int GetDummyTeam() const;
-	void OnBotPlayerCreated(class CPlayer *pPlayer);
-	vec2 TdGetZombieMarchGoal() const;
-	int GetTdWave() const { return m_TdWave; }
-	CTowerMain *GetTower() const { return m_pTower; }
-	CSpiderBoss *GetSpiderBoss() const { return m_pSpiderBoss; }
-	bool IsSpiderBossCore(class CCharacter *pChr) const;
-	void TdPurgeZombieDummies();
+	virtual void OnBotPlayerCreated(class CPlayer *pPlayer);
 
 	// event
 	/*
@@ -177,13 +111,13 @@ public:
 	virtual bool OnEntity(int Index, vec2 Pos);
 	bool OnExtraTile(int Index, vec2 Pos);
 
-	void OnPlayerConnect(class CPlayer *pPlayer);
-	void OnPlayerDisconnect(class CPlayer *pPlayer);
+	virtual void OnPlayerConnect(class CPlayer *pPlayer);
+	virtual void OnPlayerDisconnect(class CPlayer *pPlayer);
 	void OnPlayerInfoChange(class CPlayer *pPlayer);
 	void OnPlayerReadyChange(class CPlayer *pPlayer);
 
 	// general
-	void Snap(int SnappingClient);
+	virtual void Snap(int SnappingClient);
 	virtual void Tick();
 
 	// info
@@ -213,25 +147,9 @@ public:
 	bool CanCharacterWeaponFullAuto(class CCharacter *pChr, int Weapon);
 
 	// return: Reload timer
-	int OnCharacterFireWeapon(class CCharacter *pChr, vec2 Direction, int Weapon);
-
-	void TdSetWave(int Wave);
-	void TdSetTowerHealth(int Health);
-	int GetTdDifficulty() const { return m_TdDifficulty; }
-	void TdAddZombiePool(int ZombType, int Count);
-	class CZombieBot *TdGetZombieBot(int ClientID) const { return m_apZombieBots[ClientID]; }
-	float TdDifficultyAiMul() const;
-	bool TdCanChangeDifficulty() const;
-	bool TdSetDifficulty(int Difficulty);
-	int TdGetDifficultyTowerMaxHealth() const;
+	virtual int OnCharacterFireWeapon(class CCharacter *pChr, vec2 Direction, int Weapon);
 
 	void NotifyPlayerConnected(class CPlayer *pPlayer);
-
-	static void ConTdSetWave(IConsole::IResult *pResult, void *pUser);
-	static void ConTdSetTowerHealth(IConsole::IResult *pResult, void *pUser);
-	static void ConTdSetDifficulty(IConsole::IResult *pResult, void *pUser);
-	static void ConTdSkipWarmup(IConsole::IResult *pResult, void *pUser);
-	static void RegisterTeeDefenseConsoleCommands(CGameContext *pCtx);
 };
 
 #endif

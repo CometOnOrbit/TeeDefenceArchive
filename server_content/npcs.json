@@ -1,0 +1,340 @@
+{
+  "npcs": [
+    {
+      "id": "dream_keeper",
+      "name": "守梦人",
+      "name_key": "npc.dream_keeper.name",
+      "skin": "standard",
+      "decoration": "uniban",
+      "emote": "happy",
+      "dialogs": [
+        {
+          "id": "greeting",
+          "text_key": "npc.dream_keeper.greeting",
+          "text": [
+            "Flower：这座图书馆收藏着古老的传说。随意翻阅吧。",
+            "",
+            "[按 ESC → 魔法页 查看/学习魔法]"
+          ],
+          "conditions": {
+            "not_flag": "has_pistol"
+          },
+          "actions": [
+            {
+              "type": "open_skills",
+              "key": "skills"
+            }
+          ]
+        },
+        {
+          "id": "story",
+          "text_key": "npc.dream_keeper.story",
+          "text": [
+            "[图书馆] ─── 故事 ───",
+            "Flower：你口袋里装着的……是天灵族的遗物。",
+            "Flower：很久以前，一位强大的魔法师对所有天灵下了诅咒。",
+            "Flower：她们永远无法得到最渴望的东西。",
+            "Flower：你知道那把枪的主人是谁，对吧？",
+            "Flower：她的名字已被世界抹除……这也是诅咒的一部分。",
+            "Flower：如果你想救她，去首都打听消息吧。但想进去可不简单——",
+            "Flower：你必须是贵族、加入TeeFun组织，或者有足够的位阶。"
+          ],
+          "conditions": {
+            "flag": "has_pistol",
+            "not_flag": "met_flower"
+          },
+          "actions": [
+            {
+              "type": "set_flag",
+              "key": "met_flower"
+            },
+            {
+              "type": "add_reputation",
+              "value": 20,
+              "message": "[任务完成: 星的消逝 声望+20]"
+            }
+          ]
+        },
+        {
+          "id": "followup",
+          "text_key": "npc.dream_keeper.followup",
+          "text": [
+            "Flower：有什么新线索吗？",
+            "继续提升你的位阶吧——首都可不会欢迎无名小卒。",
+            "",
+            "[按 ESC 可查看魔法页]"
+          ],
+          "conditions": {
+            "flag": "met_flower"
+          },
+          "actions": [
+            {
+              "type": "open_skills",
+              "key": "skills"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quest_master",
+      "name": "任务大师",
+      "name_key": "npc.quest_master.name",
+      "skin": "brownpyramid",
+      "decoration": "duck",
+      "emote": "happy",
+      "dialogs": [
+        {
+          "id": "greeting",
+          "text_key": "npc.quest_master.greeting",
+          "text": [
+            "任务大师：需要帮忙吗？我这里有不少委托。",
+            "",
+            "[已打开任务列表 — 按 ESC 查看]"
+          ],
+          "actions": [
+            {
+              "type": "open_quests",
+              "key": "quests"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shopkeeper",
+      "name": "商店老板",
+      "name_key": "npc.shopkeeper.name",
+      "skin": "redstripe",
+      "decoration": "devil",
+      "emote": "happy",
+      "dialogs": [
+        {
+          "id": "greeting",
+          "text": [
+            "商店老板：欢迎光临！随便看看。",
+            "",
+            "[正在打开商店... 按 ESC 浏览]",
+            "也可输入 /buy <物品ID> <数量> 购买"
+          ],
+          "actions": [
+            {
+              "type": "open_shop",
+              "key": "general"
+            }
+          ],
+          "text_key": "npc.shopkeeper.greeting"
+        }
+      ]
+    },
+    {
+      "id": "healer",
+      "name": "守卫",
+      "name_key": "npc.healer.name",
+      "skin": "warpaint",
+      "decoration": "twinboquet",
+      "emote": "happy",
+      "dialogs": [
+        {
+          "id": "low_rep",
+          "text_key": "npc.healer.low_rep",
+          "text": [
+            "守卫：站住——再去练练吧，小子。",
+            "",
+            "声望不够，暂时无法通过。"
+          ],
+          "conditions": {
+            "reputation_lt": 1000
+          },
+          "actions": []
+        },
+        {
+          "id": "high_rep",
+          "text_key": "npc.healer.high_rep",
+          "text": [
+            "守卫：哦？你已经够格了。前往首都的路在那边。",
+            "做好准备——前路可不轻松。"
+          ],
+          "conditions": {
+            "reputation_ge": 1000
+          },
+          "actions": [
+            {
+              "type": "heal",
+              "value": 50
+            },
+            {
+              "type": "message",
+              "message": "[你恢复了50点体力]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trainer",
+      "name": "训练师",
+      "name_key": "npc.trainer.name",
+      "skin": "saddo",
+      "decoration": "toptaliman",
+      "emote": "happy",
+      "dialogs": [
+        {
+          "id": "greeting",
+          "text_key": "npc.trainer.greeting",
+          "text": [
+            "训练师：想变强？我有不少技巧可以传授。",
+            "",
+            "[正在打开魔法页... 按 ESC 查看/学习]"
+          ],
+          "conditions": {
+            "level_eq": 1
+          },
+          "actions": [
+            {
+              "type": "open_skills",
+              "key": "skills"
+            }
+          ]
+        },
+        {
+          "id": "intermediate",
+          "text_key": "npc.trainer.intermediate",
+          "text": [
+            "训练师：不错嘛，有几分本事了！",
+            "训练师：继续努力——前路还有挑战等着你。"
+          ],
+          "conditions": [
+            {
+              "level_ge": 2
+            },
+            {
+              "level_lt": 10
+            }
+          ],
+          "actions": [
+            {
+              "type": "heal",
+              "value": 100
+            },
+            {
+              "type": "message",
+              "message": "[Trainer为你恢复了全部体力]"
+            }
+          ]
+        },
+        {
+          "id": "advanced",
+          "text_key": "npc.trainer.advanced",
+          "text": [
+            "训练师：了不起！你已经超越了我能教的范围。",
+            "训练师：去探索更广阔的世界吧。"
+          ],
+          "conditions": {
+            "level_ge": 10
+          },
+          "actions": []
+        },
+        {
+          "id": "training",
+          "text": [
+            "训练师：去图书馆上方的院子里对着训练木桩练习吧。",
+            "",
+            "用锤子打木桩可以测试你的伤害。"
+          ],
+          "text_key": "npc.trainer.training",
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "blacksmith",
+      "name": "铁匠",
+      "name_key": "npc.blacksmith.name",
+      "skin": "toptrio",
+      "decoration": "toptaliman",
+      "emote": "happy",
+      "dialogs": [
+        {
+          "id": "craft_menu",
+          "text": [
+            "铁匠：需要装备吗？让我看看你需要什么。",
+            "",
+            "[正在打开打造页... 按 ESC 查看配方]"
+          ],
+          "actions": [
+            {
+              "type": "open_craft",
+              "key": "craft_menu"
+            }
+          ],
+          "text_key": "npc.blacksmith.craft_menu"
+        }
+      ]
+    },
+    {
+      "id": "tea_house",
+      "name": "茶馆老板娘",
+      "name_key": "npc.tea_house.name",
+      "skin": "saddo",
+      "decoration": "duck",
+      "emote": "blink",
+      "dialogs": [
+        {
+          "id": "welcome",
+          "text_key": "npc.tea_house.welcome",
+          "text": [
+            "[茶馆] ─── 欢迎光临！───",
+            "茶馆老板娘：欢迎光临，旅行者！请坐。",
+            "茶馆老板娘：这里是让你疲惫的双脚歇歇脚的地方。"
+          ],
+          "actions": [
+            {
+              "type": "heal",
+              "value": 50
+            }
+          ]
+        },
+        {
+          "id": "rumors",
+          "text": [
+            "[茶馆] ─── 闲话角落 ───",
+            "茶馆老板娘：镇中心有座奇怪的老图书馆。",
+            "茶馆老板娘：那里的图书管理员知道的事情可不止她说的那些。",
+            "茶馆老板娘：对了，我听说矿井入口最近移位了。",
+            "茶馆老板娘：有人说，地下的什么东西醒过来了。",
+            "茶馆老板娘：如果你在找活干，任务板上有很多。"
+          ],
+          "actions": [
+            {
+              "type": "add_reputation",
+              "value": 5,
+              "message": "[声望+5 听了一段闲话]"
+            }
+          ],
+          "text_key": "npc.tea_house.rumors"
+        }
+      ]
+    },
+    {
+      "id": "training_dummy",
+      "name": "训练木桩",
+      "name_key": "npc.training_dummy.name",
+      "skin": "greensward",
+      "decoration": "uniban",
+      "emote": "blink",
+      "dialogs": [
+        {
+          "id": "hit_me",
+          "text": [
+            "训练木桩：*嘎吱作响* 用你的锤子打我来练习吧！",
+            "",
+            "📖 输入 /stats 查看属性"
+          ],
+          "text_key": "npc.training_dummy.hit_me",
+          "actions": []
+        }
+      ]
+    }
+  ]
+}

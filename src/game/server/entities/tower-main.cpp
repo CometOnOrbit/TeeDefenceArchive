@@ -5,6 +5,7 @@
 
 #include <game/server/gamecontext.h>
 #include <game/server/gamecontroller.h>
+#include <game/server/worldmodes/defence.h>
 #include <game/server/player.h>
 
 #include "character.h"
@@ -28,7 +29,7 @@ int CTowerMain::GetMaxHealth()
 {
 	CGameContext *pCtx = GameWorld()->GameServer();
 	if(pCtx && pCtx->m_pController)
-		return static_cast<CGameController *>(pCtx->m_pController)->TdGetDifficultyTowerMaxHealth();
+		return static_cast<CGameControllerDefence *>(pCtx->m_pController)->TdGetDifficultyTowerMaxHealth();
 	return GameWorld()->Config()->m_SvMaxTowerHealth;
 }
 

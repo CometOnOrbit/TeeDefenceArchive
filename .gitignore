@@ -1,7 +1,6 @@
 /.bam
 /bam
-/build
-/build-mysql
+/build*
 /config.lua
 /objs
 /other/*/include
@@ -77,3 +76,11 @@ googletest-src
 install_manifest.txt
 pack_*/
 rules.ninja
+
+/test_tdq/
+*.bak
+sql_failed_log.txt
+/logs/
+.trae/
+/~/
+/private/

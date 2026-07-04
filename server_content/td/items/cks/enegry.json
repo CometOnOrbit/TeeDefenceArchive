@@ -1,0 +1,11 @@
+{
+  "item": {
+    "type": 4,
+    "id": 6,
+    "name": "能量",
+    "desc": "蕴含巨大的能量。",
+    "health": 3000000,
+    "name_key": "$td.cks.enegry",
+    "description_key": "$td.cks.6.desc"
+  }
+}

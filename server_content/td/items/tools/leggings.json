@@ -1,0 +1,109 @@
+{
+  "item": {
+    "type": 8,
+    "multiple": [
+      {
+        "id": 65,
+        "name": "木制护腿",
+        "desc": "一件木头做的护腿。",
+        "defense": 1,
+        "capacity": 0,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Log": 25
+        },
+        "name_key": "$td.item.65.name",
+        "description_key": "$td.item.65.desc"
+      },
+      {
+        "id": 66,
+        "name": "铁质护腿",
+        "desc": "一件铁做的护腿。",
+        "defense": 2,
+        "capacity": 20,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Iron": 250
+        },
+        "name_key": "$td.item.66.name",
+        "description_key": "$td.item.66.desc"
+      },
+      {
+        "id": 67,
+        "name": "铜质护腿",
+        "desc": "一件铜做的护腿。",
+        "defense": 3,
+        "capacity": 30,
+        "proba": 90,
+        "max": 0,
+        "formula": {
+          "Copper": 500
+        },
+        "name_key": "$td.item.67.name",
+        "description_key": "$td.item.67.desc"
+      },
+      {
+        "id": 68,
+        "name": "钛合金护腿",
+        "desc": "一件钛合金做的护腿。",
+        "defense": 4,
+        "capacity": 50,
+        "proba": 85,
+        "max": 0,
+        "formula": {
+          "Iron": 200,
+          "Copper": 200,
+          "Titanium": 100
+        },
+        "name_key": "$td.item.68.name",
+        "description_key": "$td.item.68.desc"
+      },
+      {
+        "id": 69,
+        "name": "钻石护腿",
+        "desc": "一件钻石做的护腿。",
+        "defense": 5,
+        "capacity": 80,
+        "proba": 80,
+        "max": 0,
+        "formula": {
+          "Diamond": 500
+        },
+        "name_key": "$td.item.69.name",
+        "description_key": "$td.item.69.desc"
+      },
+      {
+        "id": 70,
+        "name": "能量护腿",
+        "desc": "一件纯能量做的护腿。",
+        "defense": 6,
+        "capacity": 120,
+        "proba": 80,
+        "max": 0,
+        "formula": {
+          "Enegry": 25
+        },
+        "name_key": "$td.item.70.name",
+        "description_key": "$td.item.70.desc"
+      },
+      {
+        "id": 71,
+        "name": "虚空碎片护腿",
+        "desc": "一件由虚空碎片锻造的护腿。",
+        "defense": 7,
+        "capacity": 150,
+        "proba": 70,
+        "max": 0,
+        "formula": {
+          "Diamond": 200,
+          "Enegry": 50,
+          "Void Shard": 10
+        },
+        "name_key": "$td.item.71.name",
+        "description_key": "$td.item.71.desc"
+      }
+    ]
+  }
+}

@@ -4,7 +4,7 @@
 #include <game/server/gamecontext.h>
 
 CGameControllerHub::CGameControllerHub(CGameContext *pGameServer)
-	: CGameControllerDefence(pGameServer)
+	: CGameController(pGameServer)
 {
 }
 
@@ -18,5 +18,5 @@ bool CGameControllerHub::OnEntity(int Index, vec2 Pos)
 {
 	if(Index >= ENTITY_LOG)
 		return true;
-	return CGameControllerDefence::OnEntity(Index, Pos);
+	return CGameController::OnEntity(Index, Pos);
 }

@@ -77,12 +77,22 @@ void CCharacterCore::Reset()
 	m_HookDragVel = vec2(0, 0);
 	m_HookPos = vec2(0, 0);
 	m_HookDir = vec2(0, 0);
+	m_HookTeleBase = vec2(0, 0);
 	m_HookTick = 0;
 	m_HookState = HOOK_IDLE;
 	m_HookedPlayer = -1;
 	m_Jumped = 0;
 	m_TriggeredEvents = 0;
 	m_Death = false;
+	m_Jumps = 1;
+	m_Solo = false;
+	m_CollisionDisabled = false;
+	m_HookHitDisabled = false;
+	m_Super = false;
+	m_MoveRestrictions = 0;
+	m_DamageDisabled = false;
+	m_WorldID = 0;
+	m_NewHook = false;
 }
 
 void CCharacterCore::Tick(bool UseInput)
@@ -210,16 +220,21 @@ void CCharacterCore::Tick(bool UseInput)
 				CCharacterCore *pCharCore = m_pWorld->m_apCharacters[i];
 				if(!pCharCore || pCharCore == this)
 					continue;
+				if(pCharCore->m_CollisionDisabled || m_WorldID != pCharCore->m_WorldID)
+					continue;
 
 				vec2 ClosestPoint = closest_point_on_line(m_HookPos, NewPos, pCharCore->m_Pos);
 				if(distance(pCharCore->m_Pos, ClosestPoint) < PHYS_SIZE + 2.0f)
 				{
 					if(m_HookedPlayer == -1 || distance(m_HookPos, pCharCore->m_Pos) < Distance)
 					{
-						m_TriggeredEvents |= COREEVENTFLAG_HOOK_ATTACH_PLAYER;
-						m_HookState = HOOK_GRABBED;
-						m_HookedPlayer = i;
-						Distance = distance(m_HookPos, pCharCore->m_Pos);
+						if(!pCharCore->m_HookHitDisabled)
+						{
+							m_TriggeredEvents |= COREEVENTFLAG_HOOK_ATTACH_PLAYER;
+							m_HookState = HOOK_GRABBED;
+							SetHookedPlayer(i);
+							Distance = distance(m_HookPos, pCharCore->m_Pos);
+						}
 					}
 				}
 			}
@@ -307,6 +322,8 @@ void CCharacterCore::Tick(bool UseInput)
 			// player *p = (player*)ent;
 			if(pCharCore == this) // || !(p->flags&FLAG_ALIVE)
 				continue; // make sure that we don't nudge our self
+			if(pCharCore->m_CollisionDisabled || m_WorldID != pCharCore->m_WorldID)
+				continue;
 
 			// handle player <-> player collision
 			float Distance = distance(m_Pos, pCharCore->m_Pos);

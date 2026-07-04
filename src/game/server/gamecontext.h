@@ -79,6 +79,7 @@ class CGameContext : public IGameServer
 
 public:
 	IServer *Server() const { return m_pServer; }
+	IKernel *GetKernel() { return Kernel(); }
 	class CConfig *Config() { return m_pConfig; }
 	class CConfig *Config() const { return m_pConfig; }
 	class IConsole *Console() { return m_pConsole; }
@@ -100,9 +101,67 @@ public:
 	CItemHelper *m_pItemHelper;
 	class CBotEngine *m_pBotEngine;
 
-	// Legacy 0.7 clients (MAX_CLIENTS=64) need zombie slots 64+ remapped into 0..63.
+	// MRPG-style broadcast queuing (see Teeworlds-MRPG-0.6 BroadcastPriority)
+	enum BroadcastPriority
+	{
+		BROADCAST_PRIORITY_LOWER = 0,
+		BROADCAST_PRIORITY_GAME_BASIC_STATS,
+		BROADCAST_PRIORITY_GAME_INFORMATION,
+		BROADCAST_PRIORITY_GAME_PRIORITY,
+		BROADCAST_PRIORITY_GAME_WARNING,
+		BROADCAST_PRIORITY_GAME_HIGHLIGHT,
+		BROADCAST_PRIORITY_GAME_ALERT,
+		BROADCAST_PRIORITY_OVERLAY_HIDDEN, // MRPG HiddenBroadcast
+		BROADCAST_PRIORITY_MAIN_INFORMATION,
+		BROADCAST_PRIORITY_TITLE,
+		BROADCAST_PRIORITY_VERY_IMPORTANT,
+
+		// Legacy aliases
+		BROADCAST_PRIORITY_LOW = BROADCAST_PRIORITY_LOWER,
+		BROADCAST_PRIORITY_NORMAL = BROADCAST_PRIORITY_GAME_INFORMATION,
+		BROADCAST_PRIORITY_HIGH = BROADCAST_PRIORITY_GAME_PRIORITY,
+		BROADCAST_PRIORITY_CRITICAL = BROADCAST_PRIORITY_VERY_IMPORTANT,
+		BROADCAST_PRIORITY_UI = BROADCAST_PRIORITY_MAIN_INFORMATION,
+	};
+
+	struct SBroadcastState
+	{
+		// One-shot message — replaced every tick
+		char m_aNextMessage[1024];
+		BroadcastPriority m_NextPriority;
+
+		// Timed message — persists until lifespan expires
+		char m_aTimedMessage[1024];
+		BroadcastPriority m_TimedPriority;
+		int m_LifeSpanTick;
+
+		// Previous/final message for dedup & stats integration
+		char m_aPrevMessage[1024];
+		char m_aCompleteMsg[1024];
+		int m_NoChangeUntil;
+		bool m_Updated;
+
+		SBroadcastState() :
+			m_NextPriority(BROADCAST_PRIORITY_LOWER),
+			m_TimedPriority(BROADCAST_PRIORITY_LOWER),
+			m_LifeSpanTick(0),
+			m_NoChangeUntil(0),
+			m_Updated(false)
+		{
+			m_aNextMessage[0] = '\0';
+			m_aTimedMessage[0] = '\0';
+			m_aPrevMessage[0] = '\0';
+			m_aCompleteMsg[0] = '\0';
+		}
+	};
+	SBroadcastState m_aBroadcastStates[MAX_CLIENTS];
+
+	// Legacy zombie display slot mapping (global, for zombies only)
 	int m_aLegacyDisplaySlot[MAX_CLIENTS];
 	int m_aLegacyDisplayOwner[MAX_HUMAN_CLIENTS];
+
+	// MRPG-style per-client ID map is stored in Server()->GetIdMap(ClientID),
+	// populated by CGameWorld::UpdatePlayerMaps().
 
 	CCommandManager *CommandManager() { return &m_CommandManager; }
 	CAccountSystem *Accounts();
@@ -165,8 +224,8 @@ public:
 	void InitVotes(int ClientID);
 	void ClearVotes(int ClientID);
 	void CountItemNum(int ClientID);
-	bool TryHandleVoteMenuOption(int ClientID, const char *pDescription);
-	void ProcessVoteMenuCommand(int ClientID, const char *pCmdLine);
+	bool TryHandleVoteMenuOption(int ClientID, const char *pDescription, int ReasonNumber, const char *pReason);
+	void ProcessVoteMenuCommand(int ClientID, const char *pCmdLine, int ReasonNumber, const char *pReason);
 
 	// localization (server_lang via index.json)
 	const char *LangOf(int ClientID) const;
@@ -192,6 +251,63 @@ public:
 	void SendBroadcast(int ClientID, const char *pText);
 	void SendBroadcastLoc(int ClientID, const char *pKey, const char *pDefault);
 	void SendBroadcastLocF(int ClientID, const char *pKey, const char *pDefault, ...);
+	void AddBroadcast(int ClientID, const char *pText, BroadcastPriority Priority = BROADCAST_PRIORITY_NORMAL, int LifeSpan = 0);
+	void MarkUpdatedBroadcast(int ClientID);
+	void FlushBroadcastStats(int ClientID);
+	void BroadcastTick(int ClientID);
+
+	// Varargs convenience wrappers (MRPG-style): format + localize + queue
+	template<typename... Ts>
+	void BroadcastMsg(int ClientID, BroadcastPriority Priority, int LifeSpan, const char *pText, const Ts&... args)
+	{
+		if(ClientID >= 0)
+		{
+			if(m_apPlayers[ClientID])
+			{
+				char aBuf[1024];
+				str_format(aBuf, sizeof(aBuf), pText, args...);
+				AddBroadcast(ClientID, aBuf, Priority, LifeSpan);
+			}
+			return;
+		}
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			if(m_apPlayers[i])
+			{
+				char aBuf[1024];
+				str_format(aBuf, sizeof(aBuf), pText, args...);
+				AddBroadcast(i, aBuf, Priority, LifeSpan);
+			}
+		}
+	}
+
+	template<typename... Ts>
+	void BroadcastWorldMsg(int WorldID, BroadcastPriority Priority, int LifeSpan, const char *pText, const Ts&... args)
+	{
+		for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
+		{
+			if(!m_apPlayers[i] || !Server()->ClientIngame(i))
+				continue;
+			if(Server()->GetClientWorldID(i) != WorldID)
+				continue;
+			char aBuf[1024];
+			str_format(aBuf, sizeof(aBuf), pText, args...);
+			AddBroadcast(i, aBuf, Priority, LifeSpan);
+		}
+	}
+
+	// MRPG-compatible names
+	template<typename... Ts>
+	void Broadcast(int ClientID, BroadcastPriority Priority, int LifeSpan, const char *pText, const Ts&... args)
+	{
+		BroadcastMsg(ClientID, Priority, LifeSpan, pText, args...);
+	}
+
+	template<typename... Ts>
+	void BroadcastWorld(int WorldID, BroadcastPriority Priority, int LifeSpan, const char *pText, const Ts&... args)
+	{
+		BroadcastWorldMsg(WorldID, Priority, LifeSpan, pText, args...);
+	}
 	void SendEmoticon(int ClientID, int Emoticon);
 	void SendWeaponPickup(int ClientID, int Weapon);
 	void SendMotd(int ClientID);
@@ -259,13 +375,16 @@ public:
 	virtual bool TimeScore() const;
 	virtual void OnUpdatePlayerServerInfo(CJsonWriter *pJsonWriter, int ClientID);
 
+	virtual void OnDaytypeChange(int NewDaytype) override;
+
 	virtual int GetMaxPlayerSlots();
 
 	bool ClientUsesExtendedSlots(int ClientID) const;
 	bool ClientUsesDDNetLaser(int SnappingClient) const;
 	int ClientSnapID(int SnappingClient, int ServerSlot) const;
 	int ClientDisplaySlot(int Recipient, int ServerSlot) const;
-	void RebuildLegacySlotMap();
+	void RebuildLegacySlotMap(bool ForceMapUpdate = false);
+	void RefreshMappedBotClientInfo(int Recipient);
 	void SendClientInfo(int Recipient, int ServerSlot, bool Local, bool Silent);
 	void BroadcastClientInfo(int ServerSlot, bool Silent);
 };

@@ -1,0 +1,81 @@
+{
+  "item": {
+    "type": 1,
+    "multiple": [
+      {
+        "id": 9,
+        "name": "木斧",
+        "desc": "一把木头做的斧。",
+        "proba": 90,
+        "damage": 13,
+        "capacity": 0,
+        "max": 0,
+        "formula": {
+          "Log": 10
+        },
+        "name_key": "$td.item.9.name",
+        "description_key": "$td.item.9.desc"
+      },
+      {
+        "id": 12,
+        "name": "铜斧",
+        "desc": "一把铜做的斧。",
+        "damage": 17,
+        "proba": 90,
+        "capacity": 10,
+        "max": 0,
+        "formula": {
+          "Log": 60,
+          "Copper": 25
+        },
+        "name_key": "$td.item.12.name",
+        "description_key": "$td.item.12.desc"
+      },
+      {
+        "id": 14,
+        "name": "铁斧",
+        "desc": "一把铁做的斧。",
+        "damage": 25,
+        "proba": 90,
+        "capacity": 20,
+        "max": 0,
+        "formula": {
+          "Log": 220,
+          "Iron": 25
+        },
+        "name_key": "$td.item.14.name",
+        "description_key": "$td.item.14.desc"
+      },
+      {
+        "id": 17,
+        "name": "金斧",
+        "desc": "一把金子做的斧。",
+        "damage": 50,
+        "proba": 90,
+        "capacity": 30,
+        "max": 0,
+        "formula": {
+          "Log": 500,
+          "Golden": 10
+        },
+        "name_key": "$td.item.17.name",
+        "description_key": "$td.item.17.desc"
+      },
+      {
+        "id": 20,
+        "name": "钻石斧",
+        "desc": "一把钻石做的斧。",
+        "damage": 100,
+        "proba": 100,
+        "capacity": 50,
+        "max": 0,
+        "formula": {
+          "Log": 500,
+          "Diamond": 25
+        },
+        "name_key": "$td.item.20.name",
+        "description_key": "$td.item.20.desc"
+      }
+    ]
+  }
+}

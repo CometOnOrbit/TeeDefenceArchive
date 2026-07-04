@@ -1,0 +1,85 @@
+{
+  "spawns": [
+    {
+      "entry_id": "td_test_dummy_01",
+      "npc_id": "training_dummy",
+      "world": 0,
+      "x": 448,
+      "y": 992,
+      "radius": 80,
+      "static": true
+    },
+    {
+      "entry_id": "td_test_dummy_02",
+      "npc_id": "training_dummy",
+      "world": 0,
+      "x": 768,
+      "y": 992,
+      "radius": 80,
+      "static": true
+    },
+    {
+      "entry_id": "td_test_healer",
+      "npc_id": "healer",
+      "world": 0,
+      "x": 1120,
+      "y": 992,
+      "radius": 120,
+      "static": true
+    },
+    {
+      "entry_id": "td_test_tea_house",
+      "npc_id": "tea_house",
+      "world": 0,
+      "x": 576,
+      "y": 800,
+      "radius": 120,
+      "static": true
+    },
+    {
+      "entry_id": "td_test_trainer",
+      "npc_id": "trainer",
+      "world": 0,
+      "x": 928,
+      "y": 800,
+      "radius": 120,
+      "static": true
+    },
+    {
+      "entry_id": "td_test_blacksmith",
+      "npc_id": "blacksmith",
+      "world": 0,
+      "x": 320,
+      "y": 608,
+      "radius": 120,
+      "static": true
+    },
+    {
+      "entry_id": "td_test_dream_keeper",
+      "npc_id": "dream_keeper",
+      "world": 0,
+      "x": 800,
+      "y": 640,
+      "radius": 150,
+      "static": true
+    },
+    {
+      "entry_id": "td_test_quest_master",
+      "npc_id": "quest_master",
+      "world": 0,
+      "x": 768,
+      "y": 416,
+      "radius": 120,
+      "static": true
+    },
+    {
+      "entry_id": "td_test_shopkeeper",
+      "npc_id": "shopkeeper",
+      "world": 0,
+      "x": 928,
+      "y": 416,
+      "radius": 120,
+      "static": true
+    }
+  ]
+}

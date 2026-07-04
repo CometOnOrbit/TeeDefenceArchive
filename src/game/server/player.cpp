@@ -4,13 +4,22 @@
 #include "account.h"
 #include "core/tworld_controller.h"
 #include "entities/character.h"
+#include <engine/shared/config.h>
 #include <game/collision.h>
 
 #include "entities/turret.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
+#include "core/components/mmo/mmo_manager.h"
+#include "core/components/mmo/mmo_types.h"
+#include "core/components/mmo/mmo_item.h"
+#include "core/components/dialogs/dialog_manager.h"
+#include "core/components/skills/skill_defs.h"
+#include "core/components/skills/skill_manager.h"
+#include "data_center.h"
 #include "gameworld.h"
 #include "player.h"
+#include "mmo_exp.h"
 
 MACRO_ALLOC_POOL_ID_IMPL(CPlayer, MAX_CLIENTS)
 
@@ -42,13 +51,20 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_NextLoginHintTick = 0;
 	m_InactivityTickCounter = 0;
 	m_Dummy = Dummy;
+	m_IsGuest = false;
 	m_IsReadyToPlay = true;
 	m_AccountId = -1;
 	m_PendingChangeWorldID = -1;
 	m_HasPendingChangeWorldPos = false;
 	m_PendingChangeWorldPos = vec2(0.0f, 0.0f);
+	m_DefencePendingExp = 0;
+	m_aFriends.clear();
+	m_aFriendsDirty = false;
 	m_Zomb = ZOMB_NONE;
 	m_QuestNpcDefIdx = -1;
+	m_pLastInput = new CNetObj_PlayerInput({0});
+	m_LastInputInit = false;
+	m_LastDialogTick = 0;
 	mem_zero(m_aZombSub, sizeof(m_aZombSub));
 	m_ZombVisible = true;
 	m_ZamerDetonating = false;
@@ -84,10 +100,42 @@ CPlayer::CPlayer(CGameContext *pGameServer, int ClientID, bool Dummy, bool AsSpe
 	m_ZombNavNextRebuildTick = 0;
 	m_ZombNavCachedGoalTX = 0;
 	m_ZombNavCachedGoalTY = 0;
+
+	// MMO defaults (must set before m_aStats copy below)
+	m_MMOLevel = 0;
+	m_MMOExp = 0;
+	m_MMOGold = 0;
+	m_MMOSkillPoints = 0;
+	m_MMOReputation = 0;
+	m_MMOAttack = 5;
+	m_MMODefense = 3;
+	m_MMODirty = false;
+
+	// Initialize m_aStats from old MMO fields for backward compatibility
+	m_aStats[AttributeIdentifier::Level] = m_MMOLevel;
+	m_aStats[AttributeIdentifier::Experience] = m_MMOExp;
+	m_aStats[AttributeIdentifier::Gold] = m_MMOGold;
+	m_aStats[AttributeIdentifier::SkillPoints] = m_MMOSkillPoints;
+	m_aStats[AttributeIdentifier::Reputation] = m_MMOReputation;
+	m_aStats[AttributeIdentifier::Attack] = m_MMOAttack;
+	m_aStats[AttributeIdentifier::Defense] = m_MMODefense;
+
+	// Skill slots 3/4/5: empty by default
+	m_aSkillSlots[0] = -1;
+	m_aSkillSlots[1] = -1;
+	m_aSkillSlots[2] = -1;
+
+	m_aItemQuickSlots[0] = -1;
+	m_aItemQuickSlots[1] = -1;
+	m_aItemQuickSlots[2] = -1;
+	m_aItemQuickSlots[3] = -1;
+	InitWeaponLoadouts();
 }
 
 CPlayer::~CPlayer()
 {
+	delete m_pLastInput;
+	m_pLastInput = nullptr;
 	delete m_pTurret;
 	m_pTurret = nullptr;
 	delete m_pTurretPreview;
@@ -135,6 +183,97 @@ void CPlayer::InitQuestNpc(int DefIdx)
 	m_QuestNpcDefIdx = DefIdx;
 	mem_zero(m_aZombSub, sizeof(m_aZombSub));
 	m_ZombVisible = true;
+}
+
+float CPlayer::GetActiveDistance() const
+{
+	if(m_pMMOBotData)
+	{
+		const SMMOMobDef *pDef = CDataCenter::FindMobDef(m_pMMOBotData->m_DefID);
+		if(pDef && pDef->m_ActiveRadius > 1.f)
+			return pDef->m_ActiveRadius;
+	}
+	return (float)GameServer()->Config()->m_SvMapDistanceActiveBot;
+}
+
+bool CPlayer::IsSnappingInactiveForClient(int ClientID) const
+{
+	if(ClientID < 0 || ClientID >= MAX_HUMAN_CLIENTS)
+		return true;
+	if(!GameServer()->m_apPlayers[ClientID])
+		return true;
+	if(m_pQuestMobInfo && !m_pQuestMobInfo->m_ActiveForClient[ClientID])
+		return true;
+	if(m_pMMOBotData && m_pMMOBotData->m_IsQuestMob && m_pMMOBotData->m_NumActiveForClients > 0 &&
+		!m_pMMOBotData->m_aActiveForClients[ClientID])
+		return true;
+	return false;
+}
+
+bool CPlayer::IsVisibleForClient(int ClientID) const
+{
+	if(m_ClientID < MAX_HUMAN_CLIENTS)
+		return true;
+	if(!GameServer()->m_World.IsBotActive(m_ClientID))
+		return false;
+	return !IsSnappingInactiveForClient(ClientID);
+}
+
+int CPlayer::GetStat(AttributeIdentifier ID) const
+{
+	auto it = m_aStats.find(ID);
+	if(it != m_aStats.end())
+		return it->second;
+	return 0;
+}
+
+void CPlayer::SetStat(AttributeIdentifier ID, int Value)
+{
+	m_aStats[ID] = Value;
+	// Sync old fields for backward compatibility
+	switch(ID)
+	{
+	case AttributeIdentifier::Level: m_MMOLevel = Value; break;
+	case AttributeIdentifier::Experience: m_MMOExp = Value; break;
+	case AttributeIdentifier::Gold: m_MMOGold = Value; break;
+	case AttributeIdentifier::SkillPoints: m_MMOSkillPoints = Value; break;
+	case AttributeIdentifier::Reputation: m_MMOReputation = Value; break;
+	case AttributeIdentifier::Attack: m_MMOAttack = Value; break;
+	case AttributeIdentifier::Defense: m_MMODefense = Value; break;
+	default: break;
+	}
+}
+
+int CPlayer::GetStoryFlag(const char *pKey) const
+{
+	auto it = m_StoryFlags.find(pKey);
+	if(it == m_StoryFlags.end()) return 0;
+	return it->second;
+}
+
+void CPlayer::SetStoryFlag(const char *pKey, int Value)
+{
+	if(Value == 0)
+		m_StoryFlags.erase(pKey);
+	else
+		m_StoryFlags[pKey] = Value;
+	m_MMODirty = true;
+}
+
+void CPlayer::SyncStatsFromFields()
+{
+	m_aStats[AttributeIdentifier::Level] = m_MMOLevel;
+	m_aStats[AttributeIdentifier::Experience] = m_MMOExp;
+	m_aStats[AttributeIdentifier::Gold] = m_MMOGold;
+	m_aStats[AttributeIdentifier::SkillPoints] = m_MMOSkillPoints;
+	m_aStats[AttributeIdentifier::Reputation] = m_MMOReputation;
+	// TRPG六维 — default 3 if not yet loaded from DB
+	if(m_aStats.find(AttributeIdentifier::STR) == m_aStats.end()) m_aStats[AttributeIdentifier::STR] = 3;
+	if(m_aStats.find(AttributeIdentifier::DEX) == m_aStats.end()) m_aStats[AttributeIdentifier::DEX] = 3;
+	if(m_aStats.find(AttributeIdentifier::CON) == m_aStats.end()) m_aStats[AttributeIdentifier::CON] = 3;
+	if(m_aStats.find(AttributeIdentifier::INT) == m_aStats.end()) m_aStats[AttributeIdentifier::INT] = 3;
+	if(m_aStats.find(AttributeIdentifier::WIS) == m_aStats.end()) m_aStats[AttributeIdentifier::WIS] = 3;
+	if(m_aStats.find(AttributeIdentifier::CHA) == m_aStats.end()) m_aStats[AttributeIdentifier::CHA] = 3;
 }
 
 void CPlayer::InitZombie(int Zomb)
@@ -270,6 +409,7 @@ bool CPlayer::PendingChangeWorld()
 	if(m_PendingChangeWorldID < 0)
 		return false;
 
+	const int OldWorldID = Server()->GetClientWorldID(m_ClientID);
 	const int WorldID = m_PendingChangeWorldID;
 	if(m_HasPendingChangeWorldPos)
 		Server()->SetChangeWorldSpawnPos(m_ClientID, m_PendingChangeWorldPos);
@@ -277,6 +417,23 @@ bool CPlayer::PendingChangeWorld()
 	m_HasPendingChangeWorldPos = false;
 
 	Server()->ChangeWorld(m_ClientID, WorldID);
+
+	// Flush Defence → RPG reward bridge when leaving Defence world
+	if(m_DefencePendingExp > 0)
+	{
+		const CWorldDetail *pOldDetail = Server()->GetWorldDetail(OldWorldID);
+		if(pOldDetail && pOldDetail->GetType() == WorldType::Defence)
+		{
+			int Exp = m_DefencePendingExp;
+			m_DefencePendingExp = 0;
+			AddMMOExperience(Exp);
+
+			char aBuf[128];
+			str_format(aBuf, sizeof(aBuf), "🎁 塔防结算: 获得 %d 经验值！", Exp);
+			GameServer()->SendChat(m_ClientID, CHAT_ALL, -1, aBuf);
+		}
+	}
+
 	return true;
 }
 
@@ -308,6 +465,18 @@ void CPlayer::Tick()
 
 	if(PendingChangeWorld())
 		return;
+
+	// MMO bot tick (runs before normal tick - character mgmt still needed)
+	if(m_pMMOBotData)
+	{
+		TWorldController *pTW = GameServer()->TW();
+		if(pTW && pTW->GetMMOManager())
+			pTW->GetMMOManager()->TickMMOBot(this);
+	}
+
+	// MotdMenu tick (MRPG-style input tracking)
+	if(m_pMotdMenu)
+		m_pMotdMenu->Tick();
 
 	Server()->SetClientScore(m_ClientID, m_Score);
 
@@ -354,6 +523,10 @@ void CPlayer::Tick()
 
 	if(!m_DeadSpecMode && m_LastActionTick != Server()->Tick())
 		++m_InactivityTickCounter;
+
+	// MRPG: keep HUD stats/weapons visible via rolling GameBasicStats broadcast
+	if(!IsDummy() && m_pCharacter && m_pCharacter->IsAlive() && Server()->Tick() % Server()->TickSpeed() == 0)
+		GameServer()->AddBroadcast(m_ClientID, "", CGameContext::BROADCAST_PRIORITY_GAME_BASIC_STATS, Server()->TickSpeed() * 2);
 }
 
 void CPlayer::PostTick()
@@ -378,11 +551,19 @@ void CPlayer::PostTick()
 
 void CPlayer::Snap(int SnappingClient)
 {
-	if(!IsDummy() && !Server()->ClientIngame(m_ClientID))
+	if(m_ClientID >= MAX_HUMAN_CLIENTS)
+	{
+		if(SnappingClient >= 0)
+		{
+			if(!IsVisibleForClient(SnappingClient))
+				return;
+		}
+	}
+	else if(!IsDummy() && !Server()->ClientIngame(m_ClientID))
 		return;
 
-	const int SnapID = m_pGameServer->ClientSnapID(SnappingClient, m_ClientID);
-	if(SnapID < 0)
+	int SnapID = m_ClientID;
+	if(SnappingClient >= 0 && m_ClientID >= MAX_HUMAN_CLIENTS && !Server()->Translate(SnapID, SnappingClient))
 		return;
 
 	CNetObj_PlayerInfo *pPlayerInfo = static_cast<CNetObj_PlayerInfo *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFO, SnapID, sizeof(CNetObj_PlayerInfo)));
@@ -403,14 +584,15 @@ void CPlayer::Snap(int SnappingClient)
 	pPlayerInfo->m_Score = m_Score;
 
 	const bool ZombieBot = IsDummy() && m_Zomb != ZOMB_NONE;
+	const bool MMOBot = m_pMMOBotData != nullptr;
 	const bool MappedSlot = SnapID != m_ClientID;
-	if(MappedSlot || ZombieBot)
+	if((MappedSlot || ZombieBot || MMOBot) && !IsQuestNpc())
 	{
 		CNetObj_PlayerInfoExtra *pPlayerInfoExtra = static_cast<CNetObj_PlayerInfoExtra *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFOEXTRA, SnapID, sizeof(CNetObj_PlayerInfoExtra)));
 		if(pPlayerInfoExtra)
 		{
 			pPlayerInfoExtra->m_RealClientID = m_ClientID;
-			pPlayerInfoExtra->m_PlayerFlagsExtra = ZombieBot ? PLAYERFLAGEXTRA_HIDDEN_IN_BOARD : 0;
+			pPlayerInfoExtra->m_PlayerFlagsExtra = (ZombieBot || MMOBot) ? PLAYERFLAGEXTRA_HIDDEN_IN_BOARD : 0;
 		}
 	}
 
@@ -421,10 +603,7 @@ void CPlayer::Snap(int SnappingClient)
 			return;
 
 		pSpectatorInfo->m_SpecMode = m_SpecMode;
-		int SpecID = m_SpectatorID;
-		if(SpecID >= 0 && SnappingClient >= 0 && !m_pGameServer->ClientUsesExtendedSlots(SnappingClient))
-			SpecID = m_pGameServer->ClientDisplaySlot(SnappingClient, SpecID);
-		pSpectatorInfo->m_SpectatorID = SpecID;
+		pSpectatorInfo->m_SpectatorID = m_SpectatorID;
 		pSpectatorInfo->m_X = m_ViewPos.x;
 		pSpectatorInfo->m_Y = m_ViewPos.y;
 	}
@@ -453,11 +632,16 @@ void CPlayer::Snap(int SnappingClient)
 
 void CPlayer::SnapPlayerInfoOnly(int SnappingClient, CGameContext *pSnappingCtx)
 {
-	if(!IsDummy() && !Server()->ClientIngame(m_ClientID))
+	if(m_ClientID >= MAX_HUMAN_CLIENTS)
+	{
+		if(SnappingClient >= 0 && !IsVisibleForClient(SnappingClient))
+			return;
+	}
+	else if(!IsDummy() && !Server()->ClientIngame(m_ClientID))
 		return;
 
-	const int SnapID = m_pGameServer->ClientSnapID(SnappingClient, m_ClientID);
-	if(SnapID < 0)
+	int SnapID = m_ClientID;
+	if(SnappingClient >= 0 && m_ClientID >= MAX_HUMAN_CLIENTS && !Server()->Translate(SnapID, SnappingClient))
 		return;
 
 	CNetObj_PlayerInfo *pPlayerInfo = static_cast<CNetObj_PlayerInfo *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFO, SnapID, sizeof(CNetObj_PlayerInfo)));
@@ -485,14 +669,15 @@ void CPlayer::SnapPlayerInfoOnly(int SnappingClient, CGameContext *pSnappingCtx)
 	pPlayerInfo->m_Score = m_Score;
 
 	const bool ZombieBot = IsDummy() && m_Zomb != ZOMB_NONE;
+	const bool MMOBot = m_pMMOBotData != nullptr;
 	const bool MappedSlot = SnapID != m_ClientID;
-	if(MappedSlot || ZombieBot)
+	if((MappedSlot || ZombieBot || MMOBot) && !IsQuestNpc())
 	{
 		CNetObj_PlayerInfoExtra *pPlayerInfoExtra = static_cast<CNetObj_PlayerInfoExtra *>(Server()->SnapNewItem(NETOBJTYPE_PLAYERINFOEXTRA, SnapID, sizeof(CNetObj_PlayerInfoExtra)));
 		if(pPlayerInfoExtra)
 		{
 			pPlayerInfoExtra->m_RealClientID = m_ClientID;
-			pPlayerInfoExtra->m_PlayerFlagsExtra = ZombieBot ? PLAYERFLAGEXTRA_HIDDEN_IN_BOARD : 0;
+			pPlayerInfoExtra->m_PlayerFlagsExtra = (ZombieBot || MMOBot) ? PLAYERFLAGEXTRA_HIDDEN_IN_BOARD : 0;
 		}
 	}
 }
@@ -546,17 +731,35 @@ void CPlayer::OnPredictedInput(CNetObj_PlayerInput *NewInput)
 
 void CPlayer::OnDirectInput(CNetObj_PlayerInput *NewInput)
 {
+	// Initialize last input on first call
+	if(!m_LastInputInit)
+	{
+		*m_pLastInput = *NewInput;
+		m_LastInputInit = true;
+	}
+
+	// Parse event keys (MRPG-style)
+	Server()->Input()->ParseInputClickedKeys(m_ClientID, NewInput, m_pLastInput);
+
+	// Character input event tracking
+	if(m_pCharacter && !(NewInput->m_PlayerFlags & PLAYERFLAG_CHATTING))
+	{
+		const int ActiveWeapon = m_pCharacter->GetActiveWeapon();
+		Server()->Input()->ProcessCharacterInput(m_ClientID, ActiveWeapon, NewInput, m_pLastInput);
+	}
+
+	// ── Chat state handling ──
 	if(NewInput->m_PlayerFlags & PLAYERFLAG_CHATTING)
 	{
-		// skip the input if chat is active
-		if(m_PlayerFlags & PLAYERFLAG_CHATTING)
-			return;
-
-		// reset input
-		if(m_pCharacter)
-			m_pCharacter->ResetInput();
-
+		if(!(m_PlayerFlags & PLAYERFLAG_CHATTING))
+		{
+			if(m_pCharacter)
+				m_pCharacter->ResetInput();
+		}
 		m_PlayerFlags = NewInput->m_PlayerFlags;
+		*m_pLastInput = *NewInput;
+		// MRPG: hide HUD overlay while typing
+		GameServer()->AddBroadcast(m_ClientID, "", CGameContext::BROADCAST_PRIORITY_OVERLAY_HIDDEN, 100);
 		return;
 	}
 
@@ -625,6 +828,38 @@ void CPlayer::OnDirectInput(CNetObj_PlayerInput *NewInput)
 		m_LastActionTick = Server()->Tick();
 		m_InactivityTickCounter = 0;
 	}
+
+	// Save last input for next tick's key event detection
+	*m_pLastInput = *NewInput;
+}
+
+bool CPlayer::ParseVoteOptionResult(int Vote)
+{
+	const bool IsVoteNo = Vote == -1 || Vote == 0;
+	const bool IsVoteYes = Vote == 1;
+
+	if(IsVoteYes)
+		return false;
+
+	if(!IsVoteNo)
+		return false;
+
+	CDialogManager *pDM = GameServer()->Core() ? GameServer()->Core()->DialogManager() : nullptr;
+	if(!pDM)
+		return false;
+
+	if(pDM->HasActiveDialog(m_ClientID))
+	{
+		if(m_LastDialogTick && m_LastDialogTick > Server()->Tick())
+			return true;
+
+		m_LastDialogTick = Server()->Tick() + Server()->TickSpeed() / 4;
+		if(GetCharacter())
+			GameServer()->m_World.CreateSound(GetCharacter()->GetPos(), SOUND_PICKUP_ARMOR, CmaskOne(m_ClientID));
+		return pDM->HandleDialogCommand(this, "next");
+	}
+
+	return pDM->HandleVoteInput(this, Vote);
 }
 
 CCharacter *CPlayer::GetCharacter()
@@ -1031,4 +1266,510 @@ void CPlayer::SpawnAt(vec2 Pos)
 	GameServer()->m_World.CreatePlayerSpawn(Pos);
 	if(IsDummy() && GameServer()->Core())
 		GameServer()->Core()->OnCharacterSpawn(this);
+}
+
+int CPlayer::GetBaseMaxHealth() const
+{
+	const SProfessionDef *pDef = CProfessionData::GetDef(m_Profession);
+	if(!pDef) return 10;
+	return pDef->m_BaseHP + (int)(pDef->m_HPPerLevel * m_MMOLevel);
+}
+
+float CPlayer::GetBaseAttack() const
+{
+	const SProfessionDef *pDef = CProfessionData::GetDef(m_Profession);
+	if(!pDef) return 1.0f;
+	return 1.0f + pDef->m_AttackPerLevel * m_MMOLevel;
+}
+
+float CPlayer::GetBaseDefense() const
+{
+	const SProfessionDef *pDef = CProfessionData::GetDef(m_Profession);
+	if(!pDef) return 0.0f;
+	return pDef->m_DefensePerLevel * m_MMOLevel;
+}
+
+// TRPG六维 → 有效战斗属性
+int CPlayer::GetEffectiveMeleeAttack() const
+{
+	return GetStat(AttributeIdentifier::STR) * 2;
+}
+
+int CPlayer::GetEffectiveRangedAttack() const
+{
+	return GetStat(AttributeIdentifier::DEX) * 2;
+}
+
+int CPlayer::GetEffectiveDefense() const
+{
+	return GetStat(AttributeIdentifier::CON) * 2;
+}
+
+int CPlayer::GetMMOItemEnchant(int ItemID) const
+{
+	if(ItemID <= 0)
+		return 0;
+	for(size_t i = 0; i < m_MMOInventory.size(); i++)
+	{
+		if(m_MMOInventory[i].GetID() == ItemID)
+			return m_MMOInventory[i].GetEnchant();
+	}
+	return 0;
+}
+
+int CPlayer::GetMMOEquippedAttributeSum(AttributeIdentifier ID) const
+{
+	int Sum = 0;
+	int aSeen[512] = {0};
+	auto AddItem = [&](int ItemID)
+	{
+		if(ItemID <= 0 || ItemID >= (int)(sizeof(aSeen) / sizeof(aSeen[0])) || aSeen[ItemID])
+			return;
+		aSeen[ItemID] = 1;
+		const CMMOItemDescription *pDef = CMMOItemDescription::Get(ItemID);
+		if(!pDef)
+			return;
+		Sum += pDef->GetAttributeValue(ID, GetMMOItemEnchant(ItemID));
+	};
+
+	for(const auto &Slot : m_EquippedSlots.getSlots())
+		AddItem(Slot.second);
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		AddItem(m_aMeleeLoadout[i]);
+		AddItem(m_aRangedLoadout[i]);
+	}
+	return Sum;
+}
+
+int CPlayer::GetMMOMaxAmmo() const
+{
+	return maximum(1, 10 + GetMMOEquippedAttributeSum(AttributeIdentifier::Ammo));
+}
+
+int CPlayer::GetMMOAmmoRegenPercent() const
+{
+	const int Sum = GetMMOEquippedAttributeSum(AttributeIdentifier::AmmoRegen);
+	const int Percent = Sum > 0 ? Sum : 100;
+	return clamp(Percent, 50, 600);
+}
+
+bool CPlayer::UsesMMOFiniteAmmo() const
+{
+	if(IsDummy())
+		return false;
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aRangedLoadout[i] > 0)
+			return true;
+	}
+	return false;
+}
+
+int CPlayer::GetMaxMana() const
+{
+	return 50 + GetStat(AttributeIdentifier::INT) * 5 + m_MMOLevel * 3;
+}
+
+void CPlayer::AddMMOExperience(int Amount)
+{
+	if(Amount <= 0) return;
+	SetStat(AttributeIdentifier::Experience, GetStat(AttributeIdentifier::Experience) + Amount);
+	m_MMODirty = true;
+
+	CGameContext *pGS = GameServer();
+	while(GetStat(AttributeIdentifier::Experience) >= ExpForLevel(GetStat(AttributeIdentifier::Level)))
+	{
+		SetStat(AttributeIdentifier::Experience, GetStat(AttributeIdentifier::Experience) - ExpForLevel(GetStat(AttributeIdentifier::Level)));
+		SetStat(AttributeIdentifier::Level, GetStat(AttributeIdentifier::Level) + 1);
+		SetStat(AttributeIdentifier::SkillPoints, GetStat(AttributeIdentifier::SkillPoints) + 3);
+		ApplyMMOSkillBonuses();
+
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "🎉 升级了！现在等级 %d！（+3 技能点）", GetStat(AttributeIdentifier::Level));
+		if(pGS)
+			pGS->SendChat(m_ClientID, CHAT_ALL, -1, aBuf);
+	}
+}
+
+void CPlayer::InitWeaponLoadouts()
+{
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		m_aMeleeLoadout[i] = -1;
+		m_aRangedLoadout[i] = -1;
+		m_aWeaponBar[i] = -1;
+	}
+}
+
+int CPlayer::RangedLoadoutIndexForItemType(ItemType Type)
+{
+	switch(Type)
+	{
+	case ItemType::EquipGun: return 0;
+	case ItemType::EquipShotgun: return 1;
+	case ItemType::EquipGrenade: return 2;
+	case ItemType::EquipLaser: return 3;
+	default: return -1;
+	}
+}
+
+bool CPlayer::IsMMOWeaponItemType(ItemType Type)
+{
+	return MMOItemTypeToWeapon(Type) >= 0;
+}
+
+bool CPlayer::IsMMOWeaponEquipped(int ItemID) const
+{
+	return FindMeleeLoadoutIndex(ItemID) >= 0 || FindRangedLoadoutIndex(ItemID) >= 0;
+}
+
+int CPlayer::FindMeleeLoadoutIndex(int ItemID) const
+{
+	if(ItemID <= 0)
+		return -1;
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aMeleeLoadout[i] == ItemID)
+			return i;
+	}
+	return -1;
+}
+
+int CPlayer::FindRangedLoadoutIndex(int ItemID) const
+{
+	if(ItemID <= 0)
+		return -1;
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aRangedLoadout[i] == ItemID)
+			return i;
+	}
+	return -1;
+}
+
+int CPlayer::FindWeaponBarIndex(int ItemID) const
+{
+	if(ItemID <= 0)
+		return -1;
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aWeaponBar[i] == ItemID)
+			return i;
+	}
+	return -1;
+}
+
+int CPlayer::FirstEmptyMeleeLoadout() const
+{
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aMeleeLoadout[i] < 0)
+			return i;
+	}
+	return -1;
+}
+
+int CPlayer::FirstEmptyWeaponBarSlot() const
+{
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aWeaponBar[i] < 0)
+			return i;
+	}
+	return -1;
+}
+
+int CPlayer::FirstNonEmptyMeleeLoadout() const
+{
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aMeleeLoadout[i] > 0)
+			return i;
+	}
+	return -1;
+}
+
+int CPlayer::FirstNonEmptyRangedLoadout() const
+{
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aRangedLoadout[i] > 0)
+			return i;
+	}
+	return -1;
+}
+
+void CPlayer::RemoveWeaponFromLoadouts(int ItemID)
+{
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aMeleeLoadout[i] == ItemID)
+			m_aMeleeLoadout[i] = -1;
+		if(m_aRangedLoadout[i] == ItemID)
+			m_aRangedLoadout[i] = -1;
+		if(m_aWeaponBar[i] == ItemID)
+			m_aWeaponBar[i] = -1;
+	}
+
+	const CMMOItemDescription *pDef = CMMOItemDescription::Get(ItemID);
+	if(pDef && m_EquippedSlots.isEquippedItem(ItemID))
+		m_EquippedSlots.unequipSlot(pDef->GetType());
+}
+
+void CPlayer::AutoFillWeaponBar(int ItemID)
+{
+	if(ItemID <= 0 || FindWeaponBarIndex(ItemID) >= 0)
+		return;
+	const int Slot = FirstEmptyWeaponBarSlot();
+	if(Slot >= 0)
+		m_aWeaponBar[Slot] = ItemID;
+}
+
+void CPlayer::MigrateWeaponLoadoutFromEquippedSlots()
+{
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aMeleeLoadout[i] > 0 || m_aRangedLoadout[i] > 0)
+			return;
+	}
+
+	static const ItemType s_aWpnTypes[] = {
+		ItemType::EquipHammer, ItemType::EquipGun, ItemType::EquipShotgun,
+		ItemType::EquipGrenade, ItemType::EquipLaser,
+	};
+
+	for(ItemType Type : s_aWpnTypes)
+	{
+		if(!m_EquippedSlots.isEquipped(Type))
+			continue;
+		const int ItemID = m_EquippedSlots.getSlot(Type);
+		if(ItemID <= 0)
+			continue;
+
+		if(Type == ItemType::EquipHammer)
+		{
+			const int Slot = FirstEmptyMeleeLoadout();
+			if(Slot >= 0)
+				m_aMeleeLoadout[Slot] = ItemID;
+		}
+		else
+		{
+			const int RIdx = RangedLoadoutIndexForItemType(Type);
+			if(RIdx >= 0)
+				m_aRangedLoadout[RIdx] = ItemID;
+		}
+		AutoFillWeaponBar(ItemID);
+	}
+	EnsureWeaponBarFromLoadouts();
+}
+
+void CPlayer::EnsureWeaponBarFromLoadouts()
+{
+	for(int i = 0; i < MMO_WEAPON_LOADOUT_SIZE; i++)
+	{
+		if(m_aMeleeLoadout[i] > 0)
+			AutoFillWeaponBar(m_aMeleeLoadout[i]);
+		if(m_aRangedLoadout[i] > 0)
+			AutoFillWeaponBar(m_aRangedLoadout[i]);
+	}
+}
+
+void CPlayer::RecalcMMOStats()
+{
+	m_MMOAttack = m_MMOLevel * 2 + 5;  // base: 7 at level 1
+	m_MMODefense = m_MMOLevel + 3;     // base: 4 at level 1
+	if(m_pCharacter && UsesMMOFiniteAmmo())
+		m_pCharacter->SyncMMOWeaponAmmo(GetMMOMaxAmmo());
+}
+
+void CPlayer::FormatBroadcastBasicStats(char *pBuffer, int Size, const char *pAppendStr)
+{
+	const char *pAppend = pAppendStr ? pAppendStr : "";
+
+	// Only show full panel for logged-in players with a character
+	if(!m_pCharacter || IsDummy())
+	{
+		str_format(pBuffer, Size, "%-200s", pAppend);
+		return;
+	}
+
+	// HP bar
+	const int HP = m_pCharacter->GetHealth();
+	const int MaxHP = m_pCharacter->GetMaxHealth();
+	const int HPBarLen = 10;
+	const int HPFilled = (MaxHP > 0) ? (HP * HPBarLen / MaxHP) : 0;
+	char aHPBar[32];
+	{
+		int pos = 0;
+		aHPBar[pos++] = '[';
+		for(int i = 0; i < HPBarLen; i++)
+			aHPBar[pos++] = (i < HPFilled) ? '|' : '-';
+		aHPBar[pos++] = ']';
+		aHPBar[pos++] = '\0';
+	}
+
+	// MRPG HUD anchor: leading blank lines push overlay below vanilla UI
+	char aPanel[1024];
+	str_copy(aPanel, "\n\n\n\n\n", sizeof(aPanel));
+
+	// Weapon HUD: current + numbered loadout slots per category
+	{
+		const bool MagicMode = m_pCharacter->GetActiveCategory() == CCharacter::WEAPONCAT_MAGIC;
+		const int ActiveCat = m_pCharacter->GetActiveCategory();
+		const int ActiveMelee = m_pCharacter->GetActiveMeleeLoadoutIdx();
+		const int ActiveRanged = m_pCharacter->GetActiveRangedLoadoutIdx();
+		const int ActiveItemID = m_pCharacter->GetActiveWeaponItemID();
+
+		auto ShortItemName = [&](int ItemID, char *pBuf, int BufSize) -> const char *
+		{
+			if(ItemID <= 0)
+			{
+				str_copy(pBuf, "空", BufSize);
+				return pBuf;
+			}
+			const CMMOItemDescription *pDef = CMMOItemDescription::Get(ItemID);
+			if(!pDef)
+			{
+				str_copy(pBuf, "?", BufSize);
+				return pBuf;
+			}
+			str_utf8_copy_num(pBuf, GameServer()->Loc(m_ClientID, pDef->GetNameKey(), pDef->GetName()), BufSize, 6);
+			return pBuf;
+		};
+
+		char aTmp[512];
+		char aNameBuf[32];
+		if(MagicMode)
+		{
+			const int SID = m_aSkillSlots[m_pCharacter->GetActiveSkillSlot()];
+			const char *pMagic = "-";
+			if(SID >= 0)
+			{
+				CSkillManager *pSM = GameServer()->TW() ? GameServer()->TW()->SkillManager() : nullptr;
+				if(pSM)
+				{
+					const SSkillDescription *pDesc = pSM->FindDescription(SID);
+					if(pDesc)
+						pMagic = pDesc->m_aName;
+				}
+			}
+			str_format(aTmp, sizeof(aTmp), ">> 魔法 %s", pMagic);
+		}
+		else if(ActiveItemID > 0)
+		{
+			str_format(aTmp, sizeof(aTmp), ">> %s", ShortItemName(ActiveItemID, aNameBuf, sizeof(aNameBuf)));
+			if(UsesMMOFiniteAmmo() && ActiveCat == CCharacter::WEAPONCAT_RANGED)
+			{
+				const int W = m_pCharacter->GetActiveWeapon();
+				if(W >= WEAPON_GUN && W <= WEAPON_LASER)
+				{
+					const int CurAmmo = m_pCharacter->WeaponAmmo(W);
+					if(CurAmmo >= 0)
+					{
+						char aAmmo[32];
+						str_format(aAmmo, sizeof(aAmmo), " 弹药 %d/%d", CurAmmo, GetMMOMaxAmmo());
+						str_append(aTmp, aAmmo, sizeof(aTmp));
+					}
+				}
+			}
+		}
+		else
+			str_copy(aTmp, ">> 空手", sizeof(aTmp));
+		str_append(aPanel, aTmp, sizeof(aPanel));
+
+		auto AppendLoadoutRow = [&](const char *pKeyLabel, const int *pLoadout, int ActiveIdx, bool Highlight)
+		{
+			char aN0[32], aN1[32], aN2[32], aN3[32];
+			char aRow[256];
+			str_format(aRow, sizeof(aRow), "\n%s%s [1]%s%s [2]%s%s [3]%s%s [4]%s%s",
+				pKeyLabel, Highlight && !MagicMode ? "*" : "",
+				ShortItemName(pLoadout[0], aN0, sizeof(aN0)), (!MagicMode && Highlight && ActiveIdx == 0) ? "*" : "",
+				ShortItemName(pLoadout[1], aN1, sizeof(aN1)), (!MagicMode && Highlight && ActiveIdx == 1) ? "*" : "",
+				ShortItemName(pLoadout[2], aN2, sizeof(aN2)), (!MagicMode && Highlight && ActiveIdx == 2) ? "*" : "",
+				ShortItemName(pLoadout[3], aN3, sizeof(aN3)), (!MagicMode && Highlight && ActiveIdx == 3) ? "*" : "");
+			str_append(aPanel, aRow, sizeof(aPanel));
+		};
+
+		AppendLoadoutRow("键1·近战", m_aMeleeLoadout, ActiveMelee, ActiveCat == CCharacter::WEAPONCAT_MELEE);
+		AppendLoadoutRow("键2·远程", m_aRangedLoadout, ActiveRanged, ActiveCat == CCharacter::WEAPONCAT_RANGED);
+	}
+
+	// Skill slots 3/4/5 (magic bar); * marks selected slot when in magic mode
+	{
+		CSkillManager *pSM = GameServer()->TW() ? GameServer()->TW()->SkillManager() : nullptr;
+		static const char *s_aSlotLabels[] = { "3", "4", "5" };
+		const bool MagicMode = m_pCharacter->GetActiveCategory() == CCharacter::WEAPONCAT_MAGIC;
+		const int ActiveSlot = m_pCharacter->GetActiveSkillSlot();
+		for(int si = 0; si < 3; si++)
+		{
+			const int SID = m_aSkillSlots[si];
+			char aTmp[64];
+			const char *pMark = (MagicMode && si == ActiveSlot) ? "*" : "";
+			if(SID >= 0 && pSM)
+			{
+				const SSkillDescription *pDesc = pSM->FindDescription(SID);
+				const char *pName = pDesc ? pDesc->m_aName : "?";
+				str_format(aTmp, sizeof(aTmp), "\n[%s:%s%s]", s_aSlotLabels[si], pName, pMark);
+			}
+			else
+				str_format(aTmp, sizeof(aTmp), "\n[%s:-%s]", s_aSlotLabels[si], pMark);
+			str_append(aPanel, aTmp, sizeof(aPanel));
+		}
+	}
+
+	// HP line
+	{
+		char aTmp[64];
+		str_format(aTmp, sizeof(aTmp), "\nHP %s %d/%d", aHPBar, HP, MaxHP);
+		str_append(aPanel, aTmp, sizeof(aPanel));
+	}
+
+	// MMO stats
+	if(m_MMOLevel > 0)
+	{
+		char aTmp[64];
+		str_format(aTmp, sizeof(aTmp), "\nLv.%d | %d Gold", m_MMOLevel, m_MMOGold);
+		str_append(aPanel, aTmp, sizeof(aPanel));
+	}
+
+	// MRPG: pad append column so status + message render together
+	str_format(pBuffer, Size, "%s%-200s", aPanel, pAppend);
+}
+
+void CPlayer::ApplyMMOSkillBonuses()
+{
+	RecalcMMOStats();
+	for(int i = 0; i < m_NumMMOSkills; i++)
+	{
+		const SMMOSkillState &St = m_aMMOSkills[i];
+		if(St.m_SkillID < 0 || St.m_SkillID >= NUM_MMO_SKILLS) continue;
+		const SMMOSkillDef &Def = g_aMMOSkillDefs[St.m_SkillID];
+		int Bonus = (int)(Def.m_EffectPerLevel * St.m_Level);
+		switch(Def.m_Effect)
+		{
+		case SKILL_EFFECT_DAMAGE_BOOST:
+			m_MMOAttack += Bonus;
+			break;
+		case SKILL_EFFECT_DEFENSE_BOOST:
+			m_MMODefense += Bonus;
+			break;
+		case SKILL_EFFECT_HEALTH_BOOST:
+			// Health bonus is applied in GetMaxHealth()
+			break;
+		case SKILL_EFFECT_CRIT_CHANCE:
+			// Crit bonus tracked separately if needed
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+int CPlayer::GetMMOSkillLevel(int SkillID) const
+{
+	for(int i = 0; i < m_NumMMOSkills; i++)
+		if(m_aMMOSkills[i].m_SkillID == SkillID)
+			return m_aMMOSkills[i].m_Level;
+	return 0;
 }

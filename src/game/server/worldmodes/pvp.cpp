@@ -55,5 +55,5 @@ bool CGameControllerPvP::OnEntity(int Index, vec2 Pos)
 {
 	if(Index >= ENTITY_LOG)
 		return true;
-	return CGameControllerDefence::OnEntity(Index, Pos);
+	return CGameController::OnEntity(Index, Pos);
 }

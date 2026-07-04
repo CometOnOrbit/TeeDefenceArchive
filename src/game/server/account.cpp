@@ -20,6 +20,7 @@
 #include <game/server/core/tworld_controller.h>
 #include <game/server/core/components/skills/skill_manager.h>
 #include <game/server/gamecontext.h>
+#include <game/server/global_state.h>
 #include <game/server/player.h>
 
 static const char *DefaultItemExtraJson()
@@ -132,8 +133,6 @@ static bool IsUsernameLoggedInElsewhere(CGameContext *pGame, const char *pUserna
 	return false;
 }
 
-#ifdef CONF_MYSQL
-
 #include <mysql.h>
 
 static bool SqlExec(MYSQL *pSql, CConfig *pConfig, const char *pQuery)
@@ -244,7 +243,7 @@ static bool EnsureSchema(MYSQL *pSql, CConfig *pConfig)
 		"  `Holding` JSON DEFAULT NULL,"
 		"  PRIMARY KEY (`UserID`),"
 		"  UNIQUE KEY `idx_username` (`Username`)"
-		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
 	if(!SqlExec(pSql, pConfig, pAccounts))
 		return false;
 	if(!MigrateAccountsTable(pSql, pConfig))
@@ -257,8 +256,237 @@ static bool EnsureSchema(MYSQL *pSql, CConfig *pConfig)
 		"  `Num` INT NOT NULL,"
 		"  `Extra` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`Extra`)),"
 		"  PRIMARY KEY (`UserID`, `ItemID`)"
-		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
-	return SqlExec(pSql, pConfig, pItems);
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pItems))
+		return false;
+
+	// MRPG-style: deque-based items, no Slot column, with Enchant/Durability/ExpiresAt
+	const char *pMMOItems =
+		"CREATE TABLE IF NOT EXISTS `tw_mmo_items` ("
+		"  `ID` int NOT NULL AUTO_INCREMENT,"
+		"  `UserID` int NOT NULL,"
+		"  `ItemID` int NOT NULL,"
+		"  `Count` int NOT NULL DEFAULT 1,"
+		"  `Enchant` int NOT NULL DEFAULT 0,"
+		"  `Durability` int NOT NULL DEFAULT 100,"
+		"  `ExpiresAt` bigint NOT NULL DEFAULT 0,"
+		"  PRIMARY KEY (`ID`),"
+		"  KEY `UserID` (`UserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pMMOItems))
+		return false;
+
+	const char *pMMOPlayers =
+		"CREATE TABLE IF NOT EXISTS `tw_mmo_players` ("
+		"  `UserID` int NOT NULL,"
+		"  `Level` int NOT NULL DEFAULT 1,"
+		"  `Experience` bigint NOT NULL DEFAULT 0,"
+		"  `Gold` int NOT NULL DEFAULT 0,"
+		"  `SkillPoints` int NOT NULL DEFAULT 0,"
+		"  `STR` int NOT NULL DEFAULT 3,"
+		"  `DEX` int NOT NULL DEFAULT 3,"
+		"  `CON` int NOT NULL DEFAULT 3,"
+		"  `INT` int NOT NULL DEFAULT 3,"
+		"  `WIS` int NOT NULL DEFAULT 3,"
+		"  `CHA` int NOT NULL DEFAULT 3,"
+		"  `EquipWeaponSlot` int NOT NULL DEFAULT -1,"
+		"  `SkillSlot1` int NOT NULL DEFAULT -1,"
+		"  `SkillSlot2` int NOT NULL DEFAULT -1,"
+		"  `SkillSlot3` int NOT NULL DEFAULT -1,"
+		"  `ItemSlot0` int NOT NULL DEFAULT -1,"
+		"  `ItemSlot1` int NOT NULL DEFAULT -1,"
+		"  `ItemSlot2` int NOT NULL DEFAULT -1,"
+		"  `ItemSlot3` int NOT NULL DEFAULT -1,"
+		"  `StoryData` text DEFAULT NULL,"
+		"  PRIMARY KEY (`UserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pMMOPlayers))
+		return false;
+
+	// MRPG-compatible groups table
+	const char *pGroups =
+		"CREATE TABLE IF NOT EXISTS `tw_groups` ("
+		"  `GroupID` int NOT NULL,"
+		"  `LeaderUID` bigint NOT NULL,"
+		"  `Members` text NOT NULL,"
+		"  `TeamColor` int NOT NULL DEFAULT 0,"
+		"  `CreatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+		"  PRIMARY KEY (`GroupID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pGroups))
+		return false;
+
+	// Migration: add EquipWeaponSlot to tw_mmo_players (for servers created before this feature)
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `EquipWeaponSlot` int NOT NULL DEFAULT -1");
+	// Migration: add skill slot columns
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `SkillSlot1` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `SkillSlot2` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `SkillSlot3` int NOT NULL DEFAULT -1");
+	// Migration: add item quick-slot columns (emoticon binding)
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `ItemSlot0` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `ItemSlot1` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `ItemSlot2` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `ItemSlot3` int NOT NULL DEFAULT -1");
+	// Migration: TRPG六维属性 (2026-06-30)
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `STR` int NOT NULL DEFAULT 3");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `DEX` int NOT NULL DEFAULT 3");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `CON` int NOT NULL DEFAULT 3");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `INT` int NOT NULL DEFAULT 3");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WIS` int NOT NULL DEFAULT 3");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `CHA` int NOT NULL DEFAULT 3");
+	// Migration: story flag data (2026-06-30)
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `StoryData` text DEFAULT NULL");
+	// Migration: fashion item ID (2026-07-02)
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `FashionItemID` int NOT NULL DEFAULT 0");
+	// Migration: weapon loadout + hotbar (2026-07-04)
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `MeleeLoadout0` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `MeleeLoadout1` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `MeleeLoadout2` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `MeleeLoadout3` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `RangedLoadout0` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `RangedLoadout1` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `RangedLoadout2` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `RangedLoadout3` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WeaponBar0` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WeaponBar1` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WeaponBar2` int NOT NULL DEFAULT -1");
+	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WeaponBar3` int NOT NULL DEFAULT -1");
+
+	// MRPG-style mailbox table
+	const char *pMailbox =
+		"CREATE TABLE IF NOT EXISTS `tw_accounts_mailbox` ("
+		"  `ID` int NOT NULL AUTO_INCREMENT,"
+		"  `Name` varchar(64) NOT NULL,"
+		"  `Description` text DEFAULT NULL,"
+		"  `AttachedItems` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`AttachedItems`)),"
+		"  `UserID` bigint NOT NULL,"
+		"  `Sender` varchar(64) NOT NULL,"
+		"  `Readed` tinyint NOT NULL DEFAULT 0,"
+		"  `CreatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+		"  PRIMARY KEY (`ID`),"
+		"  KEY `UserID` (`UserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pMailbox))
+		return false;
+
+	// Friends table (cross-world friend system)
+	const char *pFriends =
+		"CREATE TABLE IF NOT EXISTS `tw_friends` ("
+		"  `UserID` bigint NOT NULL,"
+		"  `FriendUserID` bigint NOT NULL,"
+		"  `CreatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+		"  PRIMARY KEY (`UserID`, `FriendUserID`),"
+		"  KEY `FriendUserID` (`FriendUserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pFriends))
+		return false;
+
+	// Daily checkin table
+	const char *pDailyCheckin =
+		"CREATE TABLE IF NOT EXISTS `tw_daily_checkin` ("
+		"  `UserID` bigint NOT NULL,"
+		"  `LastCheckinDate` int NOT NULL DEFAULT 0,"
+		"  `CheckinStreak` int NOT NULL DEFAULT 0,"
+		"  PRIMARY KEY (`UserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pDailyCheckin))
+		return false;
+
+	// Daily recycle/sell limits (anti-inflation)
+	const char *pDailySell =
+		"CREATE TABLE IF NOT EXISTS `tw_daily_sell` ("
+		"  `UserID` bigint NOT NULL,"
+		"  `LastSellDate` int NOT NULL DEFAULT 0,"
+		"  `DailySellGold` int NOT NULL DEFAULT 0,"
+		"  `DailySellCount` int NOT NULL DEFAULT 0,"
+		"  PRIMARY KEY (`UserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pDailySell))
+		return false;
+
+	// Pets table
+	const char *pPets =
+		"CREATE TABLE IF NOT EXISTS `tw_pets` ("
+		"  `UserID` bigint NOT NULL,"
+		"  `PetID` int NOT NULL DEFAULT 0,"
+		"  `PetName` varchar(32) NOT NULL DEFAULT '宠物',"
+		"  `PetLevel` int NOT NULL DEFAULT 1,"
+		"  `PetExperience` int NOT NULL DEFAULT 0,"
+		"  PRIMARY KEY (`UserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pPets))
+		return false;
+
+	// Housing table (player houses)
+	const char *pHousing =
+		"CREATE TABLE IF NOT EXISTS `tw_housing` ("
+		"  `UserID` bigint NOT NULL,"
+		"  `HasHouse` tinyint NOT NULL DEFAULT 0,"
+		"  `HouseLevel` int NOT NULL DEFAULT 1,"
+		"  `HouseDecor` int NOT NULL DEFAULT 0,"
+		"  `HouseSpawnX` int NOT NULL DEFAULT 0,"
+		"  `HouseSpawnY` int NOT NULL DEFAULT 0,"
+		"  PRIMARY KEY (`UserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+	if(!SqlExec(pSql, pConfig, pHousing))
+		return false;
+
+	// Marriage table
+	const char *pMarriages =
+		"CREATE TABLE IF NOT EXISTS `tw_marriages` ("
+		"  `MarriageID` int NOT NULL AUTO_INCREMENT,"
+		"  `SpouseA` bigint NOT NULL,"
+		"  `SpouseB` bigint NOT NULL,"
+		"  `MarriedAt` int NOT NULL DEFAULT 0,"
+		"  PRIMARY KEY (`MarriageID`),"
+		"  KEY `SpouseA` (`SpouseA`),"
+		"  KEY `SpouseB` (`SpouseB`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+	if(!SqlExec(pSql, pConfig, pMarriages))
+		return false;
+
+	// Auction listings table (cross-world auction house)
+	const char *pAuctionListings =
+		"CREATE TABLE IF NOT EXISTS `tw_auction_listings` ("
+		"  `ListingID` int NOT NULL AUTO_INCREMENT,"
+		"  `SellerUserID` bigint NOT NULL,"
+		"  `ItemID` int NOT NULL,"
+		"  `ItemCount` int NOT NULL DEFAULT 1,"
+		"  `ItemEnchant` int NOT NULL DEFAULT 0,"
+		"  `Price` int NOT NULL DEFAULT 0,"
+		"  `ListedAt` int NOT NULL DEFAULT 0,"
+		"  PRIMARY KEY (`ListingID`),"
+		"  KEY `SellerUserID` (`SellerUserID`),"
+		"  KEY `Price` (`Price`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pAuctionListings))
+		return false;
+
+	// Guild wars table
+	const char *pGuildWars =
+		"CREATE TABLE IF NOT EXISTS `tw_guild_matches` ("
+		"  `MatchID` int NOT NULL AUTO_INCREMENT,"
+		"  `ChallengerGuild` int NOT NULL,"
+		"  `ChallengedGuild` int NOT NULL,"
+		"  `Status` tinyint NOT NULL DEFAULT 0,"
+		"  `Mode` varchar(16) NOT NULL DEFAULT '',"
+		"  `TeamSize` int NOT NULL DEFAULT 3,"
+		"  `TargetScore` int NOT NULL DEFAULT 30,"
+		"  `CreatedAt` int NOT NULL DEFAULT 0,"
+		"  `StartedAt` int NOT NULL DEFAULT 0,"
+		"  `FinishedAt` int NOT NULL DEFAULT 0,"
+		"  `ScoreA` int NOT NULL DEFAULT 0,"
+		"  `ScoreB` int NOT NULL DEFAULT 0,"
+		"  `WinnerGuild` int NOT NULL DEFAULT -1,"
+		"  PRIMARY KEY (`MatchID`),"
+		"  KEY `ChallengerGuild` (`ChallengerGuild`),"
+		"  KEY `ChallengedGuild` (`ChallengedGuild`),"
+		"  KEY `Status` (`Status`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+	if(!SqlExec(pSql, pConfig, pGuildWars))
+		return false;
+
+	return true;
 }
 
 static void DeleteAccountByUserId(MYSQL *pSql, CConfig *pConfig, int64 UserId)
@@ -354,8 +582,6 @@ static void SaveItems(MYSQL *pSql, CConfig *pConfig, int UserId, const SAccSyncD
 	}
 }
 
-#endif
-
 void CAccountSystem::ClearJobSlot(SJob &Slot)
 {
 	Slot.m_Submitted = false;
@@ -393,10 +619,6 @@ bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pCons
 	m_pConfig = pConfig;
 	m_Enabled = false;
 
-#ifndef CONF_MYSQL
-	dbg_msg("acc", "FATAL: server built without MySQL — TeeDefense requires CONF_MYSQL");
-	return false;
-#else
 	if(!pGame || !pEngine || !pConfig)
 		return false;
 
@@ -434,12 +656,10 @@ bool CAccountSystem::Init(CGameContext *pGame, IEngine *pEngine, IConsole *pCons
 	m_Enabled = true;
 	dbg_msg("acc", "MySQL account system ready (pool=%d, TeeDef tw_*)", PoolSize);
 	return true;
-#endif
 }
 
 void CAccountSystem::Shutdown()
 {
-#ifdef CONF_MYSQL
 	for(int Wait = 0; Wait < 10000; Wait++)
 	{
 		bool Busy = false;
@@ -453,7 +673,6 @@ void CAccountSystem::Shutdown()
 		thread_sleep(1);
 	}
 	m_Pool.Shutdown();
-#endif
 	m_Enabled = false;
 	m_pEngine = nullptr;
 	m_pGame = nullptr;
@@ -577,8 +796,6 @@ bool CAccountSystem::StartItemsJob(int ClientId, int UserId, const SAccSyncData 
 	}
 	return false;
 }
-
-#ifdef CONF_MYSQL
 
 int CAccountSystem::JobRunner(void *pData)
 {
@@ -824,16 +1041,6 @@ int CAccountSystem::JobRunner(void *pData)
 	return 0;
 }
 
-#else
-
-int CAccountSystem::JobRunner(void *pData)
-{
-	(void)pData;
-	return 0;
-}
-
-#endif
-
 void CAccountSystem::ClearPendingAuth(int ClientId)
 {
 	if(ClientId >= 0 && ClientId < MAX_CLIENTS)
@@ -891,13 +1098,15 @@ void CAccountSystem::ApplyLogin(int ClientId, int64 AccountId, const SAccSyncDat
 	}
 
 	pP->SetLanguage(pP->m_AccData.m_aLanguage[0] ? pP->m_AccData.m_aLanguage : "zh-cn");
-	pCtx->SendChatLoc(ClientId, "account.login.ok", u8"登录成功。");
+	pCtx->SendChatLoc(ClientId, "account.login.ok", "登录成功。");
 	pCtx->SendCommunityInfo(ClientId);
 	pCtx->EnterGame(ClientId);
 	if(TWorldController *pCore = pCtx->Core())
 		pCore->OnPlayerLogin(pP);
 	if(pCtx->Core() && pCtx->Core()->SkillManager())
 		pCtx->Core()->SkillManager()->RestoreSkillBinds(pP);
+	// Friends are loaded in CMMOManager::OnPlayerLogin, which is called
+	// by the game controller during login flow
 	if(SPlayerVote *pV = pCtx->GetPlayerVote(ClientId))
 		pV->m_Page = PAGE_MENU;
 	pCtx->ClearVotes(ClientId);
@@ -930,7 +1139,7 @@ void CAccountSystem::PumpCompletedJobs()
 			if(Slot.m_Error == 0)
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChatLoc(ClientId, "account.register.ok", u8"注册成功。");
+					m_pGame->SendChatLoc(ClientId, "account.register.ok", "注册成功。");
 				str_copy(aAutoLoginUser, Slot.m_Sync.m_aUsername, sizeof(aAutoLoginUser));
 				str_copy(aAutoLoginPass, Slot.m_Sync.m_aPassword, sizeof(aAutoLoginPass));
 				AutoLogin = true;
@@ -938,12 +1147,12 @@ void CAccountSystem::PumpCompletedJobs()
 			else if(Slot.m_Error == 1)
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChatLoc(ClientId, "account.register.taken", u8"用户名已被占用。");
+					m_pGame->SendChatLoc(ClientId, "account.register.taken", "用户名已被占用。");
 			}
 			else
 			{
 				if(pP && !pP->IsDummy())
-					m_pGame->SendChatLoc(ClientId, "account.register.fail", u8"注册失败（服务器）。");
+					m_pGame->SendChatLoc(ClientId, "account.register.fail", "注册失败（服务器）。");
 			}
 		}
 		else if(Slot.m_Type == JOB_LOGIN)
@@ -955,7 +1164,7 @@ void CAccountSystem::PumpCompletedJobs()
 					if(IsAccountOnline(m_pGame, Slot.m_AccountId, ClientId))
 					{
 						if(pP && !pP->IsDummy())
-							m_pGame->SendChatLoc(ClientId, "account.login.already_online", u8"该账号已在其他客户端登录。");
+							m_pGame->SendChatLoc(ClientId, "account.login.already_online", "该账号已在其他客户端登录。");
 						ClearPendingAuth(ClientId);
 					}
 					else
@@ -968,7 +1177,7 @@ void CAccountSystem::PumpCompletedJobs()
 						if(!StartLoginLoadJob(ClientId, AccountId, &Sync))
 						{
 							if(pP && !pP->IsDummy())
-								m_pGame->SendChatLoc(ClientId, "account.login.fail", u8"登录失败（服务器）。");
+								m_pGame->SendChatLoc(ClientId, "account.login.fail", "登录失败（服务器）。");
 							ClearPendingAuth(ClientId);
 						}
 					}
@@ -983,17 +1192,17 @@ void CAccountSystem::PumpCompletedJobs()
 				if(Slot.m_Error == 2)
 				{
 					if(pP && !pP->IsDummy())
-						m_pGame->SendChatLoc(ClientId, "account.login.not_found", u8"用户不存在。");
+						m_pGame->SendChatLoc(ClientId, "account.login.not_found", "用户不存在。");
 				}
 				else if(Slot.m_Error == 3)
 				{
 					if(pP && !pP->IsDummy())
-						m_pGame->SendChatLoc(ClientId, "account.login.wrong_pass", u8"密码错误。");
+						m_pGame->SendChatLoc(ClientId, "account.login.wrong_pass", "密码错误。");
 				}
 				else
 				{
 					if(pP && !pP->IsDummy())
-						m_pGame->SendChatLoc(ClientId, "account.login.fail", u8"登录失败（服务器）。");
+						m_pGame->SendChatLoc(ClientId, "account.login.fail", "登录失败（服务器）。");
 				}
 				ClearPendingAuth(ClientId);
 			}
@@ -1005,7 +1214,7 @@ void CAccountSystem::PumpCompletedJobs()
 				if(IsAccountOnline(m_pGame, Slot.m_AccountId, ClientId))
 				{
 					if(pP && !pP->IsDummy())
-						m_pGame->SendChatLoc(ClientId, "account.login.already_online", u8"该账号已在其他客户端登录。");
+						m_pGame->SendChatLoc(ClientId, "account.login.already_online", "该账号已在其他客户端登录。");
 				}
 				else
 				{
@@ -1018,7 +1227,7 @@ void CAccountSystem::PumpCompletedJobs()
 			}
 			else if(Slot.m_Error != 0 && pP && !pP->IsDummy())
 			{
-				m_pGame->SendChatLoc(ClientId, "account.login.fail", u8"登录失败（服务器）。");
+				m_pGame->SendChatLoc(ClientId, "account.login.fail", "登录失败（服务器）。");
 			}
 			ClearPendingAuth(ClientId);
 		}
@@ -1029,7 +1238,7 @@ void CAccountSystem::PumpCompletedJobs()
 		if(AutoLogin && !StartJob(JOB_LOGIN, ClientId, aAutoLoginUser, aAutoLoginPass))
 		{
 			if(pP && !pP->IsDummy())
-				m_pGame->SendChatLoc(ClientId, "account.register.autologin_fail", u8"自动登录排队失败，请使用 /login。");
+				m_pGame->SendChatLoc(ClientId, "account.register.autologin_fail", "自动登录排队失败，请使用 /login。");
 		}
 	}
 
@@ -1285,6 +1494,52 @@ void CAccountSystem::RequestSaveQuestData(int ClientId)
 	}
 }
 
+static void ComChatGuest(IConsole::IResult *pResult, void *pUser)
+{
+	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	const int ClientID = pCtx->m_ClientID;
+
+	if(ClientID < 0 || !pGame->m_apPlayers[ClientID])
+		return;
+	CPlayer *pP = pGame->m_apPlayers[ClientID];
+
+	// Already logged in?
+	if(pP->GetAccountId() >= 0)
+	{
+		pGame->SendChatLoc(ClientID, "guest.already_logged_in", "你已经登录了正式账号。");
+		return;
+	}
+
+	// Already guest?
+	if(pP->IsGuest())
+	{
+		pGame->SendChatLoc(ClientID, "guest.already", "你已经以游客身份进入游戏了。");
+		return;
+	}
+
+	// Set guest flag
+	pP->SetGuest(true);
+
+	// Use a temporary negative account ID to distinguish guest from unauthenticated
+	pP->SetAccountId(-2);
+
+	// Notify
+	pGame->SendChatLoc(ClientID, "guest.welcome", "🚀 欢迎！你正在使用游客模式游玩。");
+	pGame->SendChatLoc(ClientID, "guest.hint", "💡 输入 /register <用户名> <密码> 注册后可保留进度。");
+
+	// Trigger login event (components that need to initialize on login)
+	if(pGame->Core())
+		pGame->Core()->OnPlayerLogin(pP);
+
+	// Teleport guest to the configured world
+	const int GuestWorld = pGame->Config()->m_SvGuestWorld;
+	if(pP->GetCurrentWorldID() != GuestWorld)
+	{
+		pP->ChangeWorld(GuestWorld, nullptr);
+	}
+}
+
 void CAccountSystem::ComChatRegister(IConsole::IResult *pResult, void *pUser)
 {
 	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
@@ -1296,18 +1551,18 @@ void CAccountSystem::ComChatRegister(IConsole::IResult *pResult, void *pUser)
 
 	if(!pAcc || !pAcc->IsEnabled())
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", u8"MySQL 账号系统不可用，请联系管理员。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", "MySQL 账号系统不可用，请联系管理员。");
 		return;
 	}
 	if(!UsernameOk(pU) || !PasswordOk(pPw))
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.register.usage", u8"用户名 3–63（字母数字下划线），密码 6–63 位。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.register.usage", "用户名 3–63（字母数字下划线），密码 6–63 位。");
 		return;
 	}
 	if(!pAcc->StartJob(JOB_REGISTER, pCtx->m_ClientID, pU, pPw))
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.busy", u8"服务器忙，请稍后再试。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.busy", "服务器忙，请稍后再试。");
 	else
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.register.pending", u8"正在注册…");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.register.pending", "正在注册…");
 }
 
 void CAccountSystem::ComChatLogin(IConsole::IResult *pResult, void *pUser)
@@ -1321,29 +1576,29 @@ void CAccountSystem::ComChatLogin(IConsole::IResult *pResult, void *pUser)
 
 	if(!pAcc || !pAcc->IsEnabled())
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", u8"MySQL 账号系统不可用，请联系管理员。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.disabled", "MySQL 账号系统不可用，请联系管理员。");
 		return;
 	}
 	if(!UsernameOk(pU) || !PasswordOk(pPw))
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.usage", u8"用户名或密码格式无效。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.usage", "用户名或密码格式无效。");
 		return;
 	}
 	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
 	if(pP && pP->GetAccountId() >= 0)
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.already", u8"你已经登录。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.already", "你已经登录。");
 		return;
 	}
 	if(IsUsernameLoggedInElsewhere(pGame, pU, pCtx->m_ClientID))
 	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.already_online", u8"该账号已在其他客户端登录。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.already_online", "该账号已在其他客户端登录。");
 		return;
 	}
 	if(!pAcc->StartJob(JOB_LOGIN, pCtx->m_ClientID, pU, pPw))
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.busy", u8"服务器忙，请稍后再试。");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.busy", "服务器忙，请稍后再试。");
 	else
-		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.pending", u8"正在登录…");
+		pGame->SendChatLoc(pCtx->m_ClientID, "account.login.pending", "正在登录…");
 }
 
 void CAccountSystem::ComAccInfo(IConsole::IResult *pResult, void *pUser)
@@ -1354,11 +1609,7 @@ void CAccountSystem::ComAccInfo(IConsole::IResult *pResult, void *pUser)
 	char aBuf[128];
 	str_format(aBuf, sizeof(aBuf), "accounts: enabled=%d mysql_pool=%d",
 		pAcc && pAcc->m_Enabled ? 1 : 0,
-#ifdef CONF_MYSQL
 		pAcc && pAcc->m_Pool.IsInitialized() ? 1 : 0
-#else
-		0
-#endif
 	);
 	pGame->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "acc", aBuf);
 }
@@ -1385,6 +1636,7 @@ static void ComChatLanguage(IConsole::IResult *pResult, void *pUser)
 
 void CAccountSystem::RegisterChatCommands(CCommandManager *pManager, CGameContext *pGame)
 {
+	pManager->AddCommand("guest", "cmd.guest.help", "", ComChatGuest, pGame);
 	pManager->AddCommand("register", "cmd.register.help", "sr", ComChatRegister, pGame);
 	pManager->AddCommand("login", "cmd.login.help", "sr", ComChatLogin, pGame);
 	if(pManager->AddCommand("language", "cmd.language.help", "?s", ComChatLanguage, pGame) != 0)

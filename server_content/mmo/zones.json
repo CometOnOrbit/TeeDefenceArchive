@@ -1,0 +1,30 @@
+{
+  "zones": [
+    {
+      "world": 0,
+      "name": "草原区",
+      "bounds": { "x1": 300, "y1": 300, "x2": 1200, "y2": 1400 },
+      "mobs": [
+        { "def_id": 1, "count": 3 },
+        { "def_id": 2, "count": 2 }
+      ]
+    },
+    {
+      "world": 0,
+      "name": "洞穴区",
+      "bounds": { "x1": 300, "y1": 1400, "x2": 1200, "y2": 1900 },
+      "mobs": [
+        { "def_id": 4, "count": 3 },
+        { "def_id": 5, "count": 2 }
+      ]
+    },
+    {
+      "world": 0,
+      "name": "Boss巢穴",
+      "bounds": { "x1": 1200, "y1": 300, "x2": 1600, "y2": 900 },
+      "mobs": [
+        { "def_id": 50, "count": 1 }
+      ]
+    }
+  ]
+}

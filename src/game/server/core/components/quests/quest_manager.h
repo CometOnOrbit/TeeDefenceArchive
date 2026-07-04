@@ -1,106 +1,80 @@
-#ifndef GAME_SERVER_CORE_COMPONENTS_QUESTS_QUEST_MANAGER_H
-#define GAME_SERVER_CORE_COMPONENTS_QUESTS_QUEST_MANAGER_H
-
-#include <base/vmath.h>
-
-#include <engine/shared/protocol.h>
+#ifndef GAME_SERVER_COMPONENT_QUEST_MANAGER_H
+#define GAME_SERVER_COMPONENT_QUEST_MANAGER_H
 
 #include <game/server/core/tworld_component.h>
-#include <game/server/core/tools/event_listener.h>
+#include "quest_data.h"
+#include "quest_board_data.h"
+#include "scenario_manager.h"
 
-class CCommandManager;
 class CPlayer;
+class CCharacter;
 
-enum
+class CQuestManager : public TWorldComponent
 {
-	MAX_QUESTS = 32,
-	MAX_QUEST_STEPS = 8,
-	MAX_QUEST_UNLOCKS = 8,
-	MAX_PLAYER_UNLOCKS = 32,
-	QUEST_KEY_LEN = 32,
-};
+void InitQuestStepDefeats(CQuestDescription* pQuest, int Step, int BotID, int RequiredCount, const char *pZoneName = nullptr);
+void InitQuestStepMoveAction(CQuestDescription* pQuest, int Step, vec2 Pos, int WorldID, const char* pTaskName);
+void InitQuestStepItems(CQuestDescription* pQuest, int Step, int ItemID, int Value, int Type);
+void InitQuestStepDialog(CQuestDescription* pQuest, int Step, const char* pNpcId, vec2 NpcPos, int NpcWorld);
+void InitQuestStepScenario(CQuestDescription* pQuest, int Step, const char* pScenarioJson);
 
-struct SQuestStepDef
-{
-	char m_aType[24];
-	char m_aNpc[QUEST_KEY_LEN];
-	int m_World;
-	float m_X;
-	float m_Y;
-	float m_Radius;
-	int m_Count;
-	int m_ItemId;
-};
-
-struct SQuestDef
-{
-	char m_aId[QUEST_KEY_LEN];
-	char m_aTitleKey[48];
-	bool m_AutoGrant;
-	int m_NumSteps;
-	SQuestStepDef m_aSteps[MAX_QUEST_STEPS];
-	int m_NumUnlocks;
-	char m_aaUnlocks[MAX_QUEST_UNLOCKS][QUEST_KEY_LEN];
-	int m_RewardItem;
-	int m_RewardNum;
-	char m_aNextQuest[QUEST_KEY_LEN];
-};
-
-struct SPlayerQuestState
-{
-	bool m_Active;
-	bool m_Completed;
-	int m_Step;
-	int m_SubProgress;
-};
-
-class CQuestManager : public TWorldComponent, public IGameEventListener
-{
-	SQuestDef m_aQuests[MAX_QUESTS];
-	int m_NumQuests;
-	SPlayerQuestState m_aaState[MAX_CLIENTS][MAX_QUESTS];
-	char m_aaaUnlocks[MAX_CLIENTS][MAX_PLAYER_UNLOCKS][QUEST_KEY_LEN];
-	int m_aNumUnlocks[MAX_CLIENTS];
+CScenarioManager* m_pScenarioManager{};
 
 public:
-	CQuestManager();
+CQuestManager() = default;
 
-	void OnInitWorld(const char *pWhereLocalWorld) override;
-	void OnPlayerLogin(CPlayer *pPlayer) override;
-	void OnClientReset(int ClientID) override;
-	void OnCharacterSpawn(CPlayer *pPlayer) override;
-	void OnTick() override;
-	void OnShutdown() override;
+void OnPreInit() override;
+void OnInitWorld(const char* pWhereLocalWorld) override;
+void OnPlayerLogin(CPlayer* pPlayer) override;
+void OnTick() override;
+void OnCharacterSpawn(CPlayer* pPlayer) override;
 
-	void OnPlayerKill(CPlayer *pKiller, int ZombId) override;
+void Init();
+void Reset();
 
-	void RegisterChatCommands(CCommandManager *pMgr);
-	void RegisterVoteCommands(CCommandManager *pMgr);
+// JSON quest definitions (server_content/quests.json)
+void LoadQuestDefs();
+void InitHardcodedQuests();
 
-	void BuildQuestListPage(int ClientID);
-	void BuildQuestDetailPage(int ClientID, int QuestIdx);
+void ShowQuestList(CPlayer* pPlayer) const;
+void ShowQuestBoardList(CPlayer* pPlayer) const;
 
-	void TryReachProgress(CPlayer *pPlayer, vec2 Pos);
-	void TryKillProgress(CPlayer *pPlayer);
-	void TryCollectProgress(CPlayer *pPlayer);
-	bool TryTalkNpc(CPlayer *pPlayer, const char *pNpcId);
-	void RequestPersist(int ClientID);
+void AcceptQuest(CPlayer* pPlayer, int QuestID);
+void RefuseQuest(CPlayer* pPlayer, int QuestID);
+void RestartQuest(CPlayer* pPlayer, int QuestID);
 
-	bool HasTravelUnlock(CPlayer *pPlayer, const char *pKey) const;
-	bool IsQuestCompleted(CPlayer *pPlayer, const char *pQuestId) const;
-	void LoadPlayerData(int ClientID, const char *pJson);
-	void SavePlayerData(int ClientID, char *pOut, int OutSize) const;
+void TryAcceptNextQuestChain(CPlayer* pPlayer, int BaseQuestID) const;
+
+CPlayerQuest* GetQuest(int ClientID, int QuestID) const;
+array<CPlayerQuest*> GetQuests(int ClientID) const;
+
+void AddBoard(CEntityQuestBoard* pBoard);
+void RemoveBoard(CEntityQuestBoard* pBoard);
+
+void OnPlayerKill(CPlayer* pPlayer, int VictimID, const char *pZoneName = nullptr);
+void RequestPersist(int ClientID);
+
+void RegisterChatCommands(class CCommandManager* pManager);
+void RegisterVoteCommands(class CCommandManager* pManager);
+
+void BuildQuestListPage(int ClientID);
+void BuildQuestDetailPage(int ClientID, int QuestIdx);
+bool OnVoteMenuPage(int ClientID, int Page) override;
+
+void TryTalkNpc(class CPlayer* pPlayer, const char* pNpcId, float NpcPosX = 0, float NpcPosY = 0, int NpcWorld = -1);
+bool HasTravelUnlock(class CPlayer* pPlayer, const char* pQuestName);
+
+CScenarioManager* GetScenarioManager() { return m_pScenarioManager; }
+
+static CPlayerQuest* FindPlayerQuest(int ClientID, int QuestID);
+
+array<CEntityQuestBoard*> m_vpBoards{};
 
 private:
-	void LoadQuests();
-	int FindQuestIndex(const char *pId) const;
-	void GrantAutoQuests(CPlayer *pPlayer);
-	void AdvanceStep(CPlayer *pPlayer, int QuestIdx);
-	void CompleteQuest(CPlayer *pPlayer, int QuestIdx);
-	void AddUnlock(CPlayer *pPlayer, const char *pKey);
-	void ActivateQuest(CPlayer *pPlayer, const char *pQuestId);
-	bool HasUnlock(int ClientID, const char *pKey) const;
-	bool StepMatches(const SQuestStepDef &Step, CPlayer *pPlayer, vec2 Pos, const char *pNpcId, bool Talk, bool Kill, bool Collect) const;
+void InitQuests();
+void InitQuestBoards();
+
+void UpdatePlayerQuests();
+void UpdatePlayerObjectives();
 };
 
 #endif

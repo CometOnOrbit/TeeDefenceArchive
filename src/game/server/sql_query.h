@@ -4,10 +4,8 @@
 
 class CConfig;
 
-#ifdef CONF_MYSQL
 bool SqlConnectionLost(int Err);
 bool SqlExecQuery(void *pSql, CConfig *pConfig, const char *pQuery);
 void SqlLogFailedQuery(CConfig *pConfig, const char *pReason, const char *pQuery);
-#endif
 
 #endif

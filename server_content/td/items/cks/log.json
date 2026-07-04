@@ -1,0 +1,11 @@
+{
+  "item": {
+    "type": 4,
+    "id": 0,
+    "name": "木材",
+    "desc": "最基本的材料。",
+    "health": 50,
+    "name_key": "$td.cks.log",
+    "description_key": "$td.cks.0.desc"
+  }
+}

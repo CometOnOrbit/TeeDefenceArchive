@@ -208,7 +208,7 @@ bool CMultiWorlds::LoadFromJson(IKernel *pKernel, IStorage *pStorage, const char
 		bool TravelLocked = false;
 		if(El["travel_locked"].type == json_boolean)
 			TravelLocked = El["travel_locked"].u.boolean != 0;
-		else if(WorldTypeFromString(pMode) != WorldType::Story)
+		else if(WorldTypeFromString(pMode) != WorldType::RPG)
 			TravelLocked = true;
 
 		char aRequiredQuest[32] = {0};
@@ -226,15 +226,97 @@ bool CMultiWorlds::LoadFromJson(IKernel *pKernel, IStorage *pStorage, const char
 		}
 		if(!m_apWorlds[WorldID]->MapDetail()->Load(pStorage))
 		{
-			dbg_msg("multiworld", "failed to load map maps/%s for world %d", aMap, WorldID);
-			Clear(true);
-			return false;
+			dbg_msg("multiworld", "failed to load map maps/%s for world %d, skipping", aMap, WorldID);
+			delete m_apWorlds[WorldID];
+			m_apWorlds[WorldID] = 0;
+			continue;
 		}
 		dbg_msg("multiworld", "world %d: %s mode=%s (maps/%s)", WorldID, aTitle, WorldTypeName(Detail.GetType()), aMap);
 	}
 
 	m_NextIsReloading = true;
 	return m_NumInitialized > 0;
+}
+
+int CMultiWorlds::AddWorld(IKernel *pKernel, IStorage *pStorage, const char *pName, const char *pMapPath, const CWorldDetail &Detail)
+{
+	// 1. Find free slot
+	int WorldID = -1;
+	for(int i = 0; i < ENGINE_MAX_WORLDS; i++)
+	{
+		if(!m_apWorlds[i])
+		{
+			WorldID = i;
+			break;
+		}
+	}
+	if(WorldID < 0)
+		return -1;
+
+	// 2. Create CWorld
+	m_apWorlds[WorldID] = new CWorld(WorldID, pName, pMapPath, Detail);
+	CWorld *pW = m_apWorlds[WorldID];
+
+	// 3. Create EngineMap
+	pW->m_pMapDetail->m_pMap = CreateEngineMap();
+
+	// 4. Create GameServer and set WorldID
+	pW->m_pGameServer = CreateGameServer();
+	pW->m_pGameServer->SetWorldID(WorldID);
+
+	// 5. Register kernel interfaces
+	bool RegisterFail = false;
+	RegisterFail = RegisterFail || !pKernel->RegisterInterface(pW->m_pMapDetail->m_pMap, WorldID);
+	RegisterFail = RegisterFail || !pKernel->RegisterInterface(static_cast<IMap *>(pW->m_pMapDetail->m_pMap), WorldID);
+	RegisterFail = RegisterFail || !pKernel->RegisterInterface(pW->m_pGameServer, WorldID);
+	if(RegisterFail)
+	{
+		delete pW;
+		m_apWorlds[WorldID] = nullptr;
+		return -1;
+	}
+
+	// 6. Load map
+	if(!pW->MapDetail()->Load(pStorage))
+	{
+		dbg_msg("multiworld", "WARNING: failed to load %s for dynamic world %d", pMapPath, WorldID);
+		// Map load failure is non-fatal for dynamic worlds
+	}
+
+	// 7. Call game server lifecycle methods
+	pW->m_pGameServer->OnInit();
+	pW->m_pGameServer->OnConsoleInit();
+
+	// 8. Update m_NumInitialized
+	if(WorldID >= m_NumInitialized)
+		m_NumInitialized = WorldID + 1;
+
+	dbg_msg("multiworld", "dynamic world %d: %s (%s)", WorldID, pName, pMapPath);
+	return WorldID;
+}
+
+bool CMultiWorlds::RemoveWorld(int WorldID)
+{
+	if(WorldID < 0 || WorldID >= ENGINE_MAX_WORLDS || !m_apWorlds[WorldID])
+		return false;
+
+	CWorld *pW = m_apWorlds[WorldID];
+	IGameServer *pGS = pW->GameServer();
+
+	// 1. Call shutdown on the game server
+	if(pGS)
+		pGS->OnShutdown();
+
+	// 2. Delete the world (this also deletes GameServer and MapDetail)
+	delete pW;
+	m_apWorlds[WorldID] = nullptr;
+
+	// 3. Shrink m_NumInitialized if trailing slots are empty
+	while(m_NumInitialized > 0 && !m_apWorlds[m_NumInitialized - 1])
+		m_NumInitialized--;
+
+	dbg_msg("multiworld", "removed dynamic world %d", WorldID);
+	return true;
 }
 
 const char *CMultiWorlds::GetWorldName(int WorldID) const

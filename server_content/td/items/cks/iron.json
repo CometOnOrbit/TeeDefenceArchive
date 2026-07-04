@@ -1,0 +1,11 @@
+{
+  "item": {
+    "type": 4,
+    "id": 3,
+    "name": "铁",
+    "desc": "这可能是你的第一步。",
+    "health": 8000,
+    "name_key": "$td.cks.iron",
+    "description_key": "$td.cks.3.desc"
+  }
+}

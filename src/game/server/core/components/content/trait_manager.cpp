@@ -182,7 +182,7 @@ bool CTraitManager::SelectTrait(CPlayer *pPlayer, const char *pTraitId)
 	{
 		if(pPlayer->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num < 100)
 		{
-			GS()->SendChatLoc(CID, "trait.change.need_heart", u8"更换特质需要 100 个僵尸之心。");
+			GS()->SendChatLoc(CID, "trait.change.need_heart", "更换特质需要 100 个僵尸之心。");
 			return false;
 		}
 		pPlayer->m_AccData.m_aItems[ITEM_ZOMBIEHEART].m_Num -= 100;
@@ -196,7 +196,18 @@ bool CTraitManager::SelectTrait(CPlayer *pPlayer, const char *pTraitId)
 
 	char aKey[48];
 	str_format(aKey, sizeof(aKey), "trait.%s", pDef->m_aId);
-	GS()->SendChatLocF(CID, "trait.selected", u8"已选择特质：%s", GS()->Loc(CID, aKey, pDef->m_aId));
+	GS()->SendChatLocF(CID, "trait.selected", "已选择特质：%s", GS()->Loc(CID, aKey, pDef->m_aId));
+	return true;
+}
+
+bool CTraitManager::OnVoteMenuPage(int ClientID, int Page)
+{
+	if(Page != PAGE_TRAITS)
+		return false;
+	if(!GS() || !Core() || !Core()->VoteMenuManager())
+		return false;
+	Core()->VoteMenuManager()->SetVoteLastPage(PAGE_MENU);
+	BuildTraitVotePage(ClientID);
 	return true;
 }
 
@@ -210,8 +221,8 @@ void CTraitManager::BuildTraitVotePage(int ClientID)
 	const char *pCurrent = GetPlayerTrait(ClientID);
 
 	pVote->SetVoteBuildClientID(ClientID);
-	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "trait.menu.title", u8"特质"));
-	pVote->AddVote_EmptyHint(GS()->Loc(ClientID, "trait.change.hint", u8"首次选择免费；更换需 100 僵尸之心"));
+	pVote->AddVote_PageHeader(GS()->Loc(ClientID, "trait.menu.title", "特质"));
+	pVote->AddVote_EmptyHint(GS()->Loc(ClientID, "trait.change.hint", "首次选择免费；更换需 100 僵尸之心"));
 	pVote->AddVote_Separator();
 
 	for(int i = 0; i < m_NumTraits; i++)
@@ -222,9 +233,9 @@ void CTraitManager::BuildTraitVotePage(int ClientID)
 		const char *pName = GS()->Loc(ClientID, aKey, Def.m_aId);
 		char aLine[VOTE_DESC_LENGTH];
 		if(pCurrent && str_comp(pCurrent, Def.m_aId) == 0)
-			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "trait.entry.active", u8"✓ %s"), pName);
+			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "trait.entry.active", "✓ %s"), pName);
 		else
-			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "trait.entry", u8"▹ %s"), pName);
+			str_format(aLine, sizeof(aLine), GS()->Loc(ClientID, "trait.entry", "▹ %s"), pName);
 		char aCmd[48];
 		str_format(aCmd, sizeof(aCmd), "ccv_traitselect %d", i);
 		pVote->AddVote(aLine, aCmd, ClientID);
@@ -235,7 +246,7 @@ void CTraitManager::BuildTraitVotePage(int ClientID)
 		char aDescKey[56];
 		str_format(aDescKey, sizeof(aDescKey), "trait.%s.desc", pCurrent);
 		pVote->AddVote_Separator();
-		pVote->AddVote_Section(GS()->Loc(ClientID, "trait.current", u8"当前特质"));
+		pVote->AddVote_Section(GS()->Loc(ClientID, "trait.current", "当前特质"));
 		pVote->AddVote_TextLine(GS()->Loc(ClientID, aDescKey, pCurrent));
 	}
 	pVote->AddVote_PageFooter();

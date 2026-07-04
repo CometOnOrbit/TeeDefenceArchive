@@ -19,6 +19,7 @@ MACRO_CONFIG_STR(Bindaddr, bindaddr, 128, "", CFGFLAG_SAVE | CFGFLAG_CLIENT | CF
 MACRO_CONFIG_INT(SvPort, sv_port, 8303, 0, 0, CFGFLAG_SAVE | CFGFLAG_SERVER, "Port to use for the server")
 MACRO_CONFIG_STR(SvMap, sv_map, 128, "dm1", CFGFLAG_SAVE | CFGFLAG_SERVER, "Map to use on the server")
 MACRO_CONFIG_INT(SvShowWorldWhenConnect, sv_show_world_when_connect, 0, 0, ENGINE_MAX_WORLDS - 1, CFGFLAG_SERVER, "Default world ID for new connections")
+MACRO_CONFIG_INT(SvGuestWorld, sv_guest_world, 3, 0, ENGINE_MAX_WORLDS - 1, CFGFLAG_SERVER, "Default world for guest (/guest) players")
 MACRO_CONFIG_INT(SvMaxClients, sv_max_clients, MAX_HUMAN_CLIENTS, 1, MAX_HUMAN_CLIENTS, CFGFLAG_SAVE | CFGFLAG_SERVER, "Maximum number of human players (slots 0–63)")
 MACRO_CONFIG_INT(SvMaxClientsPerIP, sv_max_clients_per_ip, 4, 1, MAX_HUMAN_CLIENTS, CFGFLAG_SAVE | CFGFLAG_SERVER, "Maximum number of clients with the same IP that can connect to the server")
 MACRO_CONFIG_INT(SvMapDownloadSpeed, sv_map_download_speed, 8, 1, 16, CFGFLAG_SAVE | CFGFLAG_SERVER, "Number of map data packages a client gets on each request")
@@ -74,7 +75,7 @@ MACRO_CONFIG_INT(SvTurretRadius, sv_turret_radius, 32, 8, 256, CFGFLAG_SERVER, "
 MACRO_CONFIG_INT(SvTurretFireRange, sv_turret_fire_range, 800, 64, 4000, CFGFLAG_SERVER, "Turret auto-aim range vs dummy zombies (pixels)")
 MACRO_CONFIG_INT(SvTurretFireCooldown, sv_turret_fire_cooldown, 30, 1, 600, CFGFLAG_SERVER, "Ticks between turret shots")
 
-MACRO_CONFIG_INT(SvMysqlEnable, sv_mysql_enable, 1, 1, 1, CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL account system (required; must be 1)")
+MACRO_CONFIG_INT(SvMysqlEnable, sv_mysql_enable, 1, 0, 1, CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL account system (set 0 to skip account init for local testing)")
 MACRO_CONFIG_STR(SvMysqlHost, sv_mysql_host, 128, "127.0.0.1", CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL host")
 MACRO_CONFIG_INT(SvMysqlPort, sv_mysql_port, 3306, 0, 65535, CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL TCP port (3306 default)")
 MACRO_CONFIG_STR(SvMysqlUser, sv_mysql_user, 64, "teedefense", CFGFLAG_SAVE | CFGFLAG_SERVER, "MySQL user")
@@ -83,5 +84,8 @@ MACRO_CONFIG_STR(SvMysqlDatabase, sv_mysql_database, 64, "teedefense", CFGFLAG_S
 MACRO_CONFIG_INT(SvMysqlPoolSize, sv_mysql_pool_size, 8, 1, 32, CFGFLAG_SERVER, "MySQL connections in pool (job worker threads borrow)")
 MACRO_CONFIG_INT(SvSqlDmlMaxRetries, sv_sql_dml_max_retries, 3, 1, 10, CFGFLAG_SERVER, "Retries for failed MySQL DML after transient connection errors")
 MACRO_CONFIG_STR(SvSqlFailedLogFile, sv_sql_failed_log_file, 128, "sql_failed_log.txt", CFGFLAG_SERVER, "Append failed SQL queries to this file (empty = disabled)")
+
+MACRO_CONFIG_INT(SvMapUpdateRate, sv_mapupdaterate, 5, 1, 100, CFGFLAG_SERVER, "Bot IdMap update interval in ticks (MRPG-style slot mapping)")
+MACRO_CONFIG_INT(SvMapDistanceActiveBot, sv_map_distance_active_bot, 1000, 400, 10000, CFGFLAG_SERVER, "Max distance for active bot IdMap (MRPG sv_map_distance_active_bot)")
 
 #endif

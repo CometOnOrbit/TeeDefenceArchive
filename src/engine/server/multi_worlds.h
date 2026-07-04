@@ -75,6 +75,8 @@ public:
 	~CMultiWorlds();
 
 	bool LoadFromJson(IKernel *pKernel, IStorage *pStorage, const char *pJsonPath);
+	int AddWorld(IKernel *pKernel, IStorage *pStorage, const char *pName, const char *pMapPath, const CWorldDetail &Detail);
+	bool RemoveWorld(int WorldID);
 
 	CWorld *GetWorld(int WorldID) const
 	{

@@ -165,6 +165,7 @@ class CItemHelper
 	SToolStat m_aToolDmg[NUM_ITEM];
 	int m_aMatHealth[NUM_ITEM];
 	char m_aaItemName[NUM_ITEM][64];
+	char m_aaItemNameKey[NUM_ITEM][64];
 	char m_aaItemDesc[NUM_ITEM][128];
 	int m_aItemType[NUM_ITEM];
 	int m_aItemMaxStack[NUM_ITEM];

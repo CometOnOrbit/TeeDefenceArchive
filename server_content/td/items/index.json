@@ -1,0 +1,22 @@
+{
+    "item indices": [
+        "server_content/td/items/cks/log.json",
+        "server_content/td/items/cks/coal.json",
+        "server_content/td/items/cks/copper.json",
+        "server_content/td/items/cks/iron.json",
+        "server_content/td/items/cks/golden.json",
+        "server_content/td/items/cks/diamond.json",
+        "server_content/td/items/cks/enegry.json",
+        "server_content/td/items/tools/sword.json",
+        "server_content/td/items/tools/axe.json",
+        "server_content/td/items/tools/pickaxe.json",
+        "server_content/td/items/tools/helmet.json",
+        "server_content/td/items/tools/chest.json",
+        "server_content/td/items/tools/leggings.json",
+        "server_content/td/items/special/cards.json",
+        "server_content/td/items/special/parts.json",
+        "server_content/td/items/special/turret.json",
+        "server_content/td/items/special/zombie-heart.json",
+        "server_content/td/items/special/materials_extra.json"
+    ]
+}

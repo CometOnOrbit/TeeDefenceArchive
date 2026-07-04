@@ -8,9 +8,18 @@
 
 #include <generated/protocol.h>
 
+#include <memory>
+#include <map>
+#include <vector>
+
 #include "alloc.h"
+#include "core/attribute_types.h"
 #include "item_system.h"
 #include "turret_ammo.h"
+#include "core/components/inventory/equipped_slots.h"
+#include "core/components/mmo/mmo_item.h"
+#include "core/components/accounts/profession_data.h"
+#include "core/tools/motd_menu.h"
 class CTurret;
 class CTurretPreview;
 
@@ -64,6 +73,7 @@ struct CTeeInfos
 // player object
 class CPlayer
 {
+	friend class CCharacterBotAI;
 	MACRO_ALLOC_POOL_ID()
 
 public:
@@ -81,6 +91,7 @@ public:
 	int GetTeam() const { return m_Team; }
 	int GetCID() const { return m_ClientID; }
 	bool IsDummy() const { return m_Dummy; }
+	void SetDummy(bool Val) { m_Dummy = Val; }
 
 	int64 GetAccountId() const { return m_AccountId; }
 	void SetAccountId(int64 Id) { m_AccountId = Id; }
@@ -89,8 +100,11 @@ public:
 
 	void InitZombie(int Zomb);
 	void InitQuestNpc(int DefIdx);
-	bool IsQuestNpc() const { return m_Dummy && m_QuestNpcDefIdx >= 0; }
+	bool IsQuestNpc() const { return m_QuestNpcDefIdx >= 0; }
 	int GetQuestNpcDefIdx() const { return m_QuestNpcDefIdx; }
+	float GetActiveDistance() const;
+	bool IsSnappingInactiveForClient(int ClientID) const;
+	bool IsVisibleForClient(int ClientID) const;
 	int GetZomb() const { return m_Zomb; }
 	int GetZombSub(int i) const { return (i >= 0 && i < NUM_ZOMB_SUB) ? m_aZombSub[i] : ZOMB_NONE; }
 	void SetZombSub(int i, int Type);
@@ -133,6 +147,9 @@ public:
 	void OnPredictedInput(CNetObj_PlayerInput *NewInput);
 	void OnDisconnect();
 
+	// MRPG-style: F3/F4 vote result dispatch (dialog advance, etc.)
+	bool ParseVoteOptionResult(int Vote);
+
 	void KillCharacter(int Weapon = WEAPON_GAME);
 	CCharacter *GetCharacter();
 	bool CreateTurret(vec2 Pos = vec2(0.0f, 0.0f));
@@ -156,6 +173,10 @@ public:
 
 	// states if the client is chatting, accessing a menu etc.
 	int m_PlayerFlags;
+
+	// Previous input snapshot for key event detection (MRPG-style)
+	CNetObj_PlayerInput *m_pLastInput;
+	bool m_LastInputInit;
 
 	// used for snapping to just update latency if the scoreboard is active
 	int m_aActLatency[MAX_CLIENTS];
@@ -185,6 +206,7 @@ public:
 	int m_LastEmoteTick;
 	int m_LastKillTick;
 	int m_LastReadyChangeTick;
+	int m_LastDialogTick;
 
 	// player skin
 	CTeeInfos m_TeeInfos;
@@ -243,12 +265,191 @@ public:
 		int m_Max;
 	} m_Latency;
 
+public:
+	bool IsGuest() const { return m_IsGuest; }
+	void SetGuest(bool Guest) { m_IsGuest = Guest; }
+
+	// MMO mode data
+	int m_MMOLevel;
+	int m_MMOExp;
+	int m_MMOGold;
+	int m_MMOSkillPoints;
+	int m_MMOReputation; // 声望/位阶 — 用于解锁首都等区域
+	int m_MMOAttack;
+	int m_MMODefense;
+	bool m_MMODirty;
+	CMMOInventory m_MMOInventory; // MRPG-style deque<CItem>
+	EquippedSlots m_EquippedSlots;
+
+	static constexpr int MMO_WEAPON_LOADOUT_SIZE = 4;
+	int m_aMeleeLoadout[MMO_WEAPON_LOADOUT_SIZE];   // EquipHammer items (-1 = empty)
+	int m_aRangedLoadout[MMO_WEAPON_LOADOUT_SIZE];  // 0=Gun, 1=Shotgun, 2=Grenade, 3=Laser
+	int m_aWeaponBar[MMO_WEAPON_LOADOUT_SIZE];      // hotbar slots 1-4 (-1 = empty)
+
+	void InitWeaponLoadouts();
+	bool IsMMOWeaponEquipped(int ItemID) const;
+	int FindMeleeLoadoutIndex(int ItemID) const;
+	int FindRangedLoadoutIndex(int ItemID) const;
+	int FindWeaponBarIndex(int ItemID) const;
+	int FirstEmptyMeleeLoadout() const;
+	int FirstEmptyWeaponBarSlot() const;
+	int FirstNonEmptyMeleeLoadout() const;
+	int FirstNonEmptyRangedLoadout() const;
+	void RemoveWeaponFromLoadouts(int ItemID);
+	void AutoFillWeaponBar(int ItemID);
+	void MigrateWeaponLoadoutFromEquippedSlots();
+	void EnsureWeaponBarFromLoadouts();
+	static int RangedLoadoutIndexForItemType(ItemType Type);
+	static bool IsMMOWeaponItemType(ItemType Type);
+
+	// MMO skill tree
+	struct SMMOSkillState
+	{
+		int m_SkillID;
+		int m_Level;
+	};
+	SMMOSkillState m_aMMOSkills[8];
+	int m_NumMMOSkills;
+
+	void ApplyMMOSkillBonuses();
+	int GetMMOSkillLevel(int SkillID) const;
+
+	// Level & attribute methods
+	void AddMMOExperience(int Amount);
+	void RecalcMMOStats();
+
+	// MRPG-style broadcast HUD: builds stats panel (HP/Level/Gold/Weapon/Skills)
+	void FormatBroadcastBasicStats(char *pBuffer, int Size, const char *pAppendStr = nullptr);
+
+	// Level-based stat scaling (MRPG) — profession-aware
+	int GetMaxHealth() const
+	{
+		return GetBaseMaxHealth();
+	}
+
+	// MMO bot data (non-null = this player slot is an MMO mob)
+	struct SMMOBotData *m_pMMOBotData = nullptr;
+	struct SMMOQuestMobInfo *m_pQuestMobInfo = nullptr;
+
+	// Profession
+	EProfession m_Profession{PROF_NONE};
+
+	// MRPG-style MOTD menu data (NPC dialog via MOTD)
+	CMotdPlayerData m_MotdData;
+	std::unique_ptr<MotdMenu> m_pMotdMenu;
+
+	// Skill slots 3/4/5: skill IDs bound to keyboard slots (-1 = empty)
+	int m_aSkillSlots[3];
+
+	// Item quick slots: inventory slot indices bound to emoticon keys 0-3
+	int m_aItemQuickSlots[4];
+
+	// MRPG-style stat map
+	std::map<AttributeIdentifier, int> m_aStats;
+
+	// Helper methods
+	int GetStat(AttributeIdentifier ID) const;
+	void SetStat(AttributeIdentifier ID, int Value);
+	void SyncStatsFromFields(); // Transitional: sync m_aStats from old fields
+
+	// ── Story Flag System ─────────────────────────────────────
+	// Generic key-value story flags, persisted as story_data string in DB.
+	// Used via dialog FLAG/SET_FLAG conditions and chat commands.
+	std::map<std::string, int> m_StoryFlags;
+
+	// Convenience: get/set a story flag (0 = false/unset)
+	int GetStoryFlag(const char *pKey) const;
+	void SetStoryFlag(const char *pKey, int Value);
+	bool HasStoryFlag(const char *pKey) const { return GetStoryFlag(pKey) != 0; }
+
+	// TRPG六维 → 有效战斗属性
+	int GetEffectiveMeleeAttack() const;   // STR * 2
+	int GetEffectiveRangedAttack() const;  // DEX * 2
+	int GetEffectiveDefense() const;       // CON * 2
+	int GetMaxMana() const;                // 50 + INT * 5 + Level * 3
+
+	int GetMMOItemEnchant(int ItemID) const;
+	int GetMMOEquippedAttributeSum(AttributeIdentifier ID) const;
+	int GetMMOMaxAmmo() const;
+	int GetMMOAmmoRegenPercent() const;
+	bool UsesMMOFiniteAmmo() const;
+
+	// Guild
+	int m_GuildID{-1};
+	int m_MatchTeam{0};       // 0=uninvolved, -1=challenger, 1=challenged (in match)
+	int m_OriginalWorld{0};   // world index before match teleport
+
+	int GetGuildID() const { return m_GuildID; }
+
+	EProfession GetProfession() const { return m_Profession; }
+	void SetProfession(EProfession Prof) { m_Profession = Prof; }
+	int GetBaseMaxHealth() const;
+	float GetBaseAttack() const;
+	float GetBaseDefense() const;
+
+	// Defence → RPG reward bridge
+	int m_DefencePendingExp = 0;
+
+	// Group invite tracking (MRPG-style)
+	int m_GroupInviteGroupID = 0;
+	time_t m_GroupInviteExpire = 0;
+
+	// Friend list (Tier 1 social)
+	std::vector<int64> m_aFriends;
+	bool m_aFriendsDirty = false;
+
+	// Daily checkin
+	int m_CheckinStreak = 0;
+	int m_LastCheckinDate = 0;  // YYYYMMDD format
+
+	// MMO inventory filters (MRPG-style tabs)
+	int m_InventoryFilterGroup = -1; // (int)ItemGroup, -1 = none selected
+	int m_InventoryFilterType = -1;  // (int)ItemType, -1 = all types in group
+
+	// Daily item recycle/sell limits (anti-inflation)
+	int m_LastSellDate = 0;     // YYYYMMDD
+	int m_DailySellGold = 0;     // gold earned from NPC recycle today
+	int m_DailySellCount = 0;    // recycle transactions today
+
+		// ── Pet System ────────────────────────────────────────────
+	int m_PetID = 0;              // 0 = 无宠物
+	char m_aPetName[32] = {0};    // 宠物名字
+	int m_PetLevel = 1;           // 宠物等级
+	class CPet *m_pPet = nullptr; // 当前召唤的宠物实体
+
+	// ── Auto Pathfinding ───────────────────────────────────────
+	bool m_AutoMoving = false;
+	int m_AutoTargetX = 0;
+	int m_AutoTargetY = 0;
+	int m_FollowTargetCID = -1;
+
+	// ── Fashion / Appearance System ─────────────────────────
+	int m_FashionItemID = 0;        // 0 = 无时装
+
+	// ── Mount System ────────────────────────────────────────
+	bool m_IsMounted = false;      // 是否骑乘
+	int m_MountSpeedBonus = 50;     // 移速加成百分比
+	int m_MountSkin = 0;            // 坐骑外观ID (0=默认)
+
+	// ── Housing System ───────────────────────────────────────
+	bool m_HasHouse = false;
+	int m_HouseLevel = 1;
+
+	// ── Marriage System ──────────────────────────────────────
+	int64 m_SpouseAccountID = 0;  // 配偶的 AccountID，0=单身
+	int m_MarriageDate = 0;       // 结婚日期 YYYYMMDD
+
+	// ── World Boss System ────────────────────────────────────────
+	bool m_IsWorldBoss = false;  // 该玩家是世界 Boss（由 CWorldBossManager 控制）
+
 private:
 	CCharacter *m_pCharacter;
 	CGameContext *m_pGameServer;
 
 	CGameContext *GameServer() const { return m_pGameServer; }
 	IServer *Server() const;
+
+	bool m_IsGuest;
 
 	//
 	bool m_Spawning;

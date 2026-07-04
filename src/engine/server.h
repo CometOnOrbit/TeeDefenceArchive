@@ -7,6 +7,10 @@
 #include "kernel.h"
 #include "message.h"
 #include <engine/shared/world_detail.h>
+#include <engine/shared/protocol.h>
+
+class IInputEvents;
+class CMultiWorlds;
 
 class IServer : public IInterface
 {
@@ -27,6 +31,8 @@ public:
 
 	int Tick() const { return m_CurrentGameTick; }
 	int TickSpeed() const { return m_TickSpeed; }
+
+	virtual class IInputEvents *Input() const = 0;
 
 	virtual const char *ClientName(int ClientID) const = 0;
 	virtual const char *ClientClan(int ClientID) const = 0;
@@ -78,6 +84,43 @@ public:
 	virtual bool IsClientSlotEmpty(int ClientID) const = 0;
 	virtual void DummyJoin(int ClientID, const char *pName, int WorldID) = 0;
 	virtual void DummyRemove(int ClientID) = 0;
+	virtual void InitClientBot(int ClientID) = 0;
+
+	// Per-client ID map (MRPG-style): maps server slots to display slots 0-63
+	virtual int *GetIdMap(int ClientID) = 0;
+
+	// Translate a server slot to a display slot for a specific recipient
+	bool Translate(int &Target, int Client)
+	{
+		if(Target < MAX_HUMAN_CLIENTS || Client >= MAX_HUMAN_CLIENTS)
+			return true;
+
+		int *pMap = GetIdMap(Client);
+		for(int i = MAX_HUMAN_CLIENTS; i < VANILLA_MAX_CLIENTS; i++)
+		{
+			if(Target == pMap[i])
+			{
+				Target = i;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	// Reverse: convert a display slot back to a server slot
+	bool ReverseTranslate(int &Target, int Client)
+	{
+		if(Target < MAX_HUMAN_CLIENTS || Client >= MAX_HUMAN_CLIENTS)
+			return true;
+
+		Target = clamp(Target, 0, VANILLA_MAX_CLIENTS - 1);
+		int *pMap = GetIdMap(Client);
+		if(pMap[Target] == -1)
+			return false;
+		Target = pMap[Target];
+		return true;
+	}
 
 	virtual int GetClientWorldID(int ClientID) const = 0;
 	virtual void ChangeWorld(int ClientID, int NewWorldID) = 0;
@@ -99,8 +142,25 @@ public:
 	virtual void SetChangeWorldSpawnPos(int ClientID, vec2 Pos) = 0;
 	virtual bool ConsumeChangeWorldSpawnPos(int ClientID, vec2 *pPos) = 0;
 
+	virtual CMultiWorlds *MultiWorlds() const = 0;
+
 	virtual void ReleaseClientInAllWorlds(int ClientID) = 0;
 	virtual void ReleaseClientInOtherWorlds(int ClientID, int KeepWorldID) = 0;
+
+	enum
+	{
+		NIGHT_TYPE = 0,
+		MORNING_TYPE = 1,
+		DAY_TYPE = 2,
+		EVENING_TYPE = 3,
+	};
+
+	virtual int GetMinuteGameTime() const = 0;
+	virtual int GetHourGameTime() const = 0;
+	virtual int GetOffsetGameTime() const = 0;
+	virtual void SetOffsetGameTime(int Hour) = 0;
+	virtual const char *GetStringTypeday() const = 0;
+	virtual int GetCurrentTypeday() const = 0;
 };
 
 class IGameServer : public IInterface
@@ -146,6 +206,8 @@ public:
 
 	virtual bool TimeScore() const = 0;
 	virtual void OnUpdatePlayerServerInfo(class CJsonWriter *pJsonWriter, int ClientID) = 0;
+
+	virtual void OnDaytypeChange(int NewDaytype) = 0;
 };
 
 extern IGameServer *CreateGameServer();

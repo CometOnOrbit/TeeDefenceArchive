@@ -11,6 +11,7 @@
 #include <game/server/entities/tower-main.h>
 #include <game/server/gamecontext.h>
 #include <game/server/gamecontroller.h>
+#include <game/server/worldmodes/defence.h>
 #include <game/server/player.h>
 
 #include "spider_boss.h"
@@ -655,7 +656,8 @@ void CSpiderBoss::UpdateLeg(int Leg)
 
 vec2 CSpiderBoss::TowerGoal()
 {
-	return m_pCtrl ? m_pCtrl->TdGetZombieMarchGoal() : m_Pos;
+	if(!m_pCtrl) return m_Pos;
+	return static_cast<CGameControllerDefence *>(m_pCtrl)->TdGetZombieMarchGoal();
 }
 
 bool CSpiderBoss::HasLineOfSight(vec2 Target)
@@ -1020,7 +1022,7 @@ void CSpiderBoss::DamageLeg(int Leg, int Dmg, vec2 Force, vec2 Source, int Weapo
 		m_aFootKnock[Leg] += Push * 20.0f;
 	}
 	if(m_aLegHealth[Leg] <= 0)
-		GameServer()->SendChatAllLocF("boss.spider.leg_break", u8"蜘蛛 Boss：第 %d 条腿受损！", Leg + 1);
+		GameServer()->SendChatAllLocF("boss.spider.leg_break", "蜘蛛 Boss：第 %d 条腿受损！", Leg + 1);
 }
 
 CCharacter *CSpiderBoss::NearestHuman(float MaxDist)
@@ -1119,7 +1121,8 @@ void CSpiderBoss::TryAttackTower()
 {
 	if(!m_pCtrl || Server()->Tick() - m_LastTowerHitTick < Server()->TickSpeed() * 2)
 		return;
-	CTowerMain *pTower = m_pCtrl->GetTower();
+	CGameControllerDefence *pCtrl = static_cast<CGameControllerDefence *>(m_pCtrl);
+	CTowerMain *pTower = pCtrl->GetTower();
 	if(!pTower)
 		return;
 
@@ -1174,12 +1177,16 @@ void CSpiderBoss::TryGrenade()
 		}
 	}
 
-	if(!HasTarget && m_pCtrl && m_pCtrl->GetTower())
+	if(!HasTarget && m_pCtrl)
 	{
-		TargetPos = m_pCtrl->GetTower()->GetPos();
-		const float DistTower = distance(TargetPos, m_Pos);
-		if(DistTower >= SPIDER_GRENADE_MIN_RANGE && DistTower <= SPIDER_GRENADE_MAX_RANGE)
-			HasTarget = true;
+		CGameControllerDefence *pCtrl = static_cast<CGameControllerDefence *>(m_pCtrl);
+		if(pCtrl->GetTower())
+		{
+			TargetPos = pCtrl->GetTower()->GetPos();
+			const float DistTower = distance(TargetPos, m_Pos);
+			if(DistTower >= SPIDER_GRENADE_MIN_RANGE && DistTower <= SPIDER_GRENADE_MAX_RANGE)
+				HasTarget = true;
+		}
 	}
 
 	if(!HasTarget)

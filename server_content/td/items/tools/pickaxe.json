@@ -1,0 +1,116 @@
+{
+  "item": {
+    "type": 0,
+    "multiple": [
+      {
+        "id": 10,
+        "name": "木镐",
+        "desc": "一把木头做的镐。",
+        "proba": 90,
+        "damage": 150,
+        "capacity": 0,
+        "max": 0,
+        "formula": {
+          "Log": 20
+        },
+        "name_key": "$td.item.10.name",
+        "description_key": "$td.item.10.desc"
+      },
+      {
+        "id": 13,
+        "name": "铜镐",
+        "desc": "一把铜做的镐。",
+        "damage": 700,
+        "proba": 90,
+        "capacity": 10,
+        "max": 0,
+        "formula": {
+          "Log": 70,
+          "Copper": 25
+        },
+        "name_key": "$td.item.13.name",
+        "description_key": "$td.item.13.desc"
+      },
+      {
+        "id": 15,
+        "name": "铁镐",
+        "desc": "一把铁做的镐。",
+        "damage": 1400,
+        "proba": 90,
+        "capacity": 20,
+        "max": 0,
+        "formula": {
+          "Log": 220,
+          "Iron": 25
+        },
+        "name_key": "$td.item.15.name",
+        "description_key": "$td.item.15.desc"
+      },
+      {
+        "id": 18,
+        "name": "金镐",
+        "desc": "一把金子做的镐。",
+        "damage": 2000,
+        "proba": 90,
+        "capacity": 30,
+        "max": 0,
+        "formula": {
+          "Log": 230,
+          "Golden": 25
+        },
+        "name_key": "$td.item.18.name",
+        "description_key": "$td.item.18.desc"
+      },
+      {
+        "id": 21,
+        "name": "钻石镐",
+        "desc": "一把钻石做的镐。",
+        "damage": 8000,
+        "proba": 80,
+        "capacity": 30,
+        "max": 0,
+        "formula": {
+          "Log": 230,
+          "Diamond": 25
+        },
+        "name_key": "$td.item.21.name",
+        "description_key": "$td.item.21.desc"
+      },
+      {
+        "id": 23,
+        "name": "能量镐",
+        "desc": "一把能量做的镐。",
+        "damage": 25000,
+        "proba": 100,
+        "capacity": 100,
+        "max": 0,
+        "formula": {
+          "Log": 666,
+          "Diamond": 35,
+          "Enegry": 10
+        },
+        "name_key": "$td.item.23.name",
+        "description_key": "$td.item.23.desc"
+      },
+      {
+        "id": 49,
+        "name": "幸运镐",
+        "desc": "带有采矿运气的能量镐。",
+        "damage": 28000,
+        "proba": 25,
+        "capacity": 120,
+        "max": 0,
+        "effects": [
+          "mining_luck"
+        ],
+        "formula": {
+          "Enegry Pickaxe": 1,
+          "Golden": 2000,
+          "Void Shard": 10
+        },
+        "name_key": "$td.item.49.name",
+        "description_key": "$td.item.49.desc"
+      }
+    ]
+  }
+}

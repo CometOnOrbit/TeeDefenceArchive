@@ -26,6 +26,8 @@ public:
 	void RegisterChatCommands(CCommandManager *pMgr);
 	void RegisterVoteCommands(CCommandManager *pMgr);
 
+	bool OnVoteMenuPage(int ClientID, int Page) override;
+
 	void BuildSkillsListPage(int ClientID);
 	void BuildSkillDetailPage(int ClientID, int SkillId);
 	void UseSkillsByEmoticon(CPlayer *pPlayer, int EmoticonId);

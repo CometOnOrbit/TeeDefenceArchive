@@ -258,3 +258,4 @@ void CLocalizationManager::Format(char *pBuf, int BufSize, const char *pLang, co
 	va_end(ap);
 	pBuf[BufSize - 1] = 0;
 }
+

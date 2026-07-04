@@ -145,7 +145,7 @@ bool CPortalManager::CanTravelToWorld(CPlayer *pPlayer, int DestWorld, char *pRe
 			if(!Core()->QuestManager()->HasTravelUnlock(pPlayer, pDetail->GetRequiredQuest()))
 			{
 				if(pReason && ReasonSize > 0)
-					str_copy(pReason, GS()->Loc(pPlayer->GetCID(), "travel.need_quest", u8"尚未解锁该世界的传送权限。"), ReasonSize);
+					str_copy(pReason, GS()->Loc(pPlayer->GetCID(), "travel.need_quest", "尚未解锁该世界的传送权限。"), ReasonSize);
 				return false;
 			}
 		}
@@ -164,13 +164,13 @@ bool CPortalManager::TravelDirect(CPlayer *pPlayer, const char *pPortalId)
 
 	if(pPortal->m_aRequireQuest[0] && Core()->QuestManager() && !Core()->QuestManager()->HasTravelUnlock(pPlayer, pPortal->m_aRequireQuest))
 	{
-		GS()->SendChatLoc(pPlayer->GetCID(), "travel.need_quest", u8"尚未解锁该传送门。");
+		GS()->SendChatLoc(pPlayer->GetCID(), "travel.need_quest", "尚未解锁该传送门。");
 		return false;
 	}
 
 	if(pPortal->m_RequireItem > 0 && pPlayer->m_AccData.m_aItems[pPortal->m_RequireItem].m_Num <= 0)
 	{
-		GS()->SendChatLoc(pPlayer->GetCID(), "travel.need_item", u8"缺少所需物品，无法传送。");
+		GS()->SendChatLoc(pPlayer->GetCID(), "travel.need_item", "缺少所需物品，无法传送。");
 		return false;
 	}
 
@@ -209,7 +209,7 @@ void CPortalManager::TryPortalTravel(CPlayer *pPlayer, vec2 Pos)
 	{
 		m_aInsidePortal[CID] = PortalIdx;
 		m_aDwellStart[CID] = Tick;
-		GS()->SendChatLoc(CID, "portal.enter", u8"你 sensing a rift… stand still to cross.");
+		GS()->SendChatLoc(CID, "portal.enter", "你 sensing a rift… stand still to cross.");
 		return;
 	}
 

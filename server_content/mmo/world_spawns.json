@@ -1,0 +1,108 @@
+{
+  "worlds": [
+
+
+    {
+      "id": 0,
+      "spawns": [
+
+        { "def_id": 1, "x": 960, "y": 1408, "respawn_delay": 30, "min_dist": 200 },
+        { "def_id": 1, "x": 800, "y": 1152, "respawn_delay": 30, "min_dist": 200 },
+        { "def_id": 1, "x": 1120, "y": 1088, "respawn_delay": 30, "min_dist": 200 },
+
+        { "def_id": 2, "x": 640, "y": 960, "respawn_delay": 25, "min_dist": 180 },
+        { "def_id": 2, "x": 720, "y": 1024, "respawn_delay": 25, "min_dist": 180 },
+
+        { "def_id": 3, "x": 1280, "y": 1280, "respawn_delay": 40, "min_dist": 250 },
+        { "def_id": 3, "x": 1408, "y": 1152, "respawn_delay": 40, "min_dist": 250 },
+
+        { "def_id": 50, "x": 1500, "y": 1400, "respawn_delay": 360, "min_dist": 400 }
+      ]
+    },
+
+
+    {
+      "id": 1,
+      "spawns": [
+
+        { "def_id": 4, "x": 640, "y": 640, "respawn_delay": 30, "min_dist": 200 },
+        { "def_id": 4, "x": 800, "y": 720, "respawn_delay": 30, "min_dist": 200 },
+
+        { "def_id": 5, "x": 960, "y": 960, "respawn_delay": 50, "min_dist": 220 },
+        { "def_id": 5, "x": 1088, "y": 1024, "respawn_delay": 50, "min_dist": 220 },
+        { "def_id": 5, "x": 1152, "y": 896, "respawn_delay": 50, "min_dist": 220 },
+
+        { "def_id": 6, "x": 1408, "y": 640, "respawn_delay": 50, "min_dist": 250 },
+        { "def_id": 6, "x": 1536, "y": 768, "respawn_delay": 50, "min_dist": 250 },
+
+        { "def_id": 7, "x": 640, "y": 1280, "respawn_delay": 60, "min_dist": 250 },
+        { "def_id": 7, "x": 768, "y": 1408, "respawn_delay": 60, "min_dist": 250 },
+
+        { "def_id": 8, "x": 1280, "y": 1152, "respawn_delay": 70, "min_dist": 280 },
+
+        { "def_id": 51, "x": 1024, "y": 1600, "respawn_delay": 540, "min_dist": 400 }
+      ]
+    },
+
+
+    {
+      "id": 2,
+      "spawns": [
+
+        { "def_id": 9, "x": 640, "y": 640, "respawn_delay": 50, "min_dist": 220 },
+        { "def_id": 9, "x": 512, "y": 768, "respawn_delay": 50, "min_dist": 220 },
+        { "def_id": 9, "x": 768, "y": 896, "respawn_delay": 50, "min_dist": 220 },
+
+        { "def_id": 10, "x": 1280, "y": 640, "respawn_delay": 80, "min_dist": 280 },
+        { "def_id": 10, "x": 1408, "y": 768, "respawn_delay": 80, "min_dist": 280 },
+
+        { "def_id": 11, "x": 960, "y": 1152, "respawn_delay": 70, "min_dist": 260 },
+        { "def_id": 11, "x": 1088, "y": 1280, "respawn_delay": 70, "min_dist": 260 },
+
+        { "def_id": 12, "x": 640, "y": 1408, "respawn_delay": 90, "min_dist": 300 },
+        { "def_id": 12, "x": 768, "y": 1536, "respawn_delay": 90, "min_dist": 300 },
+
+        { "def_id": 52, "x": 896, "y": 1600, "respawn_delay": 540, "min_dist": 400 }
+      ]
+    },
+
+
+    {
+      "id": 3,
+      "spawns": [
+
+        { "def_id": 13, "x": 640, "y": 640, "respawn_delay": 120, "min_dist": 300 },
+        { "def_id": 13, "x": 800, "y": 768, "respawn_delay": 120, "min_dist": 300 },
+
+        { "def_id": 14, "x": 1280, "y": 640, "respawn_delay": 100, "min_dist": 280 },
+        { "def_id": 14, "x": 1408, "y": 768, "respawn_delay": 100, "min_dist": 280 },
+        { "def_id": 14, "x": 1152, "y": 896, "respawn_delay": 100, "min_dist": 280 },
+
+        { "def_id": 15, "x": 640, "y": 1280, "respawn_delay": 110, "min_dist": 280 },
+        { "def_id": 15, "x": 768, "y": 1408, "respawn_delay": 110, "min_dist": 280 },
+
+        { "def_id": 53, "x": 1280, "y": 1536, "respawn_delay": 720, "min_dist": 450 }
+      ]
+    },
+
+
+    {
+      "id": 4,
+      "spawns": [
+
+        { "def_id": 16, "x": 640, "y": 640, "respawn_delay": 150, "min_dist": 300 },
+        { "def_id": 16, "x": 800, "y": 512, "respawn_delay": 150, "min_dist": 300 },
+
+        { "def_id": 17, "x": 1280, "y": 640, "respawn_delay": 160, "min_dist": 300 },
+        { "def_id": 17, "x": 1408, "y": 768, "respawn_delay": 160, "min_dist": 300 },
+
+        { "def_id": 18, "x": 640, "y": 1280, "respawn_delay": 180, "min_dist": 320 },
+        { "def_id": 18, "x": 768, "y": 1408, "respawn_delay": 180, "min_dist": 320 },
+
+        { "def_id": 54, "x": 1280, "y": 1408, "respawn_delay": 1080, "min_dist": 500 },
+
+        { "def_id": 55, "x": 1024, "y": 1792, "respawn_delay": 1440, "min_dist": 500 }
+      ]
+    }
+  ]
+}
