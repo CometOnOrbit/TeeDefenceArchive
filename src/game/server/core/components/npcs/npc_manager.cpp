@@ -1,12 +1,16 @@
 #include <engine/shared/jsonparser.h>
 
 #include <game/server/core/components/npcs/npc_manager.h>
+#include <game/server/core/components/npcs/npc_service.h>
+#include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/components/dialogs/dialog_manager.h>
 #include <game/server/core/components/quests/quest_manager.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/entities/character.h>
 #include <game/server/gamecontext.h>
 #include <game/server/gameworld.h>
+#include <game/server/interaction_sound.h>
+#include <generated/server_data.h>
 #include <game/server/player.h>
 
 #include <cinttypes>
@@ -675,6 +679,28 @@ void CNpcManager::OnTick()
 			pP->GetCharacter()->SyncSpiderBody(vec2(Spawn.m_X, Spawn.m_Y));
 	}
 
+	// Close NPC-bound menus when the player walks away (MRPG-style).
+	if(Core() && Core()->VoteMenuManager())
+	{
+		CVoteMenuManager *pVoteMgr = Core()->VoteMenuManager();
+		for(int CID = 0; CID < MAX_CLIENTS; CID++)
+		{
+			CPlayer *pP = GS()->m_apPlayers[CID];
+			if(!pP || pP->IsDummy())
+				continue;
+			SPlayerVote *pVote = pVoteMgr->GetPlayerVote(CID);
+			if(!pVote || !IsNpcServicePage(pVote->m_Page))
+				continue;
+			if(EnsureNpcServiceAccess(GS(), pP, pVote))
+				continue;
+
+			ClearNpcService(pVote);
+			pVote->m_Page = PAGE_MENU;
+			pVoteMgr->ClearVotes(CID);
+			NotifyNpcServiceDenied(GS(), CID);
+		}
+	}
+
 	// (NPC auto-talk removed — use hammer to talk instead)
 }
 
@@ -696,6 +722,32 @@ bool CNpcManager::IsQuestNpcCharacter(CCharacter *pChr) const
 	if(GS()->m_apPlayers[CID] != pPlayer)
 		return false;
 	return IsQuestNpc(pPlayer);
+}
+
+bool CNpcManager::IsPlayerNearNpc(CPlayer *pPlayer, const char *pNpcId, float MaxDist) const
+{
+	if(!pPlayer || !pNpcId || !pNpcId[0] || !GS())
+		return false;
+	CCharacter *pChr = pPlayer->GetCharacter();
+	if(!pChr || !pChr->IsAlive())
+		return false;
+
+	const vec2 PlayerPos = pChr->GetPos();
+	for(int i = 0; i < m_NumSpawns; i++)
+	{
+		if(str_comp(m_aSpawns[i].m_aNpcId, pNpcId) != 0)
+			continue;
+		if(m_aSpawns[i].m_ClientID < 0)
+			continue;
+
+		CPlayer *pNpcPlayer = GS()->m_apPlayers[m_aSpawns[i].m_ClientID];
+		if(!pNpcPlayer || !pNpcPlayer->GetCharacter() || !pNpcPlayer->GetCharacter()->IsAlive())
+			continue;
+
+		if(distance(PlayerPos, pNpcPlayer->GetCharacter()->GetPos()) <= MaxDist)
+			return true;
+	}
+	return false;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -853,6 +905,6 @@ bool CNpcManager::TryHammerTalk(CCharacter *pChr, vec2 ProjStartPos)
 	}
 
 	GS()->m_World.CreateHammerHit(ProjStartPos);
-	GS()->m_World.CreateSound(ChrPos, SOUND_TEE_CRY);
+	PlayInteractionSound(GS()->m_World, pTalker, SOUND_GAME_ACCEPT);
 	return true;
 }

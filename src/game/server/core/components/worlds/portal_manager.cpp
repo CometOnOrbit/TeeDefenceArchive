@@ -1,6 +1,10 @@
 #include <engine/shared/config.h>
 #include <engine/shared/jsonparser.h>
 
+#include <game/server/gameworld.h>
+#include <game/server/interaction_sound.h>
+#include <generated/server_data.h>
+
 #include <game/server/core/components/quests/quest_manager.h>
 #include <game/server/core/components/worlds/portal_manager.h>
 #include <game/server/core/components/worlds/world_manager.h>
@@ -209,6 +213,7 @@ void CPortalManager::TryPortalTravel(CPlayer *pPlayer, vec2 Pos)
 	{
 		m_aInsidePortal[CID] = PortalIdx;
 		m_aDwellStart[CID] = Tick;
+		PlayInteractionSound(GS()->m_World, pPlayer, SOUND_SFX_DOOR);
 		GS()->SendChatLoc(CID, "portal.enter", "你 sensing a rift… stand still to cross.");
 		return;
 	}

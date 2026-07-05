@@ -84,3 +84,4 @@ sql_failed_log.txt
 .trae/
 /~/
 /private/
+*_prepared.map

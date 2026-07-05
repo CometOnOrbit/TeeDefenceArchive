@@ -1,10 +1,11 @@
 #include <engine/shared/config.h>
 #include <engine/shared/world_detail.h>
 
-#include <game/server/account.h>
+#include <game/server/gamecontext.h>
+#include <game/server/interaction_sound.h>
+#include <generated/server_data.h>
 #include <game/server/botengine.h>
 #include <game/server/core/components/accounts/account_manager.h>
-#include <game/server/core/components/bots/defence_bot_manager.h>
 #include <game/server/core/components/craft/craft_manager.h>
 #include <game/server/core/components/localization/localization_manager.h>
 #include <game/server/core/components/meta/achievement_manager.h>
@@ -24,6 +25,8 @@
 #include <game/server/core/components/content/trait_manager.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/components/guilds/guild_manager.h>
+#include <game/server/core/components/arena/arena_lobby_manager.h>
+#include <game/server/core/components/defence/defence_lobby_manager.h>
 #include <game/server/core/components/mmo/mmo_manager.h>
 #include <game/server/core/components/mmo/mmo_world_boss.h>
 #include <game/server/core/components/profession/profession_manager.h>
@@ -54,7 +57,6 @@ TWorldController::TWorldController(CGameContext *pGameServer)
 	m_pNpcManager(nullptr),
 	m_pDialogManager(nullptr),
 	m_pQuestManager(nullptr),
-	m_pDefenceBotManager(nullptr),
 	m_pEffectRegistry(nullptr),
 	m_pStatusManager(nullptr),
 	m_pSkillManager(nullptr),
@@ -66,6 +68,8 @@ TWorldController::TWorldController(CGameContext *pGameServer)
 	m_pMiniEventsManager(nullptr),
 	m_pDurabilityManager(nullptr),
 	m_pGuildManager(nullptr),
+	m_pArenaLobbyManager(nullptr),
+	m_pDefenceLobbyManager(nullptr),
 	m_pMMOManager(nullptr),
 	m_pProfessionManager(nullptr),
 	m_pDungeonManager(nullptr),
@@ -84,6 +88,8 @@ TWorldController::TWorldController(CGameContext *pGameServer)
 	m_System.Add(m_pVoteMenuManager = new CVoteMenuManager);
 	m_System.Add(m_pWorldManager = new CWorldManager);
 	m_System.Add(m_pGuildManager = new CGuildManager);
+	m_System.Add(m_pArenaLobbyManager = new CArenaLobbyManager);
+	m_System.Add(m_pDefenceLobbyManager = new CDefenceLobbyManager);
 
 	// Combat worlds (Defence, PvP, RPG, Story) — combat effects, status, enemy registry
 	if(WT != WorldType::Hub)
@@ -119,11 +125,6 @@ TWorldController::TWorldController(CGameContext *pGameServer)
 		m_System.Add(m_pWorldBossManager = new CWorldBossManager);
 	}
 
-	// Defence world — zombie defense bot manager
-	if(WT == WorldType::Defence)
-	{
-		m_System.Add(m_pDefenceBotManager = new CDefenceBotManager);
-	}
 }
 
 void TWorldController::OnInit(IServer *pServer, IConsole *pConsole, IStorage *pStorage, IEngine *pEngine)
@@ -205,7 +206,11 @@ void TWorldController::OnPlayerLogin(CPlayer *pPlayer)
 	for(int i = 0; i < m_System.m_apComponents.size(); i++)
 		m_System.m_apComponents[i]->OnPlayerLogin(pPlayer);
 	if(pPlayer && !pPlayer->IsDummy())
+	{
 		m_Events.EmitPlayerLogin(pPlayer);
+		if(m_pGameServer)
+			m_pGameServer->m_World.CreatePlayerSound(pPlayer->GetCID(), SOUND_VOICE_KONNICHIWA);
+	}
 }
 
 bool TWorldController::DispatchPlayerVoteCommand(int ClientID, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason) const

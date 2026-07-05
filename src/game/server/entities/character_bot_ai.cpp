@@ -5,6 +5,7 @@
 #include "ai_core/npc_ai.h"
 #include "ai_core/quest_mob_ai.h"
 #include "ai_core/quest_npc_ai.h"
+#include "ai_core/mob_combat.h"
 #include <game/collision.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
@@ -20,7 +21,10 @@
 #include <game/server/core/components/content/effect_registry.h>
 #include <game/server/core/components/content/status_manager.h>
 #include <game/server/mmo_exp.h>
+#include <game/server/core/components/skills/skill_data.h>
 #include <game/server/core/tworld_component.h>
+#include <game/server/entity_manager.h>
+#include <game/server/entities/mmo_drop_pickup.h>
 
 MACRO_ALLOC_POOL_ID_IMPL(CCharacterBotAI, MAX_CLIENTS)
 
@@ -64,12 +68,17 @@ bool CCharacterBotAI::Spawn(CPlayer* pPlayer, vec2 Pos)
 	if(!m_pTilesHandler)
 		m_pTilesHandler = new CTileHandler(GameServer()->Collision(), this);
 
-	// Give weapons — mirror MRPG's equip-based logic
-	GiveWeapon(WEAPON_HAMMER, -1);
-	GiveWeapon(WEAPON_GUN, 10);
-	GiveWeapon(WEAPON_SHOTGUN, 10);
-	GiveWeapon(WEAPON_GRENADE, 10);
-	GiveWeapon(WEAPON_LASER, 10);
+	const SMMOMobDef *pMobDef = nullptr;
+	if(pPlayer->m_pMMOBotData)
+		pMobDef = SMMOMobDef::Get(pPlayer->m_pMMOBotData->m_DefID);
+
+	if(pMobDef && pMobDef->HasCombatProfile())
+		ApplyMobCombatLoadout(this, pMobDef);
+	else
+	{
+		GiveWeapon(WEAPON_HAMMER, -1);
+		GiveWeapon(WEAPON_GUN, 10);
+	}
 
 	if(!m_pAI && pPlayer->m_pMMOBotData)
 	{
@@ -80,14 +89,14 @@ bool CCharacterBotAI::Spawn(CPlayer* pPlayer, vec2 Pos)
 			m_pAI = std::make_unique<CNpcAI>(this, pData->m_NpcFunction);
 		else
 		{
-			float AR = pData->m_IsBoss ? 1500.f : 800.f;
+			float AR = 800.f;
+			if(pMobDef && pMobDef->m_ActiveRadius > 1.f)
+				AR = pMobDef->m_ActiveRadius;
+			else if(pData->m_IsBoss)
+				AR = 1500.f;
 			m_pAI = std::make_unique<CMobAI>(this, AR);
-			// Pass mob definition pointer for behavior flags
-			{
-				const SMMOMobDef *pDef = SMMOMobDef::Get(pData->m_DefID);
-				if(pDef)
-					static_cast<CMobAI*>(m_pAI.get())->SetMobInfo(pDef);
-			}
+			if(pMobDef)
+				static_cast<CMobAI*>(m_pAI.get())->SetMobInfo(pMobDef);
 		}
 	}
 
@@ -200,6 +209,7 @@ bool CCharacterBotAI::TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, 
 
 	if(pData->m_HP <= 0)
 	{
+		m_DieForce = Force;
 		Die(From, Weapon);
 		return false;
 	}
@@ -214,10 +224,59 @@ bool CCharacterBotAI::TakeHit(vec2 Force, vec2 Source, int Dmg, CEntity *pFrom, 
 
 // ─── Die ──────────────────────────────────────────────────────────
 
+static void DropMobKillBonusPickups(CGameContext *pGS, vec2 Pos, int MobLevel, int ExpPerOrb, vec2 Force, CCharacter *pChr)
+{
+	if(!pGS || ExpPerOrb <= 0)
+		return;
+
+	CEntityManager *pEM = pGS->Core() ? pGS->Core()->EntityManager() : nullptr;
+	if(!pEM)
+		return;
+
+	pEM->DropPickup(Pos, MOBDROP_EXP, 0, ExpPerOrb, 1 + (random_int() % 2), Force);
+
+	if((random_int() % 100) < 25)
+		pEM->DropPickup(Pos, MOBDROP_HEALTH, 0, 1, 1, Force);
+
+	if((random_int() % 100) < 20)
+	{
+		const int Mana = 5 + (MobLevel * 2) + (random_int() % 5);
+		pEM->DropPickup(Pos, MOBDROP_MANA, 0, Mana, 1, Force);
+	}
+
+	if((random_int() % 100) < 30 && pChr)
+	{
+		const int Weapon = pChr->GetActiveWeapon();
+		if(Weapon >= WEAPON_GUN && Weapon <= WEAPON_LASER)
+		{
+			int Ammo = 10;
+			switch(Weapon)
+			{
+			case WEAPON_GUN: Ammo = 10; break;
+			case WEAPON_SHOTGUN: Ammo = 5; break;
+			case WEAPON_GRENADE: Ammo = 3; break;
+			case WEAPON_LASER: Ammo = 5; break;
+			default: break;
+			}
+			pEM->DropPickup(Pos, MOBDROP_AMMO, Weapon, Ammo, 1, Force);
+		}
+	}
+}
+
 void CCharacterBotAI::Die(int Killer, int Weapon)
 {
 	CPlayer *pMyPlayer = GetPlayer();
 	if(!pMyPlayer || !pMyPlayer->m_pMMOBotData) return;
+
+	if(pMyPlayer->m_IsWorldBoss)
+	{
+		if(m_pAI)
+			m_pAI->OnDie(Killer, Weapon);
+		m_aDamageByPlayer.clear();
+		m_BotTargetPos.reset();
+		CCharacter::Die(Killer, Weapon);
+		return;
+	}
 
 	SMMOBotData *pData = pMyPlayer->m_pMMOBotData;
 	CGameContext *pGS = GameServer();
@@ -228,53 +287,100 @@ void CCharacterBotAI::Die(int Killer, int Weapon)
 	// Reward all damage dealers
 	if(Weapon != WEAPON_SELF && Weapon != WEAPON_WORLD && !pData->m_IsNPC && !pData->m_IsQuestMob)
 	{
+		vec2 DieForce = m_DieForce;
+		if(length(DieForce) < 1.0f && Killer >= 0 && Killer < MAX_CLIENTS)
+		{
+			CPlayer *pKiller = pGS->m_apPlayers[Killer];
+			if(pKiller && pKiller->GetCharacter())
+				DieForce = normalize(pKiller->GetCharacter()->m_Pos - m_Pos) * 50.0f;
+			else
+				DieForce = vec2(0.0f, -50.0f);
+		}
+
+		CEntityManager *pEM = pGS->Core() ? pGS->Core()->EntityManager() : nullptr;
+		bool KillBroadcastSent = false;
+
 		for(const auto &[ClientID, Damage] : m_aDamageByPlayer)
 		{
+			(void)Damage;
 			CPlayer *pPlayer = (ClientID >= 0 && ClientID < MAX_CLIENTS) ? pGS->m_apPlayers[ClientID] : nullptr;
-			if(!pPlayer || pPlayer->m_pMMOBotData) continue;
+			if(!pPlayer || pPlayer->m_pMMOBotData || pPlayer->IsDummy())
+				continue;
+
+			if(distance(pPlayer->m_ViewPos, m_Pos) > 1000.0f)
+				continue;
+
+			const int PlayerLevel = maximum(1, pPlayer->GetStat(AttributeIdentifier::Level));
 
 			int Gold = pData->m_GoldMin;
 			if(pData->m_GoldMax > pData->m_GoldMin)
 				Gold += random_int() % (pData->m_GoldMax - pData->m_GoldMin + 1);
-			pPlayer->m_MMOGold += Gold;
-			pPlayer->m_MMODirty = true;
+			Gold = ScaleRewardByLevelGap(PlayerLevel, pData->m_Level, Gold);
+			if(Gold > 0)
+			{
+				pPlayer->SetStat(AttributeIdentifier::Gold, pPlayer->GetStat(AttributeIdentifier::Gold) + Gold);
+				pPlayer->m_MMODirty = true;
+				pGS->SendChatLocF(ClientID, "mob_kill.gold", "+%d gold", Gold);
+				GameWorld()->CreateFloatingAmount(m_Pos, ClientID, Gold, CmaskOne(ClientID));
+			}
 
-			char aBuf[128];
-			str_format(aBuf, sizeof(aBuf), "获得 %d 金币", Gold);
-			pGS->SendChat(ClientID, CHAT_ALL, -1, aBuf);
-
-			// Experience reward
 			int ExpReward = pData->m_ExpReward;
 			if(pData->m_Level > 1)
-				ExpReward = ExpReward * pData->m_Level; // scale by mob level
-			pPlayer->AddMMOExperience(ExpReward);
+				ExpReward = ExpReward * pData->m_Level;
+			ExpReward = ScaleRewardByLevelGap(PlayerLevel, pData->m_Level, ExpReward);
+			if(ExpReward > 0)
+			{
+				pPlayer->AddMMOExperience(ExpReward);
+				pGS->SendChatLocF(ClientID, "mob_kill.exp", "+%d EXP", ExpReward);
+				GameWorld()->CreateFloatingAmount(m_Pos, ClientID, ExpReward, CmaskOne(ClientID));
+				GameWorld()->CreateSound(m_Pos, SOUND_PICKUP_ARMOR, CmaskOne(ClientID));
+
+				if(pEM)
+				{
+					const int ExpPerOrb = maximum(ExpReward / 3, 1);
+					DropMobKillBonusPickups(pGS, m_Pos, pData->m_Level, ExpPerOrb, DieForce, pPlayer->GetCharacter());
+				}
+			}
+
+			if(ClientID == Killer && pPlayer->GetCharacter())
+				pPlayer->GetCharacter()->SetEmote(EMOTE_HAPPY, pGS->Server()->Tick() + pGS->Server()->TickSpeed());
 
 			for(const auto &Drop : pData->m_vDrops)
 			{
 				int Roll = random_int() % 100;
-				if(Roll >= Drop.m_Chance) continue;
+				if(Roll >= Drop.m_Chance)
+					continue;
+
 				int Count = Drop.m_MinCount;
 				if(Drop.m_MaxCount > Drop.m_MinCount)
 					Count += random_int() % (Drop.m_MaxCount - Drop.m_MinCount + 1);
+
 				CInventoryManager::AddItem(pPlayer->m_MMOInventory, Drop.m_ItemID, Count);
 				pPlayer->m_MMODirty = true;
 
 				const CMMOItemDescription *pDesc = CMMOItemDescription::Get(Drop.m_ItemID);
-				const char *pItemName = pDesc ? pDesc->m_aName : "未知物品";
-				str_format(aBuf, sizeof(aBuf), "获得 x%d %s", Count, pItemName);
-				pGS->SendChat(ClientID, CHAT_ALL, -1, aBuf);
+				const char *pItemName = pDesc ? pDesc->m_aName : "unknown item";
+				if(pEM)
+				{
+					char aBuf[128];
+					str_format(aBuf, sizeof(aBuf), "+%d %s", Count, pGS->LocItemName(ClientID, Drop.m_ItemID));
+					pEM->TextForClient(ClientID, m_Pos, aBuf);
+				}
+				else
+					pGS->SendChatLocF(ClientID, "mob_kill.drop_item", "+%d %s", Count, pItemName);
 			}
 
-			// Notify quest system of this kill (pass mob def ID + zone name)
 			CQuestManager *pQM = pGS->Core()->QuestManager();
 			if(pQM)
 				pQM->OnPlayerKill(pPlayer, pData->m_DefID, m_ZoneName);
 
-			char aMsg[128];
-			str_format(aMsg, sizeof(aMsg), "%s 击败了 %s!",
-				pGS->Server()->ClientName(ClientID),
-				pGS->Server()->ClientName(pMyPlayer->GetCID()));
-			pGS->SendChat(-1, CHAT_ALL, -1, aMsg);
+			if(!KillBroadcastSent && ClientID == Killer)
+			{
+				pGS->SendChatLocF(-1, "mob_kill.defeated", "%s defeated %s!",
+					pGS->Server()->ClientName(ClientID),
+					pGS->Server()->ClientName(pMyPlayer->GetCID()));
+				KillBroadcastSent = true;
+			}
 		}
 	}
 
@@ -486,9 +592,13 @@ void CCharacterBotAI::ProcessBot()
 	if(m_Input.m_Direction)
 		m_PrevDirection = m_Input.m_Direction;
 
-	SelectWeaponAtRandomInterval();
+	CMobAI *pMobAI = dynamic_cast<CMobAI*>(m_pAI.get());
+	if(!pMobAI || !pMobAI->IsBusyCasting())
+	{
+		SelectWeaponAtRandomInterval();
+		HandleWeapons();
+	}
 	SelectEmoteAtRandomInterval();
-	HandleWeapons();
 }
 
 // ─── Move (MRPG exact, adapted for TDA API) ───────────────────────
@@ -497,6 +607,14 @@ void CCharacterBotAI::Move()
 {
 	if(!m_BotTargetPos.has_value())
 		return;
+
+	CMobAI *pMobAI = dynamic_cast<CMobAI*>(m_pAI.get());
+	if(pMobAI && pMobAI->IsBusyCasting())
+	{
+		m_Input.m_Direction = 0;
+		m_Input.m_Jump = 0;
+		return;
+	}
 
 	vec2 TargetPos = m_BotTargetPos.value();
 
@@ -568,12 +686,20 @@ void CCharacterBotAI::Move()
 	if(HasActiveTarget)
 	{
 		float OptimalDistance = 64.f;
-		switch(m_ActiveWeapon)
+		const SMMOMobDef *pMobDef = nullptr;
+		if(m_pBotPlayer && m_pBotPlayer->m_pMMOBotData)
+			pMobDef = SMMOMobDef::Get(m_pBotPlayer->m_pMMOBotData->m_DefID);
+		if(pMobDef)
+			OptimalDistance = MobPreferredCombatRange(pMobDef, m_ActiveWeapon);
+		else
 		{
-			case WEAPON_GUN:     OptimalDistance = 300.f; break;
-			case WEAPON_SHOTGUN: OptimalDistance = 400.f; break;
-			case WEAPON_GRENADE: OptimalDistance = 500.f; break;
-			case WEAPON_LASER:   OptimalDistance = 600.f; break;
+			switch(m_ActiveWeapon)
+			{
+				case WEAPON_GUN:     OptimalDistance = 300.f; break;
+				case WEAPON_SHOTGUN: OptimalDistance = 400.f; break;
+				case WEAPON_GRENADE: OptimalDistance = 500.f; break;
+				case WEAPON_LASER:   OptimalDistance = 600.f; break;
+			}
 		}
 
 		float DistanceToTarget = distance(GetPos(), TargetPos);
@@ -755,6 +881,13 @@ void CCharacterBotAI::SelectWeaponAtRandomInterval()
 	{
 		m_ActiveWeapon = clamp(m_ForcedActiveWeapon.value(), (int)WEAPON_HAMMER, (int)WEAPON_LASER);
 		return;
+	}
+
+	if(m_pBotPlayer && m_pBotPlayer->m_pMMOBotData)
+	{
+		const SMMOMobDef *pDef = SMMOMobDef::Get(m_pBotPlayer->m_pMMOBotData->m_DefID);
+		if(pDef && pDef->HasCombatProfile())
+			return;
 	}
 
 	if(--m_IntervalChangeWeapon <= 0)

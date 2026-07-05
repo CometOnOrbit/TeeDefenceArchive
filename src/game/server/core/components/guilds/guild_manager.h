@@ -69,6 +69,9 @@ public:
 	const SGuildData *GetGuildByIndex(int Index) const;
 	int FindClientByAccountID(int AccountID) const;
 
+	bool HasPendingInvite(int ClientID) const;
+	const char *GetPendingInviterName(int ClientID) const;
+
 	// Serialization
 	bool SaveGuilds();
 	bool LoadGuilds();
@@ -76,6 +79,21 @@ public:
 	// Commands
 	void RegisterChatCommands(CCommandManager *pManager);
 	void RegisterVoteCommands(CCommandManager *pManager);
+	bool OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason) override;
+	void OnCharacterSpawn(CPlayer *pPlayer) override;
+
+	// Guild war API (chat + vote menu)
+	bool WarChallenge(int ClientID, const char *pTargetGuildName);
+	bool WarAccept(int ClientID);
+	bool WarSetMode(int ClientID, const char *pMode);
+	bool WarSetMap(int ClientID, const char *pMap);
+	bool WarJoin(int ClientID);
+	bool WarLeave(int ClientID);
+	bool WarStart(int ClientID);
+	void WarStatus(int ClientID);
+	bool WarCancel(int ClientID);
+
+	bool GetActiveWarMatchInfo(int ClientID, char *pMode, int ModeSize, char *pMap, int MapSize, int *pStatus);
 
 	static void ConGuildCreate(IConsole::IResult *pResult, void *pUser);
 	static void ConGuildDisband(IConsole::IResult *pResult, void *pUser);
@@ -96,6 +114,7 @@ public:
 	static void ConGuildMatchChallenge(IConsole::IResult *pResult, void *pUser);
 	static void ConGuildMatchAccept(IConsole::IResult *pResult, void *pUser);
 	static void ConGuildMatchSetMode(IConsole::IResult *pResult, void *pUser);
+	static void ConGuildMatchSetMap(IConsole::IResult *pResult, void *pUser);
 	static void ConGuildMatchJoin(IConsole::IResult *pResult, void *pUser);
 	static void ConGuildMatchLeave(IConsole::IResult *pResult, void *pUser);
 	static void ConGuildMatchStart(IConsole::IResult *pResult, void *pUser);
@@ -128,6 +147,7 @@ private:
 		int m_ChallengedGuild;
 		int m_Status; // 0=pending 1=accepted 2=ready 3=active 4=ended 5=cancelled
 		char m_aMode[16];
+		char m_aMap[128];
 		int m_TeamSize;
 		int m_TargetScore;
 		int m_StartTick;

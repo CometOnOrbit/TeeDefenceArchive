@@ -39,6 +39,9 @@ public:
 	SHA256_DIGEST Sha256() const;
 	unsigned Crc() const;
 
+	// YOU MUST FREE MEMORY AFTER USE.
+	const void *GetRawData(int Index, int *pSize) const;
+
 	static bool CheckSha256(IOHANDLE Handle, const void *pSha256);
 };
 
@@ -50,6 +53,7 @@ class CDataFileWriter
 		int m_UncompressedSize;
 		int m_CompressedSize;
 		void *m_pCompressedData;
+		bool m_IsRaw;
 	};
 
 	struct CItemInfo
@@ -71,7 +75,7 @@ class CDataFileWriter
 
 	enum
 	{
-		MAX_ITEM_TYPES = 0xffff,
+		MAX_ITEM_TYPES = 0x10000,
 		MAX_ITEMS = 1024,
 		MAX_DATAS = 1024,
 	};
@@ -90,6 +94,7 @@ public:
 	bool Open(class IStorage *pStorage, const char *Filename);
 	int AddData(int Size, const void *pData);
 	int AddDataSwapped(int Size, const void *pData);
+	int AddDataRaw(const void *pCompressedData, int CompressedSize, int UncompressedSize);
 	int AddItem(int Type, int ID, int Size, const void *pData);
 	int Finish();
 };

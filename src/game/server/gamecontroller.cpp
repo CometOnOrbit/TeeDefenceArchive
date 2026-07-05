@@ -11,6 +11,7 @@
 
 #include "entities/character.h"
 #include "entities/electro.h"
+#include "entities/growingexplosion.h"
 #include "entities/laser.h"
 #include "entities/lightning.h"
 #include "entities/mmo/hammer_lamp_bolt.h"
@@ -25,7 +26,6 @@
 #include "entities/turret.h"
 #include "account.h"
 #include "core/components/accounts/account_manager.h"
-#include "core/components/bots/defence_bot_manager.h"
 #include "core/components/craft/craft_manager.h"
 #include "core/components/npcs/npc_manager.h"
 #include "core/components/dialogs/dialog_manager.h"
@@ -39,9 +39,12 @@
 #include <game/server/core/components/content/trait_manager.h>
 #include <game/server/core/components/quests/quest_manager.h>
 #include <game/server/core/components/guilds/guild_manager.h>
+#include <game/server/core/components/arena/arena_lobby_manager.h>
+#include <game/server/core/components/defence/defence_lobby_manager.h>
 #include <game/server/core/components/profession/profession_manager.h>
 #include <game/server/core/components/meta/achievement_manager.h>
 #include <game/server/core/components/mmo/mmo_manager.h>
+#include <game/server/core/components/mmo/mmo_world_boss.h>
 #include <game/server/core/components/mmo/mmo_item.h>
 #include <game/server/global_state.h>
 
@@ -77,16 +80,18 @@ static int GetMMOWeaponEnchant(CPlayer *pPl, int ItemID)
 
 static const CMMOItemDescription *GetActiveMMOWeaponDef(CCharacter *pChr, CPlayer *pPl, int *pEnchant)
 {
-	if(!pChr || !pPl || pPl->IsDummy())
+	if(!pChr || !pPl)
 		return nullptr;
 	const int ItemID = pChr->GetActiveWeaponItemID();
 	if(ItemID <= 0)
+		return nullptr;
+	if(pPl->IsDummy() && !pPl->m_pMMOBotData)
 		return nullptr;
 	const CMMOItemDescription *pDef = CMMOItemDescription::Get(ItemID);
 	if(!pDef)
 		return nullptr;
 	if(pEnchant)
-		*pEnchant = GetMMOWeaponEnchant(pPl, ItemID);
+		*pEnchant = pPl->IsDummy() ? 0 : GetMMOWeaponEnchant(pPl, ItemID);
 	return pDef;
 }
 
@@ -185,10 +190,21 @@ static bool WeaponProfileExplosive(const SMMOWeaponProfile *pProf, bool DefaultE
 static void SpawnDirectionalProjectile(CGameWorld *pWorld, int WeaponType, int ClientID, vec2 Pos, vec2 Dir,
 	int LifeTicks, int Damage, bool Explosive, float Force, int SoundImpact, const SMMOWeaponProfile *pProf)
 {
+	bool Electric = false;
+	int MegaBlastRadius = 0;
+	if(pProf)
+	{
+		if(pProf->m_FireStyle == EMMOFireStyle::ElectricGrenade)
+			Electric = true;
+		else if(pProf->m_FireStyle == EMMOFireStyle::MegaBlast && pProf->m_HammerBlastRadius > 0)
+			MegaBlastRadius = maximum(2, pProf->m_HammerBlastRadius / 32);
+	}
+
 	new CProjectile(pWorld, WeaponType, ClientID, Pos, Dir, LifeTicks,
 		Damage, Explosive, Force, SoundImpact, WeaponType,
 		WeaponProjSpeedMul(pProf), WeaponProjLifeMul(pProf),
-		pProf ? pProf->m_Pierce : 0, pProf ? pProf->m_LifestealPercent : 0);
+		pProf ? pProf->m_Pierce : 0, pProf ? pProf->m_LifestealPercent : 0,
+		Electric, MegaBlastRadius);
 }
 
 CGameController::CGameController(CGameContext *pGameServer)
@@ -343,6 +359,11 @@ int CGameController::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKiller, int
 	return 0;
 }
 
+void CGameController::OnFlagReturn(CFlag *pFlag)
+{
+	(void)pFlag;
+}
+
 void CGameController::OnCharacterSpawn(CCharacter *pChr)
 {
 	// vanilla baseline
@@ -483,6 +504,14 @@ bool CGameController::OnEntity(int Index, vec2 Pos)
 	return false;
 }
 
+void CGameController::OnEntitySwitch(int EntityIndex, vec2 Pos, int Flags, int Number)
+{
+	(void)EntityIndex;
+	(void)Pos;
+	(void)Flags;
+	(void)Number;
+}
+
 bool CGameController::OnExtraTile(int Index, vec2 Pos)
 {
 	/*
@@ -507,9 +536,19 @@ bool CGameController::OnExtraTile(int Index, vec2 Pos)
 
 void CGameController::HandleCharacterTiles(class CCharacter *pChr, vec2 LastPos, vec2 NewPos)
 {
-	(void)pChr;
 	(void)LastPos;
 	(void)NewPos;
+	(void)pChr;
+}
+
+bool CGameController::OnCharacterTakeDamage(CCharacter *pChr, vec2 &Force, int &Dmg, int From, int Weapon)
+{
+	(void)pChr;
+	(void)Force;
+	(void)Dmg;
+	(void)From;
+	(void)Weapon;
+	return false;
 }
 
 void CGameController::OnPlayerConnect(CPlayer *pPlayer)
@@ -971,7 +1010,22 @@ void CGameController::RegisterChatCommands(CCommandManager *pManager)
 		if(pCore->ProfessionManager())
 			pCore->ProfessionManager()->RegisterChatCommands(pManager);
 		if(pCore->GuildManager())
+		{
 			pCore->GuildManager()->RegisterChatCommands(pManager);
+			pCore->GuildManager()->RegisterVoteCommands(pManager);
+		}
+		if(pCore->ArenaLobbyManager())
+		{
+			pCore->ArenaLobbyManager()->RegisterChatCommands(pManager);
+			pCore->ArenaLobbyManager()->RegisterArenaVoteCommands(pManager);
+		}
+		if(pCore->DefenceLobbyManager())
+		{
+			pCore->DefenceLobbyManager()->RegisterChatCommands(pManager);
+			pCore->DefenceLobbyManager()->RegisterDefenceVoteCommands(pManager);
+		}
+		if(pCore->GetWorldBossManager())
+			pCore->GetWorldBossManager()->RegisterBossVoteCommands(pManager);
 		if(pCore->GetDungeonManager())
 			pCore->GetDungeonManager()->RegisterChatCommands(pManager);
 	}
@@ -1162,6 +1216,8 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 				}
 			}
 
+			const bool ThunderHammer = pProf && pProf->m_FireStyle == EMMOFireStyle::ThunderHammer;
+
 			array<CEntity *> lpEnts;
 			lpEnts.hint_size(8);
 			int Hits = 0;
@@ -1288,6 +1344,8 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 				pTarget->TakeHit(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f * MoreForce, Dir * -1, HamPvp,
 					pChr, Weapon);
 				ApplyWeaponLifesteal(pChr, HamPvp, pProf);
+				if(ThunderHammer)
+					FireMMOLightningBolts(GameServer(), ChrPos, Dir, ClientID, HamPvp, pProf);
 				for(int e = 0; e < ExplosionStacks; e++)
 				{
 					const int OffX = (random_int() % 401) - 200;
@@ -1306,6 +1364,16 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 		case WEAPON_GUN:
 		{
 			const int GunDmg = RollWeaponDamage(g_pData->m_Weapons.m_aId[WEAPON_GUN].m_Damage + ExtraDmg, pProf);
+			const vec2 BaseDir = ApplyWeaponSpread(Direction, WeaponExtraSpread(pProf));
+			if(pProf && pProf->m_FireStyle == EMMOFireStyle::ElectroArc)
+			{
+				vec2 ArcStart = ChrPos + BaseDir * 30.f;
+				FireMMOElectroArc(GameServer(), pChr, ArcStart, BaseDir, GunDmg, pProf);
+				ApplyWeaponLifesteal(pChr, GunDmg, pProf);
+				ApplyWeaponRecoil(pChr, Direction, pProf);
+				GameServer()->m_World.CreateSound(ChrPos, SOUND_LASER_FIRE);
+				break;
+			}
 			const int LifeTicks = (int)(Server()->TickSpeed() * GameServer()->Tuning()->m_GunLifetime);
 			const int FanShots = pProf ? pProf->m_FanShots : 0;
 			const bool Pulse = pProf && pProf->m_Pulse && FanShots < 2;
@@ -1467,6 +1535,38 @@ int CGameController::OnCharacterFireWeapon(CCharacter *pChr, vec2 Direction, int
 				{
 					new CMMOTrackedPlasma(&GameServer()->m_World, ClientID, ProjStartPos, BaseDir, LaserDmg,
 						(float)pProf->m_TrackedPlasmaSpeedMin, (float)pProf->m_TrackedPlasmaSpeedMax);
+					HandledFireStyle = true;
+				}
+				else if(pProf->m_FireStyle == EMMOFireStyle::LightningBolt)
+				{
+					FireMMOLightningBolts(GameServer(), ChrPos, BaseDir, ClientID, LaserDmg, pProf);
+					ApplyWeaponLifesteal(pChr, LaserDmg, pProf);
+					HandledFireStyle = true;
+				}
+				else if(pProf->m_FireStyle == EMMOFireStyle::ElectroArc)
+				{
+					FireMMOElectroArc(GameServer(), pChr, ChrPos + BaseDir * 50.f, BaseDir, LaserDmg, pProf);
+					ApplyWeaponLifesteal(pChr, LaserDmg, pProf);
+					HandledFireStyle = true;
+				}
+				else if(pProf->m_FireStyle == EMMOFireStyle::DoomRay)
+				{
+					const float LaserReach = WeaponLaserReach(GameServer()->Tuning(), pProf);
+					const int HostLaser = pPl ? pPl->GetHolding(ITYPE_SWORD) : -1;
+					vec2 BeamEnd = ChrPos + BaseDir * LaserReach;
+					GameServer()->Collision()->IntersectLine(ChrPos, BeamEnd, 0x0, &BeamEnd);
+					vec2 At;
+					if(CCharacter *pHit = GameServer()->m_World.IntersectCharacter(ChrPos, BeamEnd, 70.f, At, pChr))
+					{
+						if(MMOWeaponTargetValid(GameServer(), ClientID, pHit))
+							BeamEnd = pHit->GetPos();
+					}
+					new CLaser(&GameServer()->m_World, ChrPos, BaseDir, LaserReach, ClientID, LaserDmg, false, MoreForce, 0, HostLaser);
+					const int MegaRadius = pProf->m_HammerBlastRadius > 0
+						? maximum(2, pProf->m_HammerBlastRadius / 32) : 8;
+					new CGrowingExplosion(&GameServer()->m_World, BeamEnd, BaseDir, ClientID, MegaRadius,
+						GROWINGEXPLOSIONEFFECT_BOOM, false, GE_TARGET_MMO_HOSTILE, LaserDmg);
+					ApplyWeaponLifesteal(pChr, LaserDmg, pProf);
 					HandledFireStyle = true;
 				}
 				if(HandledFireStyle)

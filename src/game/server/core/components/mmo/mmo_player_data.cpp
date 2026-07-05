@@ -57,8 +57,8 @@ void CMMOManager::OnPlayerLogin(CPlayer *pPlayer)
 	// Load daily recycle/sell limits
 	LoadSellData(pPlayer);
 
-	// Load pet data
-	LoadPetData(pPlayer);
+	// Load vehicle data
+	LoadVehicleData(pPlayer);
 
 	// Load house data
 	LoadHouseData(pPlayer);
@@ -97,9 +97,11 @@ void CMMOManager::OnClientReset(int ClientID)
 
 	// Notify online friends of disconnect
 	CGlobalState::NotifyFriendsOffline(GS(), pPlayer);
+	UpdateLastOnlineAt(pPlayer->GetAccountId());
 
-	// Save pet data on disconnect
-	SavePetData(pPlayer);
+	// Save vehicle data on disconnect
+	SaveVehicleData(pPlayer);
+	RecallVehicle(ClientID);
 
 	// Save house data on disconnect
 	if(pPlayer->m_HasHouse)
@@ -429,6 +431,316 @@ bool CMMOManager::SaveFriends(CPlayer *pPlayer)
 	return true;
 }
 
+bool CMMOManager::LookupAccountName(int64 UserID, char *pBuf, int BufSize)
+{
+	if(!pBuf || BufSize <= 0)
+		return false;
+	pBuf[0] = '\0';
+	if(UserID <= 0)
+		return false;
+
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return false;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return false;
+	MYSQL *pSql = (MYSQL *)pRaw;
+
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"SELECT `Username` FROM `tw_Accounts` WHERE `UserID`=%lld LIMIT 1", (long long)UserID);
+	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		return false;
+	}
+
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	if(!pRes)
+	{
+		pPool->Release(pRaw);
+		return false;
+	}
+	MYSQL_ROW Row = mysql_fetch_row(pRes);
+	if(Row && Row[0])
+		str_copy(pBuf, Row[0], BufSize);
+	mysql_free_result(pRes);
+	pPool->Release(pRaw);
+	return pBuf[0] != '\0';
+}
+
+bool CMMOManager::InsertFriendRequest(int64 FromID, int64 ToID)
+{
+	if(FromID <= 0 || ToID <= 0 || FromID == ToID)
+		return false;
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return false;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return false;
+	MYSQL *pSql = (MYSQL *)pRaw;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"INSERT IGNORE INTO `tw_friend_requests` (`ToUserID`, `FromUserID`) VALUES (%lld, %lld)",
+		(long long)ToID, (long long)FromID);
+	const bool Ok = SqlExecQuery(pSql, GS()->Config(), aQuery);
+	pPool->Release(pRaw);
+	return Ok;
+}
+
+bool CMMOManager::DeleteFriendRequest(int64 FromID, int64 ToID)
+{
+	if(FromID <= 0 || ToID <= 0)
+		return false;
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return false;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return false;
+	MYSQL *pSql = (MYSQL *)pRaw;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"DELETE FROM `tw_friend_requests` WHERE `ToUserID`=%lld AND `FromUserID`=%lld",
+		(long long)ToID, (long long)FromID);
+	const bool Ok = SqlExecQuery(pSql, GS()->Config(), aQuery);
+	pPool->Release(pRaw);
+	return Ok;
+}
+
+bool CMMOManager::HasFriendRequest(int64 FromID, int64 ToID)
+{
+	if(FromID <= 0 || ToID <= 0)
+		return false;
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return false;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return false;
+	MYSQL *pSql = (MYSQL *)pRaw;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"SELECT 1 FROM `tw_friend_requests` WHERE `ToUserID`=%lld AND `FromUserID`=%lld LIMIT 1",
+		(long long)ToID, (long long)FromID);
+	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		return false;
+	}
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	const bool Found = pRes && mysql_fetch_row(pRes);
+	if(pRes)
+		mysql_free_result(pRes);
+	pPool->Release(pRaw);
+	return Found;
+}
+
+int CMMOManager::CountIncomingFriendRequests(int64 ToAccountID)
+{
+	if(ToAccountID <= 0)
+		return 0;
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return 0;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return 0;
+	MYSQL *pSql = (MYSQL *)pRaw;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"SELECT COUNT(*) FROM `tw_friend_requests` WHERE `ToUserID`=%lld", (long long)ToAccountID);
+	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		return 0;
+	}
+	int Count = 0;
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	if(pRes)
+	{
+		MYSQL_ROW Row = mysql_fetch_row(pRes);
+		if(Row && Row[0])
+			Count = str_toint(Row[0]);
+		mysql_free_result(pRes);
+	}
+	pPool->Release(pRaw);
+	return Count;
+}
+
+void CMMOManager::UpdateLastOnlineAt(int64 UserID)
+{
+	if(UserID <= 0)
+		return;
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return;
+	MYSQL *pSql = (MYSQL *)pRaw;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"UPDATE `tw_mmo_players` SET `LastOnlineAt`=%lld WHERE `UserID`=%lld",
+		(long long)time(nullptr), (long long)UserID);
+	SqlExecQuery(pSql, GS()->Config(), aQuery);
+	pPool->Release(pRaw);
+}
+
+bool CMMOManager::LoadFriendListDetails(CPlayer *pPlayer, std::vector<SFriendListEntry> &Out)
+{
+	Out.clear();
+	if(!pPlayer || pPlayer->GetAccountId() <= 0)
+		return false;
+
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return false;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return false;
+	MYSQL *pSql = (MYSQL *)pRaw;
+	const int64 UserId = pPlayer->GetAccountId();
+
+	char aQuery[512];
+	str_format(aQuery, sizeof(aQuery),
+		"SELECT f.`FriendUserID`, a.`Username`, COALESCE(p.`LastOnlineAt`, 0) "
+		"FROM `tw_friends` f "
+		"LEFT JOIN `tw_Accounts` a ON a.`UserID` = f.`FriendUserID` "
+		"LEFT JOIN `tw_mmo_players` p ON p.`UserID` = f.`FriendUserID` "
+		"WHERE f.`UserID`=%lld ORDER BY a.`Username`",
+		(long long)UserId);
+	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		return false;
+	}
+
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	if(!pRes)
+	{
+		pPool->Release(pRaw);
+		return false;
+	}
+
+	MYSQL_ROW Row;
+	while((Row = mysql_fetch_row(pRes)))
+	{
+		if(!Row[0])
+			continue;
+		SFriendListEntry Entry;
+		Entry.m_AccountID = (int64)atoll(Row[0]);
+		str_copy(Entry.m_aName, Row[1] && Row[1][0] ? Row[1] : "未知", sizeof(Entry.m_aName));
+		Entry.m_LastOnlineAt = Row[2] ? (time_t)atoll(Row[2]) : 0;
+		Entry.m_Online = false;
+		auto it = CGlobalState::ms_OnlineFriendsMap.find(Entry.m_AccountID);
+		if(it != CGlobalState::ms_OnlineFriendsMap.end())
+		{
+			CPlayer *pF = GS()->m_apPlayers[it->second];
+			if(pF && pF->GetAccountId() == Entry.m_AccountID)
+				Entry.m_Online = true;
+		}
+		Out.push_back(Entry);
+	}
+	mysql_free_result(pRes);
+	pPool->Release(pRaw);
+	return true;
+}
+
+bool CMMOManager::LoadIncomingFriendRequests(int64 ToAccountID, std::vector<SFriendRequestEntry> &Out)
+{
+	Out.clear();
+	if(ToAccountID <= 0)
+		return false;
+
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return false;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return false;
+	MYSQL *pSql = (MYSQL *)pRaw;
+
+	char aQuery[512];
+	str_format(aQuery, sizeof(aQuery),
+		"SELECT r.`FromUserID`, a.`Username` FROM `tw_friend_requests` r "
+		"LEFT JOIN `tw_Accounts` a ON a.`UserID` = r.`FromUserID` "
+		"WHERE r.`ToUserID`=%lld ORDER BY r.`CreatedAt` DESC",
+		(long long)ToAccountID);
+	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		return false;
+	}
+
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	if(!pRes)
+	{
+		pPool->Release(pRaw);
+		return false;
+	}
+
+	MYSQL_ROW Row;
+	while((Row = mysql_fetch_row(pRes)))
+	{
+		if(!Row[0])
+			continue;
+		SFriendRequestEntry Entry;
+		Entry.m_FromAccountID = (int64)atoll(Row[0]);
+		str_copy(Entry.m_aName, Row[1] && Row[1][0] ? Row[1] : "未知", sizeof(Entry.m_aName));
+		Out.push_back(Entry);
+	}
+	mysql_free_result(pRes);
+	pPool->Release(pRaw);
+	return true;
+}
+
+bool CMMOManager::AddFriendPair(int64 UserA, int64 UserB)
+{
+	if(UserA <= 0 || UserB <= 0 || UserA == UserB)
+		return false;
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return false;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return false;
+	MYSQL *pSql = (MYSQL *)pRaw;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"INSERT IGNORE INTO `tw_friends` (`UserID`, `FriendUserID`) VALUES (%lld, %lld)",
+		(long long)UserB, (long long)UserA);
+	SqlExecQuery(pSql, GS()->Config(), aQuery);
+	str_format(aQuery, sizeof(aQuery),
+		"INSERT IGNORE INTO `tw_friends` (`UserID`, `FriendUserID`) VALUES (%lld, %lld)",
+		(long long)UserA, (long long)UserB);
+	SqlExecQuery(pSql, GS()->Config(), aQuery);
+	pPool->Release(pRaw);
+	return true;
+}
+
+bool CMMOManager::RemoveFriendPair(int64 UserA, int64 UserB)
+{
+	if(UserA <= 0 || UserB <= 0)
+		return false;
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return false;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return false;
+	MYSQL *pSql = (MYSQL *)pRaw;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"DELETE FROM `tw_friends` WHERE (`UserID`=%lld AND `FriendUserID`=%lld) OR (`UserID`=%lld AND `FriendUserID`=%lld)",
+		(long long)UserA, (long long)UserB, (long long)UserB, (long long)UserA);
+	SqlExecQuery(pSql, GS()->Config(), aQuery);
+	pPool->Release(pRaw);
+	return true;
+}
+
 bool CMMOManager::SaveInventory(CPlayer *pPlayer)
 {
 	if(!pPlayer || pPlayer->GetAccountId() <= 0) return false;
@@ -578,6 +890,75 @@ bool CMMOManager::SaveSellData(CPlayer *pPlayer)
 	return Result;
 }
 
+int CMMOManager::GetPlayerLevelRank(int64 AccountID, int Level, int Experience)
+{
+	(void)AccountID;
+	CSqlConnectionPool *pPool = GS()->Accounts() ? GS()->Accounts()->GetSqlPool() : nullptr;
+	if(!pPool || !pPool->IsInitialized())
+		return 0;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return 0;
+	MYSQL *pSql = (MYSQL *)pRaw;
+
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"SELECT COUNT(*)+1 FROM `tw_mmo_players` WHERE `Level` > %d OR (`Level` = %d AND `Experience` > %lld)",
+		Level, Level, (long long)Experience);
+	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		return 0;
+	}
+
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	if(!pRes)
+	{
+		pPool->Release(pRaw);
+		return 0;
+	}
+
+	MYSQL_ROW Row = mysql_fetch_row(pRes);
+	const int Rank = Row ? str_toint(Row[0]) : 0;
+	mysql_free_result(pRes);
+	pPool->Release(pRaw);
+	return Rank;
+}
+
+int CMMOManager::GetPlayerGoldRank(int64 AccountID, int Gold)
+{
+	(void)AccountID;
+	CSqlConnectionPool *pPool = GS()->Accounts() ? GS()->Accounts()->GetSqlPool() : nullptr;
+	if(!pPool || !pPool->IsInitialized())
+		return 0;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return 0;
+	MYSQL *pSql = (MYSQL *)pRaw;
+
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"SELECT COUNT(*)+1 FROM `tw_mmo_players` WHERE `Gold` > %d", Gold);
+	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		return 0;
+	}
+
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	if(!pRes)
+	{
+		pPool->Release(pRaw);
+		return 0;
+	}
+
+	MYSQL_ROW Row = mysql_fetch_row(pRes);
+	const int Rank = Row ? str_toint(Row[0]) : 0;
+	mysql_free_result(pRes);
+	pPool->Release(pRaw);
+	return Rank;
+}
+
 int CMMOManager::GetLevel(CPlayer *pPlayer)
 {
 	if(!pPlayer) return 1;
@@ -712,9 +1093,9 @@ bool CMMOManager::HasItem(CPlayer *pPlayer, int ItemID, int Count)
 	return pPlayer->m_MMOInventory.CountByID(ItemID) >= Count;
 }
 
-// ─── Pet Data ────────────────────────────────────────────────────────
+// ─── Vehicle Data (tw_vehicles) ───
 
-bool CMMOManager::LoadPetData(CPlayer *pPlayer)
+bool CMMOManager::LoadVehicleData(CPlayer *pPlayer)
 {
 	if(!pPlayer || pPlayer->GetAccountId() <= 0) return false;
 	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
@@ -726,7 +1107,7 @@ bool CMMOManager::LoadPetData(CPlayer *pPlayer)
 
 	char aQuery[256];
 	str_format(aQuery, sizeof(aQuery),
-		"SELECT `PetID`, `PetName`, `PetLevel` FROM `tw_pets` WHERE `UserID`=%lld LIMIT 1",
+		"SELECT `VehicleType`, `VehicleName` FROM `tw_vehicles` WHERE `UserID`=%lld LIMIT 1",
 		(long long)UserId);
 	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
 	{ pPool->Release(pRaw); return false; }
@@ -734,23 +1115,21 @@ bool CMMOManager::LoadPetData(CPlayer *pPlayer)
 	MYSQL_RES *pRes = mysql_store_result(pSql);
 	if(!pRes) { pPool->Release(pRaw); return true; }
 
-	pPlayer->m_PetID = 0;
-	pPlayer->m_PetLevel = 1;
-	pPlayer->m_aPetName[0] = 0;
+	pPlayer->m_VehicleType = 0;
+	pPlayer->m_aVehicleName[0] = 0;
 
 	MYSQL_ROW Row = mysql_fetch_row(pRes);
 	if(Row)
 	{
-		pPlayer->m_PetID = Row[0] ? str_toint(Row[0]) : 0;
-		if(Row[1]) str_copy(pPlayer->m_aPetName, Row[1], sizeof(pPlayer->m_aPetName));
-		pPlayer->m_PetLevel = Row[2] ? str_toint(Row[2]) : 1;
+		pPlayer->m_VehicleType = Row[0] ? str_toint(Row[0]) : 0;
+		if(Row[1]) str_copy(pPlayer->m_aVehicleName, Row[1], sizeof(pPlayer->m_aVehicleName));
 	}
 	mysql_free_result(pRes);
 	pPool->Release(pRaw);
 	return true;
 }
 
-bool CMMOManager::SavePetData(CPlayer *pPlayer)
+bool CMMOManager::SaveVehicleData(CPlayer *pPlayer)
 {
 	if(!pPlayer || pPlayer->GetAccountId() <= 0) return false;
 	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
@@ -760,14 +1139,16 @@ bool CMMOManager::SavePetData(CPlayer *pPlayer)
 	MYSQL *pSql = (MYSQL *)pRaw;
 	int64 UserId = pPlayer->GetAccountId();
 
+	CSqlString<32> EscapedName(pPlayer->m_aVehicleName);
+
 	char aQuery[512];
 	str_format(aQuery, sizeof(aQuery),
-		"INSERT INTO `tw_pets` (`UserID`, `PetID`, `PetName`, `PetLevel`, `PetExperience`) "
-		"VALUES (%lld, %d, '%s', %d, 0) "
-		"ON DUPLICATE KEY UPDATE `PetID`=%d, `PetName`='%s', `PetLevel`=%d",
+		"INSERT INTO `tw_vehicles` (`UserID`, `VehicleType`, `VehicleName`) "
+		"VALUES (%lld, %d, '%s') "
+		"ON DUPLICATE KEY UPDATE `VehicleType`=%d, `VehicleName`='%s'",
 		(long long)UserId,
-		pPlayer->m_PetID, pPlayer->m_aPetName, pPlayer->m_PetLevel,
-		pPlayer->m_PetID, pPlayer->m_aPetName, pPlayer->m_PetLevel);
+		pPlayer->m_VehicleType, EscapedName.cstr(),
+		pPlayer->m_VehicleType, EscapedName.cstr());
 	bool Result = SqlExecQuery(pSql, GS()->Config(), aQuery);
 	pPool->Release(pRaw);
 	return Result;

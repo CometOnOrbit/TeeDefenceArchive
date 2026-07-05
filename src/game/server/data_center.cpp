@@ -304,6 +304,11 @@ void CDataCenter::LoadItemDefinitions(IStorage *pStorage)
 					Def.m_WeaponProfile.m_HammerLampRadius = clamp((int)WP["hammer_lamp_radius"].u.integer, 128, 600);
 			}
 
+			if(Def.m_Group == ItemGroup::Equipment && !MMOIsEquipmentItemType(Def.m_Type))
+			{
+				dbg_msg("mmo", "item %d: group=equipment requires a valid equip type (got type id %d)", ID, (int)Def.m_Type);
+			}
+
 			ms_aItemDefs[Def.m_ID] = Def;
 			Loaded++;
 		}
@@ -440,6 +445,79 @@ void CDataCenter::LoadMobDefinitions(IStorage *pStorage)
 					const json_value &Beh = S["behaviors"][(int)b];
 					if(Beh.type == json_string)
 						Def.m_BehaviorFlags |= MobBehaviorFlagsFromName(Beh.u.string.ptr);
+				}
+			}
+
+			if(S["active_radius"].type == json_integer)
+				Def.m_ActiveRadius = (float)S["active_radius"].u.integer;
+			else if(S["active_radius"].type == json_double)
+				Def.m_ActiveRadius = (float)S["active_radius"].u.dbl;
+
+			const json_value &Combat = S["combat"];
+			if(Combat.type == json_object)
+			{
+				if(Combat["archetype"].type == json_string)
+					Def.m_Archetype = MobArchetypeFromName(Combat["archetype"].u.string.ptr);
+				if(Combat["preferred_range"].type == json_integer)
+					Def.m_PreferredRange = (float)Combat["preferred_range"].u.integer;
+				else if(Combat["preferred_range"].type == json_double)
+					Def.m_PreferredRange = (float)Combat["preferred_range"].u.dbl;
+				if(Combat["weapon_item_id"].type == json_integer)
+					Def.m_WeaponItemId = (int)Combat["weapon_item_id"].u.integer;
+				if(Combat["active_radius"].type == json_integer)
+					Def.m_ActiveRadius = (float)Combat["active_radius"].u.integer;
+
+				const json_value &Weapons = Combat["weapons"];
+				if(Weapons.type == json_array)
+				{
+					for(unsigned w = 0; w < Weapons.u.array.length; w++)
+					{
+						const json_value &W = Weapons[(int)w];
+						if(W.type != json_object)
+							continue;
+						SMMOMobWeaponEntry Entry;
+						if(W["id"].type == json_integer)
+							Entry.m_WeaponId = (int)W["id"].u.integer;
+						if(W["ammo"].type == json_integer)
+							Entry.m_Ammo = (int)W["ammo"].u.integer;
+						if(W["primary"].type == json_boolean)
+							Entry.m_Primary = W["primary"].u.boolean != 0;
+						Def.m_vWeapons.push_back(Entry);
+					}
+				}
+			}
+
+			const json_value &Abilities = S["abilities"];
+			if(Abilities.type == json_array)
+			{
+				for(unsigned a = 0; a < Abilities.u.array.length; a++)
+				{
+					const json_value &A = Abilities[(int)a];
+					if(A.type != json_object || A["key"].type != json_string)
+						continue;
+					SMMOMobAbilityDef Ability;
+					str_copy(Ability.m_aKey, A["key"].u.string.ptr, sizeof(Ability.m_aKey));
+					if(A["trigger"].type == json_string)
+						Ability.m_Trigger = MobAbilityTriggerFromName(A["trigger"].u.string.ptr);
+					if(A["range"].type == json_integer)
+						Ability.m_Range = (float)A["range"].u.integer;
+					else if(A["range"].type == json_double)
+						Ability.m_Range = (float)A["range"].u.dbl;
+					if(A["cooldown_ticks"].type == json_integer)
+						Ability.m_CooldownTicks = (int)A["cooldown_ticks"].u.integer;
+					if(A["cast_ticks"].type == json_integer)
+						Ability.m_CastTicks = (int)A["cast_ticks"].u.integer;
+					if(A["scale_attack"].type == json_double)
+						Ability.m_ScaleAttack = (float)A["scale_attack"].u.dbl;
+					else if(A["scale_attack"].type == json_integer)
+						Ability.m_ScaleAttack = (float)A["scale_attack"].u.integer;
+					if(A["threshold_pct"].type == json_integer)
+						Ability.m_ThresholdPct = (float)A["threshold_pct"].u.integer;
+					else if(A["threshold_pct"].type == json_double)
+						Ability.m_ThresholdPct = (float)A["threshold_pct"].u.dbl;
+					if(Ability.m_ScaleAttack <= 0.f)
+						Ability.m_ScaleAttack = 1.f;
+					Def.m_vAbilities.push_back(Ability);
 				}
 			}
 

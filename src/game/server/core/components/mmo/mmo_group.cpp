@@ -207,7 +207,8 @@ void CMMOManager::ShowGroupVotes(int ClientID, CVoteMenuManager *pVote, CPlayer 
 	if(GroupIdx < 0)
 	{
 		V.GroupTitle("队伍");
-		V.Info("创建或加入一支队伍");
+		V.Info("最多 8 人，队长可踢人与解散");
+		V.Info("邀请：/group_invite <玩家名>");
 		V.Option("ccv_group_create", "创建队伍");
 		V.Footer();
 		return;
@@ -217,6 +218,8 @@ void CMMOManager::ShowGroupVotes(int ClientID, CVoteMenuManager *pVote, CPlayer 
 	V.GroupTitle("队伍");
 
 	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "成员 %d/%d", G.GetMemberCount(), GLOBAL_GROUP_MAX_MEMBERS);
+	V.Info(aBuf);
 	str_format(aBuf, sizeof(aBuf), "队长: %s", FindOnlineName(GS(), G.m_LeaderAccountID));
 	V.Info(aBuf);
 
@@ -225,12 +228,18 @@ void CMMOManager::ShowGroupVotes(int ClientID, CVoteMenuManager *pVote, CPlayer 
 
 	for(const auto &AID : G.m_vMemberAccountIDs)
 	{
-		str_format(aBuf, sizeof(aBuf), "%s %s", AID == G.m_LeaderAccountID ? "[队长]" : "·", FindOnlineName(GS(), AID));
+		const int TargetCID = FindOnlineClientID(GS(), AID);
+		const char *pMark = AID == G.m_LeaderAccountID ? "[队长]" : "·";
+		if(TargetCID >= 0)
+			str_format(aBuf, sizeof(aBuf), "%s %s  在线", pMark, FindOnlineName(GS(), AID));
+		else
+			str_format(aBuf, sizeof(aBuf), "%s %s  离线", pMark, FindOnlineName(GS(), AID));
 		V.Info(aBuf);
 	}
 
 	V.GroupLine();
 	V.GroupTitle("操作");
+	V.Info("邀请：/group_invite <玩家名>");
 
 	if(G.IsLeader(pP->GetAccountId()))
 	{

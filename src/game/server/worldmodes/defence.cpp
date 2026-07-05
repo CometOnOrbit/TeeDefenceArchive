@@ -8,6 +8,7 @@
 #include <game/server/gamecontext.h>
 #include <game/server/gameworld.h>
 #include <game/server/player.h>
+#include <game/server/core/components/skills/skill_data.h>
 #include <game/server/entities/character.h>
 #include <game/server/entities/tower-main.h>
 #include <game/server/entities/spider_boss.h>
@@ -18,7 +19,6 @@
 #include <base/math.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/account.h>
-#include <game/server/core/components/bots/defence_bot_manager.h>
 #include <game/server/botengine.h>
 #include <game/server/zombie_nav.h>
 
@@ -193,8 +193,6 @@ void CGameControllerDefence::PreTick()
 			continue;
 		if(pP->GetZomb() != ZOMB_NONE)
 			TdRunZombieBrain(pP);
-		else if(TWorldController *pCore = GameServer()->Core())
-			pCore->DefenceBotManager()->TickPlayer(pP);
 	}
 }
 
@@ -409,7 +407,14 @@ int CGameControllerDefence::OnCharacterDeath(CCharacter *pVictim, CPlayer *pKill
 			default: ZombieLevel = 1; break;
 			}
 			int ExpReward = ZombieLevel * 5 + 3;
-			pKiller->m_DefencePendingExp += ExpReward;
+			const int PlayerLevel = maximum(1, pKiller->GetStat(AttributeIdentifier::Level));
+			ExpReward = ScaleRewardByLevelGap(PlayerLevel, ZombieLevel, ExpReward);
+			if(ExpReward > 0)
+			{
+				const int Cap = maximum(120, PlayerLevel * 60);
+				const int Next = pKiller->m_DefencePendingExp + ExpReward;
+				pKiller->m_DefencePendingExp = minimum(Cap, Next);
+			}
 		}
 
 		if(pVictimPlayer->GetZomb() == ZOMB_SPIDER_BOSS)

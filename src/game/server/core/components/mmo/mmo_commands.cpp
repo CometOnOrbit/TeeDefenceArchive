@@ -11,13 +11,17 @@
 #include <game/server/mmo_exp.h>
 #include <game/server/core/components/skills/skill_defs.h>
 #include <game/server/core/components/economy/shop_data.h>
+#include <game/server/core/components/npcs/npc_service.h>
 #include <game/server/entities/character.h>
 #include <game/server/core/components/mmo/mmo_item.h>
 #include <game/server/account.h>
 #include <game/server/sql_pool.h>
 #include <game/server/sql_query.h>
-#include <game/server/entities/pet.h>
+#include <game/server/entities/vehicle/vehicle_util.h>
 #include <mysql.h>
+#include <game/server/gameworld.h>
+#include <game/server/interaction_sound.h>
+#include <generated/server_data.h>
 
 static CCharacter *GetCharacterSafe(CPlayer *pP)
 {
@@ -28,15 +32,15 @@ void CMMOManager::RegisterMMOVoteCommands(CCommandManager *pManager)
 {
 	if(!pManager) return;
 	CGameContext *pGame = GS();
-	pManager->AddCommand("mmo", "打开 MMO 背包", "", ConMMO, pGame);
-	pManager->AddCommand("mmomenu", "", "", ConMMO, pGame);
-	pManager->AddCommand("mmoitem", "打开背包物品详情", "i", [](IConsole::IResult *pR, void *pU) {
+	pManager->AddVoteCommand("mmo", "", "", ConMMO, pGame);
+	pManager->AddVoteCommand("mmomenu", "", "", ConMMO, pGame);
+	pManager->AddVoteCommand("mmoitem", "", "i", [](IConsole::IResult *pR, void *pU) {
 		auto *pCtx = (CCommandManager::SCommandContext *)pU;
 		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
 		if(pG && pG->Core() && pG->Core()->GetMMOManager())
 			pG->Core()->GetMMOManager()->ShowMMOItemDetail(pCtx->m_ClientID, pR->GetInteger(0));
 	}, pGame);
-	pManager->AddCommand("mmoequip", "装备到指定栏位", "ii", [](IConsole::IResult *pR, void *pU) {
+	pManager->AddVoteCommand("mmoequip", "", "ii", [](IConsole::IResult *pR, void *pU) {
 		auto *pCtx = (CCommandManager::SCommandContext *)pU;
 		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
 		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
@@ -46,14 +50,22 @@ void CMMOManager::RegisterMMOVoteCommands(CCommandManager *pManager)
 		if(pG->Core()->GetMMOManager()->EquipWeapon(pG->m_apPlayers[pCtx->m_ClientID], Slot, LoadoutSlot))
 			pG->Core()->GetMMOManager()->ShowMMOItemDetail(pCtx->m_ClientID, Slot);
 	}, pGame);
-	pManager->AddCommand("mmounequip", "", "", ConMMOUnequip, pGame);
-	pManager->AddCommand("mmoequippage", "", "", ConMMOEquip, pGame);
-	pManager->AddCommand("mmospawn", "<怪物名/ID>", "s", [](IConsole::IResult *pR, void *pU) {
+	pManager->AddVoteCommand("mmounequip", "", "", ConMMOUnequip, pGame);
+	pManager->AddVoteCommand("mmoequippage", "", "", ConMMOEquip, pGame);
+	pManager->AddVoteCommand("mmospawn", "", "s", [](IConsole::IResult *pR, void *pU) {
 		auto *pCtx = (CCommandManager::SCommandContext *)pU;
 		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
 		if(pG && pG->Core() && pG->Core()->GetMMOManager())
 			pG->Core()->GetMMOManager()->ConMMOSpawn(pR->GetString(0), pG->m_apPlayers[pCtx->m_ClientID]);
 	}, pGame);
+	pManager->AddVoteCommand("addstatvote", "", "s", ConAddStatVote, pGame);
+	RegisterEconomyVoteCommands(pManager);
+	RegisterSocialVoteCommands(pManager);
+	RegisterLifestyleVoteCommands(pManager);
+	RegisterInventoryVoteCommands(pManager);
+	RegisterGroupVoteCommands(pManager);
+	RegisterMailVoteCommands(pManager);
+	RegisterActivityVoteCommands(pManager);
 }
 
 void CMMOManager::ConMMO(IConsole::IResult *pResult, void *pUser)
@@ -122,14 +134,6 @@ void CMMOManager::RegisterMMOCommands(CCommandManager *pManager)
 
 	pManager->AddCommand("stats", "查看角色状态", "", ConStats, pGame);
 	pManager->AddCommand("addstat", "分配属性点: /addstat str|con", "s", ConAddStat, pGame);
-	pManager->AddCommand("skills", "查看已学习的技能", "", ConMMOSkills, pGame);
-	pManager->AddCommand("learn", "学习或升级技能: /learn <技能名>", "s", ConMMOLearn, pGame);
-	pManager->AddCommand("shop", "查看商店: /shop <NPC名字>", "s", ConShop, pGame);
-	pManager->AddCommand("buy", "购买物品: /buy <物品ID> <数量>", "ii", ConBuy, pGame);
-	pManager->AddCommand("use", "使用物品: /use <背包格> [数量]", "ii", ConUse, pGame);
-	pManager->AddCommand("sell", "出售物品: /sell <背包格> <数量>", "ii", ConSell, pGame);
-	pManager->AddCommand("mmosell", "出售背包物品: /mmosell <背包格>", "i", ConMMOSell, pGame);
-	pManager->AddCommand("addstatvote", "分配属性点: /addstatvote str|con", "s", ConAddStatVote, pGame);
 	pManager->AddCommand("itemslot", "绑定物品到表情键: /itemslot <表情槽0-3> <背包格|-1清空>", "ii", ConItemSlot, pGame);
 	pManager->AddCommand("story", "查看剧情进度", "", ConStory, pGame);
 }
@@ -392,10 +396,11 @@ void CMMOManager::ConStats(IConsole::IResult *pResult, void *pUser)
 	str_format(aBuf, sizeof(aBuf), "━━━ MMO 战斗面板 ━━━");
 	pGame->SendChatTo(pCtx->m_ClientID, aBuf);
 	pPlayer->RecalcMMOStats();
-	str_format(aBuf, sizeof(aBuf), "攻击: %d  |  防御: %d  |  MaxHP: %d  |  Mana: %d",
+	str_format(aBuf, sizeof(aBuf), "攻击: %d  |  防御: %d  |  MaxHP: %d  |  法力: %d/%d",
 		maximum(1, pPlayer->m_MMOAttack),
 		maximum(1, pPlayer->m_MMODefense),
 		pPlayer->GetBaseMaxHealth(),
+		pPlayer->GetCharacter() ? pPlayer->GetCharacter()->Mana() : 0,
 		pPlayer->GetMaxMana());
 	pGame->SendChatTo(pCtx->m_ClientID, aBuf);
 	str_format(aBuf, sizeof(aBuf), "升级所需: %d 经验 | 杀同级怪约 %d 只",
@@ -592,6 +597,12 @@ void CMMOManager::ConShop(IConsole::IResult *pResult, void *pUser)
 		return;
 	}
 
+	if(!IsPlayerNearServiceNpc(pGame, pP, pNpcName))
+	{
+		NotifyNpcServiceDenied(pGame, pCtx->m_ClientID);
+		return;
+	}
+
 	char aBuf[256];
 	str_format(aBuf, sizeof(aBuf), "═══ %s ═══", pShop->m_pName);
 	pGame->SendChatTo(pCtx->m_ClientID, aBuf);
@@ -619,29 +630,38 @@ void CMMOManager::ConBuy(IConsole::IResult *pResult, void *pUser)
 	int Qty = pResult->GetInteger(1);
 	if(Qty <= 0) Qty = 1;
 
-	// Find item price from any shop
+	// Find item price from a nearby shop that sells it
 	int TotalPrice = -1;
 	const char *pItemName = "Unknown";
+	const char *pShopNpc = nullptr;
 	for(int s = 0; s < NUM_SHOPS; s++)
 	{
 		const SShopEntry &Shop = g_aShopData[s];
+		if(!IsPlayerNearServiceNpc(pGame, pP, Shop.m_pNpcID))
+			continue;
 		for(int i = 0; i < Shop.m_NumItems; i++)
 		{
 			if(Shop.m_Items[i].m_ItemID == ItemID)
 			{
 				TotalPrice = Shop.m_Items[i].m_Price * Qty;
 				pItemName = Shop.m_Items[i].m_pName;
+				pShopNpc = Shop.m_pNpcID;
 				break;
 			}
 		}
-		if(TotalPrice >= 0) break;
+		if(TotalPrice >= 0)
+			break;
 	}
 
 	if(TotalPrice < 0)
 	{
-		pGame->SendChatTo(pCtx->m_ClientID, "该物品不在此商店出售。");
+		if(pGame->Core() && pGame->Core()->NpcManager())
+			pGame->SendChatLoc(pCtx->m_ClientID, "npc.service.too_far", "请靠近对应 NPC 再使用此功能。");
+		else
+			pGame->SendChatTo(pCtx->m_ClientID, "该物品不在此商店出售。");
 		return;
 	}
+	(void)pShopNpc;
 
 	if(pP->GetStat(AttributeIdentifier::Gold) < TotalPrice)
 	{
@@ -688,6 +708,12 @@ void CMMOManager::ConUse(IConsole::IResult *pResult, void *pUser)
 	{
 		pGame->SendChatTo(pCtx->m_ClientID, "物品不存在！");
 		return;
+	}
+
+	if(CMMOManager *pMMO = pGame->Core()->GetMMOManager())
+	{
+		if(pMMO->TryGrantVehicleFromItem(pP, Item.GetID(), SlotIdx))
+			return;
 	}
 
 	// Only consumable items can be used
@@ -1001,6 +1027,8 @@ bool CMMOManager::TrySellItem(CPlayer *pPlayer, int SlotIdx, int Qty, int *pGold
 
 	if(pGoldOut)
 		*pGoldOut = NetGold;
+	if(CCharacter *pChr = pPlayer->GetCharacter())
+		PlayInteractionSound(GS()->m_World, pPlayer, SOUND_SFX_PRODUCT);
 	return true;
 }
 
@@ -1056,6 +1084,7 @@ bool CMMOManager::DropItemAtSlot(CPlayer *pPlayer, int SlotIdx, int Qty, const c
 	str_format(aBuf, sizeof(aBuf), "丢弃了 x%d %s",
 		DropCount, GS()->Loc(pPlayer->GetCID(), pDef->GetNameKey(), pDef->GetName()));
 	GS()->SendChatTo(pPlayer->GetCID(), aBuf);
+	PlayInteractionSound(GS()->m_World, pPlayer, SOUND_SFX_ITEM_DROP);
 	return true;
 }
 
@@ -1296,35 +1325,7 @@ void CMMOManager::ConCheckin(const char *pPlayerName, CPlayer *pPlayer)
 
 void CMMOManager::RegisterCheckinCommands()
 {
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
-	CGameContext *pGame = GS();
-
-	pManager->AddCommand("checkin", "每日签到领取奖励", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-		pG->Core()->GetMMOManager()->ConCheckin(pG->Server()->ClientName(pCtx->m_ClientID), pP);
-	}, pGame);
-
-	pManager->AddCommand("daily", "每日签到（同 /checkin）", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-		pG->Core()->GetMMOManager()->ConCheckin(pG->Server()->ClientName(pCtx->m_ClientID), pP);
-	}, pGame);
+	// 签到仅通过投票菜单 ccv_checkin（RegisterEconomyVoteCommands）
 }
 
 // ─── Enchant System ───────────────────────────────────────────────────────
@@ -1403,6 +1404,7 @@ void CMMOManager::ConEnchant(int ClientID, int BagSlot)
 		str_format(aBuf, sizeof(aBuf), "✦ 强化成功！%s 已强化至 +%d！(成功率 %d%%)",
 			pDesc->GetName(), NewEnchant, SuccessRate);
 		pGame->SendChatTo(ClientID, aBuf);
+		PlayInteractionSound(pGame->m_World, pPlayer, SOUND_SFX_UPGRADE);
 	}
 	else
 	{
@@ -1411,6 +1413,7 @@ void CMMOManager::ConEnchant(int ClientID, int BagSlot)
 			// +0~+5: 无事发生
 			str_format(aBuf, sizeof(aBuf), "✧ 强化失败，但装备安然无恙。(成功率 %d%%)", SuccessRate);
 			pGame->SendChatTo(ClientID, aBuf);
+			PlayInteractionSound(pGame->m_World, pPlayer, SOUND_SFX_TICK);
 		}
 		else if(CurrentEnchant >= 6 && CurrentEnchant <= 10)
 		{
@@ -1448,16 +1451,7 @@ int CMMOManager::GetEnchantSuccessRate(int CurrentEnchant)
 
 void CMMOManager::RegisterEnchantCommands()
 {
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
-	CGameContext *pGame = GS();
-
-	pManager->AddCommand("enchant", "强化武器: /enchant <背包格>", "i", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		pG->Core()->GetMMOManager()->ConEnchant(pCtx->m_ClientID, pR->GetInteger(0));
-	}, pGame);
+	// 强化仅通过投票菜单 ccv_enchant / ccv_enchantpick（RegisterEconomyVoteCommands）
 }
 
 // ─── Ranking System ───────────────────────────────────────────────────────
@@ -1586,35 +1580,7 @@ void CMMOManager::ConRanking(int ClientID, const char *pType)
 
 void CMMOManager::RegisterRankingCommands()
 {
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
-	CGameContext *pGame = GS();
-
-	pManager->AddCommand("rank", "排行榜: /rank [level|gold]", "s?", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-		pG->Core()->GetMMOManager()->ConRanking(pCtx->m_ClientID, pR->GetString(0));
-	}, pGame);
-
-	pManager->AddCommand("ranking", "排行榜（同 /rank）", "s?", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-		pG->Core()->GetMMOManager()->ConRanking(pCtx->m_ClientID, pR->GetString(0));
-	}, pGame);
+	// rank / ranking 仅通过投票菜单 ccv_rank（RegisterActivityVoteCommands）
 }
 
 // ─── Auction System ───────────────────────────────────────────────────────
@@ -1980,140 +1946,14 @@ void CMMOManager::ConAuctionCancel(int ClientID, int ListingID)
 
 void CMMOManager::RegisterAuctionCommands()
 {
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
-	CGameContext *pGame = GS();
-
-	// /auction list|sell|buy|cancel
-	pManager->AddCommand("auction", "拍卖行: /auction list|sell <格子> <价格>|buy <ID>|cancel <ID>", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-		const char *pSub = pR->GetString(0);
-		if(!pSub || pSub[0] == '\0')
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "用法: /auction list|sell <格子> <价格>|buy <ID>|cancel <ID>");
-			return;
-		}
-		if(str_comp_nocase(pSub, "list") == 0)
-			pG->Core()->GetMMOManager()->ConAuctionList(pCtx->m_ClientID);
-		else if(str_comp_nocase(pSub, "sell") == 0)
-			pG->Core()->GetMMOManager()->ConAuctionSell(pCtx->m_ClientID, pR->GetInteger(1), pR->GetInteger(2));
-		else if(str_comp_nocase(pSub, "buy") == 0)
-			pG->Core()->GetMMOManager()->ConAuctionBuy(pCtx->m_ClientID, pR->GetInteger(1));
-		else if(str_comp_nocase(pSub, "cancel") == 0)
-			pG->Core()->GetMMOManager()->ConAuctionCancel(pCtx->m_ClientID, pR->GetInteger(1));
-		else
-			pG->SendChatTo(pCtx->m_ClientID, "未知子命令，可用: list, sell, buy, cancel");
-	}, pGame);
-
-	// /ah - shortcut for /auction
-	pManager->AddCommand("ah", "拍卖行快捷（同 /auction）", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-		const char *pSub = pR->GetString(0);
-		if(!pSub || pSub[0] == '\0')
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "用法: /ah list|sell <格子> <价格>|buy <ID>|cancel <ID>");
-			return;
-		}
-		if(str_comp_nocase(pSub, "list") == 0)
-			pG->Core()->GetMMOManager()->ConAuctionList(pCtx->m_ClientID);
-		else if(str_comp_nocase(pSub, "sell") == 0)
-			pG->Core()->GetMMOManager()->ConAuctionSell(pCtx->m_ClientID, pR->GetInteger(1), pR->GetInteger(2));
-		else if(str_comp_nocase(pSub, "buy") == 0)
-			pG->Core()->GetMMOManager()->ConAuctionBuy(pCtx->m_ClientID, pR->GetInteger(1));
-		else if(str_comp_nocase(pSub, "cancel") == 0)
-			pG->Core()->GetMMOManager()->ConAuctionCancel(pCtx->m_ClientID, pR->GetInteger(1));
-		else
-			pG->SendChatTo(pCtx->m_ClientID, "未知子命令，可用: list, sell, buy, cancel");
-	}, pGame);
-
-	// Dedicated commands
-	pManager->AddCommand("ah_list", "浏览拍卖行", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		pG->Core()->GetMMOManager()->ConAuctionList(pCtx->m_ClientID);
-		(void)pR;
-	}, pGame);
-
-	pManager->AddCommand("ah_sell", "<格子> <价格> - 上架物品到拍卖行", "ii", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		pG->Core()->GetMMOManager()->ConAuctionSell(pCtx->m_ClientID, pR->GetInteger(0), pR->GetInteger(1));
-	}, pGame);
-
-	pManager->AddCommand("ah_buy", "<ID> - 购买拍卖行物品", "i", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		pG->Core()->GetMMOManager()->ConAuctionBuy(pCtx->m_ClientID, pR->GetInteger(0));
-	}, pGame);
-
-	pManager->AddCommand("ah_cancel", "<ID> - 取消拍卖行上架", "i", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		pG->Core()->GetMMOManager()->ConAuctionCancel(pCtx->m_ClientID, pR->GetInteger(0));
-	}, pGame);
+	// 拍卖行仅通过投票菜单 ccv_ah_*（RegisterEconomyVoteCommands）
 }
 
-// ─── Mount System ───────────────────────────────────────────────────────
+// ─── Vehicle System ───────────────────────────────────────────────────────
 
-void CMMOManager::RegisterMountCommands()
+void CMMOManager::RegisterVehicleCommands()
 {
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
-	CGameContext *pGame = GS();
-
-	pManager->AddCommand("mount", "切换坐骑状态（上/下坐骑）", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-		if(!pP->GetCharacter())
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "你没有角色。");
-			return;
-		}
-
-		pP->m_IsMounted = !pP->m_IsMounted;
-		if(pP->m_IsMounted)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "🐎 你骑上了坐骑！移动速度 +50%");
-			// Set emote for mount visual
-			CCharacter *pChr = pP->GetCharacter();
-			if(pChr)
-				pChr->SetEmote(EMOTE_HAPPY, pG->Server()->Tick() + 999999);
-		}
-		else
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "你从坐骑上下来了。");
-			CCharacter *pChr = pP->GetCharacter();
-			if(pChr)
-				pChr->SetEmote(EMOTE_NORMAL, -1);
-		}
-	}, pGame);
+	// mount/vehicle/vehiclename 仅通过投票菜单（RegisterLifestyleVoteCommands）
 }
 
 void CMMOManager::RegisterAutoPathCommands()
@@ -2196,240 +2036,70 @@ void CMMOManager::RegisterAutoPathCommands()
 
 void CMMOManager::RegisterFashionCommands()
 {
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
-	CGameContext *pGame = GS();
-
-	pManager->AddCommand("fashion", "查看/设置时装: /fashion set <背包格> | /fashion clear | /fashion", "s?", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-
-		const char *pSub = pR->GetString(0);
-		if(!pSub || pSub[0] == '\0')
-		{
-			// Show current fashion info
-			if(pP->m_FashionItemID > 0)
-			{
-				const CMMOItemDescription *pDesc = CMMOItemDescription::Get(pP->m_FashionItemID);
-					char aNameBuf[64];
-				const char *pName;
-				if(pDesc)
-					pName = pDesc->GetName();
-				else
-				{
-					str_format(aNameBuf, sizeof(aNameBuf), "物品 #%d", pP->m_FashionItemID);
-					pName = aNameBuf;
-				}
-				char aBuf[128];
-				str_format(aBuf, sizeof(aBuf), "当前时装: %s (ID: %d)", pName, pP->m_FashionItemID);
-				pG->SendChatTo(pCtx->m_ClientID, aBuf);
-			}
-			else
-			{
-				pG->SendChatTo(pCtx->m_ClientID, "当前没有装备时装。使用 /fashion set <背包格> 装备时装。");
-			}
-			return;
-		}
-
-		if(str_comp_nocase(pSub, "set") == 0)
-		{
-			int SlotIdx = pR->GetInteger(1);
-			if(SlotIdx < 0 || (size_t)SlotIdx >= pP->m_MMOInventory.size())
-			{
-				pG->SendChatTo(pCtx->m_ClientID, "背包格无效！");
-				return;
-			}
-
-			const CItem &Item = pP->m_MMOInventory[SlotIdx];
-			if(!Item.IsValid())
-			{
-				pG->SendChatTo(pCtx->m_ClientID, "该背包格没有物品！");
-				return;
-			}
-
-			const CMMOItemDescription *pDesc = CMMOItemDescription::Get(Item.GetID());
-			if(!pDesc)
-			{
-				pG->SendChatTo(pCtx->m_ClientID, "物品数据不存在！");
-				return;
-			}
-
-			pP->m_FashionItemID = Item.GetID();
-			pP->m_MMODirty = true;
-
-			char aBuf[128];
-			str_format(aBuf, sizeof(aBuf), "✨ 已装备时装: %s！(物品ID: %d)", pDesc->GetName(), pP->m_FashionItemID);
-			pG->SendChatTo(pCtx->m_ClientID, aBuf);
-		}
-		else if(str_comp_nocase(pSub, "clear") == 0)
-		{
-			if(pP->m_FashionItemID == 0)
-			{
-				pG->SendChatTo(pCtx->m_ClientID, "当前没有装备时装。");
-				return;
-			}
-
-			const CMMOItemDescription *pDesc = CMMOItemDescription::Get(pP->m_FashionItemID);
-			const char *pName = pDesc ? pDesc->GetName() : "未知";
-
-			pP->m_FashionItemID = 0;
-			pP->m_MMODirty = true;
-
-			char aBuf[128];
-			str_format(aBuf, sizeof(aBuf), "已清除时装 %s，恢复默认外观。", pName);
-			pG->SendChatTo(pCtx->m_ClientID, aBuf);
-		}
-		else
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "用法: /fashion set <背包格> | /fashion clear | /fashion");
-		}
-	}, pGame);
+	// fashion 仅通过投票菜单 ccv_fashion / ccv_fashionpick（RegisterLifestyleVoteCommands）
 }
 
-// ─── Pet Commands ────────────────────────────────────────────────────
-
-void CMMOManager::RegisterPetCommands()
-{
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
-	CGameContext *pGame = GS();
-
-	// /pet - 查看宠物状态
-	pManager->AddCommand("pet", "查看宠物状态或执行操作", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-
-		if(pP->m_PetID <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "🐾 你没有宠物。使用 /pet summon 召唤。");
-			return;
-		}
-
-		char aBuf[256];
-		str_format(aBuf, sizeof(aBuf),
-			"🐾 宠物: %s | 模板ID: %d | 等级: %d | 状态: %s",
-			pP->m_aPetName[0] ? pP->m_aPetName : "未命名",
-			pP->m_PetID,
-			pP->m_PetLevel,
-			pP->m_pPet ? "已召唤✨" : "未召唤");
-		pG->SendChatTo(pCtx->m_ClientID, aBuf);
-		pG->SendChatTo(pCtx->m_ClientID, "可用命令: /pet summon, /pet dismiss, /pet name <新名字>");
-	}, pGame);
-
-	// /pet summon - 召唤宠物
-	pManager->AddCommand("petsummon", "召唤宠物", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-
-		if(pP->m_PetID <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "🐾 你没有宠物。");
-			return;
-		}
-
-		if(pP->m_pPet)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "🐾 宠物已在身边。使用 /pet dismiss 收起。");
-			return;
-		}
-
-		if(!pP->GetCharacter())
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "🐾 你没有角色。");
-			return;
-		}
-
-		CPet *pPet = new CPet(pG, pP->GetCID(), pP->m_PetID);
-		if(pP->m_aPetName[0])
-			pPet->SetName(pP->m_aPetName);
-		pP->m_pPet = pPet;
-
-		pG->SendChatTo(pCtx->m_ClientID, "🐾 宠物已召唤！");
-	}, pGame);
-
-	// /pet dismiss - 收起宠物
-	pManager->AddCommand("petdismiss", "收起宠物", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP) return;
-
-		if(!pP->m_pPet)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "🐾 没有已召唤的宠物。");
-			return;
-		}
-
-		pP->m_pPet->MarkForDestroy();
-		pP->m_pPet = nullptr;
-		pG->SendChatTo(pCtx->m_ClientID, "🐾 宠物已收起。");
-	}, pGame);
-
-	// /pet name <新名字> - 改名
-	pManager->AddCommand("petname", "为宠物改名", "s", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
-			return;
-		}
-
-		if(pP->m_PetID <= 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "🐾 你没有宠物，无法改名。");
-			return;
-		}
-
-		const char *pNewName = pR->GetString(0);
-		if(!pNewName || !pNewName[0])
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "用法: /pet name <新名字>");
-			return;
-		}
-
-		str_copy(pP->m_aPetName, pNewName, sizeof(pP->m_aPetName));
-		if(pP->m_pPet)
-			pP->m_pPet->SetName(pP->m_aPetName);
-
-		char aBuf[128];
-		str_format(aBuf, sizeof(aBuf), "🐾 宠物已更名为: %s", pP->m_aPetName);
-		pG->SendChatTo(pCtx->m_ClientID, aBuf);
-
-		// 立即保存改名
-		if(pG->Core() && pG->Core()->GetMMOManager())
-			pG->Core()->GetMMOManager()->SavePetData(pP);
-	}, pGame);
-}
 
 
 // ══════════════════════════════════════════════════════════════════════
 //  Housing Commands
 // ══════════════════════════════════════════════════════════════════════
+
+void CMMOManager::VoteHouseBuy(int ClientID)
+{
+	CGameContext *pG = GS();
+	if(!pG)
+		return;
+	CPlayer *pP = pG->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		pG->SendChatTo(ClientID, "请先登录。");
+		return;
+	}
+	if(pP->m_HasHouse)
+	{
+		pG->SendChatTo(ClientID, "你已经拥有房屋了！");
+		return;
+	}
+	if(!SpendGold(pP, 10000))
+	{
+		pG->SendChatTo(ClientID, "金币不足！购买房屋需要 10000 金币。");
+		return;
+	}
+	pP->m_HasHouse = true;
+	pP->m_HouseLevel = 1;
+	pP->m_MMODirty = true;
+	SaveHouseData(pP);
+	pG->SendChatTo(ClientID, "🏠 恭喜！你购买了一栋房屋！使用投票菜单传送回家。");
+	OpenVotePage(ClientID, VOTE_PAGE_MMO_LIFESTYLE);
+}
+
+void CMMOManager::VoteHouseTp(int ClientID)
+{
+	CGameContext *pG = GS();
+	if(!pG)
+		return;
+	CPlayer *pP = pG->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		pG->SendChatTo(ClientID, "请先登录。");
+		return;
+	}
+	if(!pP->m_HasHouse)
+	{
+		pG->SendChatTo(ClientID, "你没有房屋。");
+		return;
+	}
+	CCharacter *pChar = pP->GetCharacter();
+	if(!pChar)
+	{
+		pG->SendChatTo(ClientID, "你没有角色。");
+		return;
+	}
+	pChar->SetCharacterPos(vec2(1000, 1000));
+	pG->SendChatTo(ClientID, "🏠 传送回房屋！");
+	OpenVotePage(ClientID, VOTE_PAGE_MMO_LIFESTYLE);
+}
 
 void CMMOManager::RegisterHouseCommands()
 {
@@ -2446,243 +2116,278 @@ void CMMOManager::RegisterHouseCommands()
 		if(pP->m_HasHouse)
 		{
 			char aBuf[128];
-			str_format(aBuf, sizeof(aBuf), "🏠 你的房屋等级: %d | /house tp 传送回家", pP->m_HouseLevel);
+			str_format(aBuf, sizeof(aBuf), "🏠 你的房屋等级: %d | 请使用投票菜单传送回家", pP->m_HouseLevel);
 			pG->SendChatTo(pCtx->m_ClientID, aBuf);
 		}
 		else
 		{
-			pG->SendChatTo(pCtx->m_ClientID, "🏠 你还没有房屋。使用 /house buy (10000金币) 购买房屋。");
+			pG->SendChatTo(pCtx->m_ClientID, "🏠 你还没有房屋。请使用投票菜单购买房屋。");
 		}
+		(void)pR;
 	}, pGame);
 
-	pManager->AddCommand("house_buy", "购买房屋 (10000金币)", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0) { pG->SendChatTo(pCtx->m_ClientID, "请先登录。"); return; }
-		if(pP->m_HasHouse) { pG->SendChatTo(pCtx->m_ClientID, "你已经拥有房屋了！"); return; }
-		CMMOManager *pMMO = pG->Core()->GetMMOManager();
-		if(!pMMO->SpendGold(pP, 10000))
-		{ pG->SendChatTo(pCtx->m_ClientID, "金币不足！购买房屋需要 10000 金币。"); return; }
-		pP->m_HasHouse = true;
-		pP->m_HouseLevel = 1;
-		pP->m_MMODirty = true;
-		pMMO->SaveHouseData(pP);
-		pG->SendChatTo(pCtx->m_ClientID, "🏠 恭喜！你购买了一栋房屋！使用 /house tp 传送回家。");
-	}, pGame);
-
-	pManager->AddCommand("house_tp", "传送回房屋", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0) { pG->SendChatTo(pCtx->m_ClientID, "请先登录。"); return; }
-		if(!pP->m_HasHouse) { pG->SendChatTo(pCtx->m_ClientID, "你没有房屋。"); return; }
-		CCharacter *pChar = pP->GetCharacter();
-		if(!pChar) { pG->SendChatTo(pCtx->m_ClientID, "你没有角色。"); return; }
-		pChar->SetCharacterPos(vec2(1000, 1000));
-		pG->SendChatTo(pCtx->m_ClientID, "🏠 传送回房屋！");
-	}, pGame);
+	// house_buy/house_tp 仅通过投票菜单（RegisterLifestyleVoteCommands）
 }
 
 // ─── Marriage System ───────────────────────────────────────────────────────
 
 static std::map<int64, int64> gs_Proposals;  // ProposerAID → TargetAID
 
+void CMMOManager::VoteMarry(int ClientID, const char *pTargetName)
+{
+	CGameContext *pG = GS();
+	if(!pG || !pTargetName || !pTargetName[0])
+	{
+		if(pG)
+			pG->SendChatTo(ClientID, "请在 Reason 栏填写对方玩家名。");
+		return;
+	}
+	CPlayer *pP = pG->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		pG->SendChatTo(ClientID, "请先登录。");
+		return;
+	}
+	if(pP->m_SpouseAccountID > 0)
+	{
+		pG->SendChatTo(ClientID, "你已经结婚了！请先在投票菜单申请离婚。");
+		return;
+	}
+	int TargetCID = FindClientByName(pTargetName);
+	if(TargetCID < 0)
+	{
+		pG->SendChatTo(ClientID, "未找到该玩家。");
+		return;
+	}
+	if(TargetCID == ClientID)
+	{
+		pG->SendChatTo(ClientID, "不能向自己求婚！");
+		return;
+	}
+	CPlayer *pTarget = pG->m_apPlayers[TargetCID];
+	if(!pTarget || pTarget->GetAccountId() <= 0)
+	{
+		pG->SendChatTo(ClientID, "目标未登录。");
+		return;
+	}
+	if(pTarget->m_SpouseAccountID > 0)
+	{
+		pG->SendChatTo(ClientID, "对方已经结婚了。");
+		return;
+	}
+	int64 ProposerAID = pP->GetAccountId();
+	int64 TargetAID = pTarget->GetAccountId();
+	gs_Proposals[ProposerAID] = TargetAID;
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "💍 %s 向你求婚了！打开投票菜单 → 生活 → 婚姻 接受", pG->Server()->ClientName(ClientID));
+	pG->SendChatTo(TargetCID, aBuf);
+	str_format(aBuf, sizeof(aBuf), "💍 你向 %s 求婚了，等待对方回应...", pTargetName);
+	pG->SendChatTo(ClientID, aBuf);
+	OpenVotePage(ClientID, VOTE_PAGE_MMO_LIFESTYLE);
+}
+
+bool CMMOManager::GetIncomingMarriageProposerName(int ClientID, char *pBuf, int BufSize)
+{
+	if(!pBuf || BufSize <= 0)
+		return false;
+	pBuf[0] = 0;
+	CGameContext *pG = GS();
+	CPlayer *pP = pG ? pG->m_apPlayers[ClientID] : nullptr;
+	if(!pP || pP->GetAccountId() <= 0)
+		return false;
+	const int64 TargetAID = pP->GetAccountId();
+	int64 ProposerAID = 0;
+	for(const auto &Pair : gs_Proposals)
+	{
+		if(Pair.second == TargetAID)
+		{
+			ProposerAID = Pair.first;
+			break;
+		}
+	}
+	if(ProposerAID == 0)
+		return false;
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		CPlayer *pProposer = pG->m_apPlayers[i];
+		if(pProposer && pProposer->GetAccountId() == ProposerAID)
+		{
+			str_copy(pBuf, pG->Server()->ClientName(i), BufSize);
+			return true;
+		}
+	}
+	return LookupAccountName(ProposerAID, pBuf, BufSize);
+}
+
+void CMMOManager::VoteMarryAccept(int ClientID)
+{
+	CGameContext *pG = GS();
+	if(!pG)
+		return;
+	CPlayer *pP = pG->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		pG->SendChatTo(ClientID, "请先登录。");
+		return;
+	}
+	if(pP->m_SpouseAccountID > 0)
+	{
+		pG->SendChatTo(ClientID, "你已经结婚了！");
+		return;
+	}
+
+	const int64 TargetAID = pP->GetAccountId();
+	int64 ProposerAID = 0;
+	for(const auto &Pair : gs_Proposals)
+	{
+		if(Pair.second == TargetAID)
+		{
+			ProposerAID = Pair.first;
+			break;
+		}
+	}
+	if(ProposerAID == 0)
+	{
+		pG->SendChatTo(ClientID, "你没有被求婚。");
+		return;
+	}
+
+	int ProposerCID = -1;
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		CPlayer *p = pG->m_apPlayers[i];
+		if(p && p->GetAccountId() == ProposerAID)
+		{
+			ProposerCID = i;
+			break;
+		}
+	}
+	if(ProposerCID < 0)
+	{
+		pG->SendChatTo(ClientID, "求婚者已离线。");
+		gs_Proposals.erase(ProposerAID);
+		return;
+	}
+
+	CPlayer *pProposer = pG->m_apPlayers[ProposerCID];
+	if(!pProposer || pProposer->m_SpouseAccountID > 0)
+	{
+		pG->SendChatTo(ClientID, "求婚者已结婚。");
+		gs_Proposals.erase(ProposerAID);
+		return;
+	}
+
+	CSqlConnectionPool *pPool = pG->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+	{
+		pG->SendChatTo(ClientID, "数据库错误。");
+		return;
+	}
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+	{
+		pG->SendChatTo(ClientID, "数据库错误。");
+		return;
+	}
+	MYSQL *pSql = (MYSQL *)pRaw;
+
+	char aDate[16];
+	{
+		time_t Now = time(nullptr);
+		struct tm *pTM = localtime(&Now);
+		strftime(aDate, sizeof(aDate), "%Y%m%d", pTM);
+	}
+
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"INSERT INTO `tw_marriages` (`SpouseA`, `SpouseB`, `MarriedAt`) VALUES (%lld, %lld, %s)",
+		(long long)ProposerAID, (long long)TargetAID, aDate);
+	if(!SqlExecQuery(pSql, pG->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		pG->SendChatTo(ClientID, "结婚失败，数据库错误。");
+		return;
+	}
+	pPool->Release(pRaw);
+
+	pP->m_SpouseAccountID = ProposerAID;
+	pP->m_MarriageDate = str_toint(aDate);
+	pP->m_MMODirty = true;
+	pProposer->m_SpouseAccountID = TargetAID;
+	pProposer->m_MarriageDate = str_toint(aDate);
+	pProposer->m_MMODirty = true;
+	gs_Proposals.erase(ProposerAID);
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "🎊 💍 %s 和 %s 喜结连理！祝他们幸福快乐！💍 🎊",
+		pG->Server()->ClientName(ProposerCID),
+		pG->Server()->ClientName(ClientID));
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(pG->m_apPlayers[i] && pG->Server()->ClientIngame(i))
+			pG->SendChatTo(i, aBuf);
+	}
+	OpenVotePage(ClientID, VOTE_PAGE_MMO_MARRIAGE, VOTE_PAGE_MMO_LIFESTYLE);
+}
+
+void CMMOManager::VoteDivorce(int ClientID)
+{
+	CGameContext *pG = GS();
+	if(!pG)
+		return;
+	CPlayer *pP = pG->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		pG->SendChatTo(ClientID, "请先登录。");
+		return;
+	}
+	if(pP->m_SpouseAccountID == 0)
+	{
+		pG->SendChatTo(ClientID, "你是单身，无法离婚。");
+		return;
+	}
+	int64 UserId = pP->GetAccountId();
+	int64 SpouseAID = pP->m_SpouseAccountID;
+	CSqlConnectionPool *pPool = pG->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+	{
+		pG->SendChatTo(ClientID, "数据库错误。");
+		return;
+	}
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+	{
+		pG->SendChatTo(ClientID, "数据库错误。");
+		return;
+	}
+	MYSQL *pSql = (MYSQL *)pRaw;
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"DELETE FROM `tw_marriages` WHERE (`SpouseA`=%lld AND `SpouseB`=%lld) OR (`SpouseA`=%lld AND `SpouseB`=%lld)",
+		(long long)UserId, (long long)SpouseAID,
+		(long long)SpouseAID, (long long)UserId);
+	SqlExecQuery(pSql, pG->Config(), aQuery);
+	pPool->Release(pRaw);
+	pP->m_SpouseAccountID = 0;
+	pP->m_MarriageDate = 0;
+	pP->m_MMODirty = true;
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		CPlayer *p = pG->m_apPlayers[i];
+		if(p && p->GetAccountId() == SpouseAID)
+		{
+			p->m_SpouseAccountID = 0;
+			p->m_MarriageDate = 0;
+			p->m_MMODirty = true;
+			pG->SendChatTo(i, "💔 你的配偶与你离婚了。");
+			break;
+		}
+	}
+	pG->SendChatTo(ClientID, "💔 离婚成功。");
+	OpenVotePage(ClientID, VOTE_PAGE_MMO_LIFESTYLE);
+}
+
 void CMMOManager::RegisterMarriageCommands()
 {
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
-	CGameContext *pGame = GS();
-
-	// /marry <玩家名> — 求婚
-	pManager->AddCommand("marry", "向玩家求婚: /marry <玩家名>", "s", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0) { pG->SendChatTo(pCtx->m_ClientID, "请先登录。"); return; }
-
-		// Check proposer is single
-		if(pP->m_SpouseAccountID > 0)
-		{ pG->SendChatTo(pCtx->m_ClientID, "你已经结婚了！使用 /divorce 离婚后可以再求婚。"); return; }
-
-		const char *pTargetName = pR->GetString(0);
-		int TargetCID = pG->Core()->GetMMOManager()->FindClientByName(pTargetName);
-		if(TargetCID < 0) { pG->SendChatTo(pCtx->m_ClientID, "未找到该玩家。"); return; }
-		if(TargetCID == pCtx->m_ClientID) { pG->SendChatTo(pCtx->m_ClientID, "不能向自己求婚！"); return; }
-
-		CPlayer *pTarget = pG->m_apPlayers[TargetCID];
-		if(!pTarget || pTarget->GetAccountId() <= 0) { pG->SendChatTo(pCtx->m_ClientID, "目标未登录。"); return; }
-
-		// Check target is single
-		if(pTarget->m_SpouseAccountID > 0)
-		{ pG->SendChatTo(pCtx->m_ClientID, "对方已经结婚了。"); return; }
-
-		int64 ProposerAID = pP->GetAccountId();
-		int64 TargetAID = pTarget->GetAccountId();
-
-		// Store proposal
-		gs_Proposals[ProposerAID] = TargetAID;
-
-		char aBuf[128];
-		str_format(aBuf, sizeof(aBuf), "💍 %s 向你求婚了！使用 /marry_accept 接受", pG->Server()->ClientName(pCtx->m_ClientID));
-		pG->SendChatTo(TargetCID, aBuf);
-
-		str_format(aBuf, sizeof(aBuf), "💍 你向 %s 求婚了，等待对方回应...", pTargetName);
-		pG->SendChatTo(pCtx->m_ClientID, aBuf);
-	}, pGame);
-
-	// /marry_accept — 接受求婚
-	pManager->AddCommand("marry_accept", "接受求婚", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0) { pG->SendChatTo(pCtx->m_ClientID, "请先登录。"); return; }
-		(void)pR;
-
-		if(pP->m_SpouseAccountID > 0)
-		{ pG->SendChatTo(pCtx->m_ClientID, "你已经结婚了！"); return; }
-
-		// Find proposal targeting this player
-		int64 TargetAID = pP->GetAccountId();
-		int64 ProposerAID = 0;
-		for(auto &Pair : gs_Proposals)
-		{
-			if(Pair.second == TargetAID)
-			{
-				ProposerAID = Pair.first;
-				break;
-			}
-		}
-
-		if(ProposerAID == 0)
-		{ pG->SendChatTo(pCtx->m_ClientID, "你没有被求婚。"); return; }
-
-		// Find the proposer online
-		int ProposerCID = -1;
-		for(int i = 0; i < MAX_CLIENTS; i++)
-		{
-			CPlayer *p = pG->m_apPlayers[i];
-			if(p && p->GetAccountId() == ProposerAID)
-			{ ProposerCID = i; break; }
-		}
-
-		if(ProposerCID < 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "求婚者已离线。");
-			gs_Proposals.erase(ProposerAID);
-			return;
-		}
-
-		CPlayer *pProposer = pG->m_apPlayers[ProposerCID];
-		if(!pProposer || pProposer->m_SpouseAccountID > 0)
-		{
-			pG->SendChatTo(pCtx->m_ClientID, "求婚者已结婚。");
-			gs_Proposals.erase(ProposerAID);
-			return;
-		}
-
-		// Insert into DB
-		CSqlConnectionPool *pPool = pG->Accounts()->GetSqlPool();
-		if(!pPool || !pPool->IsInitialized()) { pG->SendChatTo(pCtx->m_ClientID, "数据库错误。"); return; }
-		void *pRaw = pPool->Acquire();
-		if(!pRaw) { pG->SendChatTo(pCtx->m_ClientID, "数据库错误。"); return; }
-		MYSQL *pSql = (MYSQL *)pRaw;
-
-		char aDate[16];
-		{
-			time_t Now = time(nullptr);
-			struct tm *pTM = localtime(&Now);
-			strftime(aDate, sizeof(aDate), "%Y%m%d", pTM);
-		}
-
-		char aQuery[256];
-		str_format(aQuery, sizeof(aQuery),
-			"INSERT INTO `tw_marriages` (`SpouseA`, `SpouseB`, `MarriedAt`) VALUES (%lld, %lld, %s)",
-			(long long)ProposerAID, (long long)TargetAID, aDate);
-		if(!SqlExecQuery(pSql, pG->Config(), aQuery))
-		{
-			pPool->Release(pRaw);
-			pG->SendChatTo(pCtx->m_ClientID, "结婚失败，数据库错误。");
-			return;
-		}
-		pPool->Release(pRaw);
-
-		// Update in-memory state
-		pP->m_SpouseAccountID = ProposerAID;
-		pP->m_MarriageDate = str_toint(aDate);
-		pP->m_MMODirty = true;
-		pProposer->m_SpouseAccountID = TargetAID;
-		pProposer->m_MarriageDate = str_toint(aDate);
-		pProposer->m_MMODirty = true;
-
-		// Cleanup proposal
-		gs_Proposals.erase(ProposerAID);
-
-		// Broadcast wedding announcement
-		char aBuf[128];
-		str_format(aBuf, sizeof(aBuf), "🎊 💍 %s 和 %s 喜结连理！祝他们幸福快乐！💍 🎊",
-			pG->Server()->ClientName(ProposerCID),
-			pG->Server()->ClientName(pCtx->m_ClientID));
-		for(int i = 0; i < MAX_CLIENTS; i++)
-		{
-			if(pG->m_apPlayers[i] && pG->Server()->ClientIngame(i))
-				pG->SendChatTo(i, aBuf);
-		}
-	}, pGame);
-
-	// /divorce — 离婚
-	pManager->AddCommand("divorce", "与配偶离婚", "", [](IConsole::IResult *pR, void *pU) {
-		auto *pCtx = (CCommandManager::SCommandContext *)pU;
-		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager()) return;
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || pP->GetAccountId() <= 0) { pG->SendChatTo(pCtx->m_ClientID, "请先登录。"); return; }
-		(void)pR;
-
-		if(pP->m_SpouseAccountID == 0)
-		{ pG->SendChatTo(pCtx->m_ClientID, "你是单身，无法离婚。"); return; }
-
-		int64 UserId = pP->GetAccountId();
-		int64 SpouseAID = pP->m_SpouseAccountID;
-
-		// Delete from DB
-		CSqlConnectionPool *pPool = pG->Accounts()->GetSqlPool();
-		if(!pPool || !pPool->IsInitialized()) { pG->SendChatTo(pCtx->m_ClientID, "数据库错误。"); return; }
-		void *pRaw = pPool->Acquire();
-		if(!pRaw) { pG->SendChatTo(pCtx->m_ClientID, "数据库错误。"); return; }
-		MYSQL *pSql = (MYSQL *)pRaw;
-
-		char aQuery[256];
-		str_format(aQuery, sizeof(aQuery),
-			"DELETE FROM `tw_marriages` WHERE (`SpouseA`=%lld AND `SpouseB`=%lld) OR (`SpouseA`=%lld AND `SpouseB`=%lld)",
-			(long long)UserId, (long long)SpouseAID,
-			(long long)SpouseAID, (long long)UserId);
-		SqlExecQuery(pSql, pG->Config(), aQuery);
-		pPool->Release(pRaw);
-
-		// Clear local state
-		pP->m_SpouseAccountID = 0;
-		pP->m_MarriageDate = 0;
-		pP->m_MMODirty = true;
-
-		// Clear spouse's local state if online
-		for(int i = 0; i < MAX_CLIENTS; i++)
-		{
-			CPlayer *p = pG->m_apPlayers[i];
-			if(p && p->GetAccountId() == SpouseAID)
-			{
-				p->m_SpouseAccountID = 0;
-				p->m_MarriageDate = 0;
-				p->m_MMODirty = true;
-				pG->SendChatTo(i, "💔 你的配偶与你离婚了。");
-				break;
-			}
-		}
-
-		pG->SendChatTo(pCtx->m_ClientID, "💔 离婚成功。");
-	}, pGame);
+	// marry / marry_accept / divorce 仅通过投票菜单（RegisterLifestyleVoteCommands）
 }

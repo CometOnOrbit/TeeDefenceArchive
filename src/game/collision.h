@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <string>
 
+#include <base/system.h>
 #include <base/vmath.h>
 #include <game/mapitems.h>
 
@@ -46,6 +47,20 @@ struct GatheringNode
 			{
 				for(auto& [_, Chance] : m_vItems) Chance = (Chance * 100.f) / Total;
 			}
+		}
+		int PickRandomItem() const
+		{
+			if(m_vItems.empty())
+				return -1;
+			const int Roll = random_int() % 100;
+			float Acc = 0.f;
+			for(const auto &Entry : m_vItems)
+			{
+				Acc += Entry.second;
+				if((float)Roll < Acc)
+					return Entry.first;
+			}
+			return m_vItems.back().first;
 		}
 	} m_vItems;
 };
@@ -124,7 +139,8 @@ public:
 	void Init(class CLayers *pLayers);
 	typedef void (*InitEntityCallback)(int, vec2, int, void *);
 	void InitEntities(InitEntityCallback pfnCallback, void *pUser) const;
-	void InitSwitchEntities(InitEntityCallback pfnCallback, void *pUser) const;
+	typedef void (*InitSwitchEntityCallback)(int EntityIndex, vec2 Pos, int Flags, int Number, void *pUser);
+	void InitSwitchEntities(InitSwitchEntityCallback pfnCallback, void *pUser) const;
 
 	int GetWidth() const { return m_Width; }
 	int GetHeight() const { return m_Height; }
@@ -177,6 +193,7 @@ public:
 
 	// teleport
 	bool GetTeleportOut(vec2 currentPos, vec2 *pOut) const;
+	bool GetTeleportOutByNumber(int Number, vec2 FromPos, vec2 *pOut) const;
 	const CTeleTile &GetTeleTile(int Index) const { return m_pTele[Index]; }
 
 	// fixed camera

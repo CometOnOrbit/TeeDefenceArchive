@@ -1,5 +1,6 @@
 #include "quest_data.h"
 #include "quest_manager.h"
+#include <generated/server_data.h>
 #include <game/server/gamecontext.h>
 #include <game/server/entity_manager.h>
 #include <game/server/player.h>
@@ -188,7 +189,7 @@ bool CPlayerQuest::Accept(int StartStep)
 	// MRPG-style effects
 	GS()->Broadcast(m_ClientID, CGameContext::BROADCAST_PRIORITY_TITLE, 100, "任务已接受!");
 	if(pPlayer->GetCharacter())
-		GS()->m_World.CreateSound(pPlayer->GetCharacter()->GetPos(), SOUND_PICKUP_ARMOR, CmaskOne(m_ClientID));
+		GS()->m_World.CreateSound(pPlayer->GetCharacter()->GetPos(), SOUND_GAME_ACCEPT, CmaskOne(m_ClientID));
 
 	return true;
 }
@@ -268,7 +269,7 @@ void CPlayerQuest::UpdateStepProgress()
 	// MRPG-style effects
 	GS()->Broadcast(m_ClientID, CGameContext::BROADCAST_PRIORITY_TITLE, 100, "任务完成!");
 	if(pPlayer && pPlayer->GetCharacter())
-		GS()->m_World.CreateSound(pPlayer->GetCharacter()->GetPos(), SOUND_PICKUP_HEALTH, CmaskOne(m_ClientID));
+		GS()->m_World.CreateSound(pPlayer->GetCharacter()->GetPos(), SOUND_GAME_DONE, CmaskOne(m_ClientID));
 
 	if(Info()->HasFlag(QUEST_FLAG_TYPE_REPEATABLE))
 	{

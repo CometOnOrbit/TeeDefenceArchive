@@ -6,6 +6,10 @@
 #include <game/voting.h>
 #include <game/server/account.h>
 #include <game/server/core/components/craft/craft_manager.h>
+#include <game/server/core/components/npcs/npc_service.h>
+#include <game/server/gameworld.h>
+#include <game/server/interaction_sound.h>
+#include <generated/server_data.h>
 #include <game/server/core/components/meta/durability_manager.h>
 #include <game/server/entities/turret.h>
 #include <game/server/turret_ammo.h>
@@ -18,6 +22,7 @@
 #include <game/server/gamecontext.h>
 #include <game/server/gamecontroller.h>
 #include <game/server/worldmodes/defence.h>
+#include <engine/shared/world_detail.h>
 #include <game/server/item_card_ops.h>
 #include <game/server/item_system.h>
 #include <game/server/player.h>
@@ -81,90 +86,6 @@ bool CCraftManager::TryCraftOneItem(int ClientID, int Item, char *pErr, int ErrS
 	return true;
 }
 
-static void ComChatCraft(IConsole::IResult *pResult, void *pUser)
-{
-	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
-	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	CItemHelper *pH = pGame->ItemHelper();
-
-	if(!pH)
-		return;
-
-	const char *pTok = pResult->GetString(0);
-	int Item = pGame->ResolveItemId(pCtx->m_ClientID, pTok);
-	if(Item < 0 || !pH->CheckItemValid(Item))
-	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "craft.err.unknown_item", "未知物品。");
-		return;
-	}
-
-	char aErr[256];
-	if(!pGame->Core() || !pGame->Core()->CraftManager() || !pGame->Core()->CraftManager()->TryCraftOneItem(pCtx->m_ClientID, Item, aErr, sizeof(aErr)))
-	{
-		pGame->SendChatTo(pCtx->m_ClientID, aErr);
-		if(CCharacter *pChr = pP ? pP->GetCharacter() : nullptr)
-			pGame->m_World.CreateSound(pChr->GetPos(), SOUND_WEAPON_NOAMMO, CmaskOne(pCtx->m_ClientID));
-		return;
-	}
-
-	pGame->SendChatLocF(pCtx->m_ClientID, "craft.ok", "合成成功：%s。", pGame->LocItemName(pCtx->m_ClientID, Item));
-	if(CCharacter *pChr = pP ? pP->GetCharacter() : nullptr)
-		pGame->m_World.CreateSound(pChr->GetPos(), SOUND_PICKUP_ARMOR, CmaskOne(pCtx->m_ClientID));
-}
-
-static void ComChatEquip(IConsole::IResult *pResult, void *pUser)
-{
-	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
-	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
-	CAccountSystem *pAcc = pGame->Accounts();
-
-	if(!pAcc->IsEnabled())
-	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "err.account.disabled", "未启用账号。");
-		return;
-	}
-
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(!pP || pP->GetAccountId() < 0)
-	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "err.login.required", "请先登录。");
-		return;
-	}
-
-	CItemHelper *pH = pGame->ItemHelper();
-	if(!pH)
-		return;
-
-	const int ItemId = pResult->GetInteger(0);
-	if(!pH->CheckItemValid(ItemId) || ItemId <= 0)
-	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "equip.err.invalid", "无效物品。");
-		return;
-	}
-
-	const int T = pH->GetType(ItemId);
-	if(T != ITYPE_PICKAXE && T != ITYPE_AXE && T != ITYPE_SWORD
-		&& T != ITYPE_HELMET && T != ITYPE_CHEST && T != ITYPE_LEGS)
-	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "equip.err.tool_only", "只能装备镐、斧、剑或盔甲。");
-		return;
-	}
-
-	if(pP->m_AccData.m_aItems[ItemId].m_Num <= 0)
-	{
-		pGame->SendChatLoc(pCtx->m_ClientID, "equip.err.not_owned", "你没有该物品。");
-		return;
-	}
-
-	pP->m_AccData.m_Holding[T] = ItemId;
-	pAcc->RequestSaveAccount(pCtx->m_ClientID);
-
-	pGame->SendChatLocF(pCtx->m_ClientID, "equip.ok", "已装备：%s。", pGame->LocItemName(pCtx->m_ClientID, ItemId));
-	if(CCharacter *pChr = pP->GetCharacter())
-		pGame->m_World.CreateSound(pChr->GetPos(), SOUND_PICKUP_NINJA, CmaskOne(pCtx->m_ClientID));
-}
-
 static void ComChatInv(IConsole::IResult *pResult, void *pUser)
 {
 	(void)pResult;
@@ -208,8 +129,36 @@ static void ComVoteMenuGoto(IConsole::IResult *pResult, void *pUser)
 {
 	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
 	SPlayerVote *pV = pGame->Core()->VoteMenuManager()->GetPlayerVote(pCtx->m_ClientID);
 	const int NewPage = pResult->GetInteger(0);
+
+	if(NewPage == PAGE_MENU)
+	{
+		ClearNpcService(pV);
+	}
+	else if(IsRemoteShopBrowserPage(NewPage))
+	{
+		// 宽松：商店浏览页不要求 NPC 绑定，列表页再按距离过滤商人
+	}
+	else if(IsNpcServicePage(NewPage))
+	{
+		if(NewPage == VOTE_PAGE_MMO_ENCHANT || NewPage == VOTE_PAGE_MMO_ENCHANT_SELECT)
+		{
+			if(!IsPlayerNearServiceNpc(pGame, pP, "blacksmith"))
+			{
+				NotifyNpcServiceDenied(pGame, pCtx->m_ClientID);
+				return;
+			}
+			BindNpcService(pV, "blacksmith");
+		}
+		else if(!pV->m_aServiceNpcId[0] || !IsPlayerNearServiceNpc(pGame, pP, pV->m_aServiceNpcId))
+		{
+			NotifyNpcServiceDenied(pGame, pCtx->m_ClientID);
+			return;
+		}
+	}
+
 	pV->m_Page = NewPage;
 	pV->m_Confirm = false;
 	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
@@ -262,13 +211,13 @@ static void ComVoteMake(IConsole::IResult *pResult, void *pUser)
 		pGame->LocFormat(pV->m_aExtraText, sizeof(pV->m_aExtraText), pCtx->m_ClientID, "vote.craft.ok", "合成成功：%s。",
 			pH ? pGame->LocItemName(pCtx->m_ClientID, Item) : pGame->Loc(pCtx->m_ClientID, "common.unknown", "?"));
 		if(CCharacter *pChr = pP ? pP->GetCharacter() : nullptr)
-			pGame->m_World.CreateSound(pChr->GetPos(), SOUND_PICKUP_ARMOR, CmaskOne(pCtx->m_ClientID));
+			PlayInteractionSound(pGame->m_World, pP, SOUND_SFX_CRAFT);
 	}
 	else
 	{
 		str_copy(pV->m_aExtraText, aErr, sizeof(pV->m_aExtraText));
 		if(CCharacter *pChr = pP ? pP->GetCharacter() : nullptr)
-			pGame->m_World.CreateSound(pChr->GetPos(), SOUND_WEAPON_NOAMMO, CmaskOne(pCtx->m_ClientID));
+			PlayInteractionSound(pGame->m_World, pP, SOUND_SFX_TICK);
 	}
 	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
 }
@@ -319,6 +268,7 @@ static void ComVoteEquip(IConsole::IResult *pResult, void *pUser)
 		pCore->Events().EmitPlayerEquip(pP, ItemId);
 	}
 	pAcc->RequestSaveAccount(pCtx->m_ClientID);
+	PlayInteractionSound(pGame->m_World, pP, SOUND_SFX_ITEM_EQUIP);
 	pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
 }
 
@@ -536,8 +486,18 @@ static void ComVoteTravel(IConsole::IResult *pResult, void *pUser)
 {
 	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
-	if(pGame->Core() && pGame->Core()->WorldManager())
-		pGame->Core()->WorldManager()->Execute(pCtx->m_ClientID, pResult->GetInteger(0));
+	const int CID = pCtx->m_ClientID;
+	if(CID < 0 || !pGame->Core() || !pGame->Core()->WorldManager())
+		return;
+
+	const int DestWorld = pResult->GetInteger(0);
+	const int CurWorld = pGame->Server()->GetClientWorldID(CID);
+	const CWorldDetail *pCur = pGame->Server()->GetWorldDetail(CurWorld);
+	const CWorldDetail *pDest = pGame->Server()->GetWorldDetail(DestWorld);
+	const bool MiniGameTravel = pCur && pDest
+		&& ((pCur->GetType() == WorldType::RPG && pDest->GetType() == WorldType::Defence)
+			|| (pCur->GetType() == WorldType::Defence && pDest->GetType() == WorldType::RPG));
+	pGame->Core()->WorldManager()->ExecuteWithSpawn(CID, DestWorld, nullptr, MiniGameTravel);
 }
 
 static void ComVoteSetDifficulty(IConsole::IResult *pResult, void *pUser)
@@ -585,29 +545,28 @@ static void ComVoteResetAmmo(IConsole::IResult *pResult, void *pUser)
 void CCraftManager::RegisterVoteCommands(CCommandManager *pMgr)
 {
 	CGameContext *pGame = GS();
-	pMgr->AddCommand("menugoto", "", "i", ComVoteMenuGoto, pGame);
-	pMgr->AddCommand("menuselitem", "", "ii", ComVoteSelectItem, pGame);
-	pMgr->AddCommand("menucraft", "", "i", ComVoteCraft, pGame);
-	pMgr->AddCommand("menucheckitem", "", "i", ComVoteCheckItem, pGame);
-	pMgr->AddCommand("menumake", "", "", ComVoteMake, pGame);
-	pMgr->AddCommand("menuequip", "", "i", ComVoteEquip, pGame);
-	pMgr->AddCommand("menusetupturret", "", "", ComVoteSetupTurret, pGame);
-	pMgr->AddCommand("menuturretcancel", "", "", ComVoteTurretPlaceCancel, pGame);
-	pMgr->AddCommand("menurecallturret", "", "", ComVoteRecallTurret, pGame);
-	pMgr->AddCommand("menurepairturret", "", "", ComVoteRepairTurret, pGame);
-	pMgr->AddCommand("menuplace", "", "isi", ComVotePlaceCard, pGame);
-	pMgr->AddCommand("menuseparate", "", "isi", ComVoteSeparateCard, pGame);
-	pMgr->AddCommand("menubumpammo", "", "ii", ComVoteBumpAmmo, pGame);
-	pMgr->AddCommand("menuresetammo", "", "", ComVoteResetAmmo, pGame);
-	pMgr->AddCommand("menutravel", "", "i", ComVoteTravel, pGame);
-	pMgr->AddCommand("menudifficulty", "", "i", ComVoteSetDifficulty, pGame);
+	pMgr->AddVoteCommand("menugoto", "", "i", ComVoteMenuGoto, pGame);
+	pMgr->AddVoteCommand("menuselitem", "", "ii", ComVoteSelectItem, pGame);
+	pMgr->AddVoteCommand("menucraft", "", "i", ComVoteCraft, pGame);
+	pMgr->AddVoteCommand("menucheckitem", "", "i", ComVoteCheckItem, pGame);
+	pMgr->AddVoteCommand("menumake", "", "", ComVoteMake, pGame);
+	pMgr->AddVoteCommand("menuequip", "", "i", ComVoteEquip, pGame);
+	pMgr->AddVoteCommand("menusetupturret", "", "", ComVoteSetupTurret, pGame);
+	pMgr->AddVoteCommand("menuturretcancel", "", "", ComVoteTurretPlaceCancel, pGame);
+	pMgr->AddVoteCommand("menurecallturret", "", "", ComVoteRecallTurret, pGame);
+	pMgr->AddVoteCommand("menurepairturret", "", "", ComVoteRepairTurret, pGame);
+	pMgr->AddVoteCommand("menuplace", "", "isi", ComVotePlaceCard, pGame);
+	pMgr->AddVoteCommand("menuseparate", "", "isi", ComVoteSeparateCard, pGame);
+	pMgr->AddVoteCommand("menubumpammo", "", "ii", ComVoteBumpAmmo, pGame);
+	pMgr->AddVoteCommand("menuresetammo", "", "", ComVoteResetAmmo, pGame);
+	pMgr->AddVoteCommand("menutravel", "", "i", ComVoteTravel, pGame);
+	pMgr->AddVoteCommand("menudifficulty", "", "i", ComVoteSetDifficulty, pGame);
 }
 
 void CCraftManager::RegisterChatCommands(CCommandManager *pMgr)
 {
 	CGameContext *pGame = GS();
-	pMgr->AddCommand("craft", "cmd.craft.help", "s", ComChatCraft, pGame);
-	pMgr->AddCommand("equip", "cmd.equip.help", "i", ComChatEquip, pGame);
+	// craft/equip 仅通过投票菜单 ccv_menucraft / ccv_menuequip
 	pMgr->AddCommand("inv", "cmd.inv.help", "", ComChatInv, pGame);
 }
 

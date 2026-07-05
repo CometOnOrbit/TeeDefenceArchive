@@ -1,5 +1,8 @@
 #include "mob_ai.h"
+#include "mob_ability_executor.h"
+#include "mob_combat.h"
 #include <game/server/entities/character_bot_ai.h>
+#include <vector>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
 #include <game/server/core/tools/path_finder.h>
@@ -26,6 +29,19 @@ bool CMobAI::IsOutsideZone() const
 			Pos.y < m_ZoneBounds[0].y || Pos.y > m_ZoneBounds[1].y);
 }
 
+void CMobAI::SetMobInfo(const SMMOMobDef *pInfo)
+{
+	m_pMobInfo = pInfo;
+	m_aAbilityCooldownEnd.clear();
+	if(pInfo)
+		m_aAbilityCooldownEnd.assign(pInfo->m_vAbilities.size(), 0);
+}
+
+bool CMobAI::IsBusyCasting() const
+{
+	return Server()->Tick() < m_CastingUntilTick;
+}
+
 void CMobAI::OnSpawn()
 {
 	m_LastAttackTick = Server()->Tick();
@@ -34,6 +50,11 @@ void CMobAI::OnSpawn()
 	m_BehaviorSkillNextTick = Server()->Tick() + Server()->TickSpeed() * 3;
 	m_BehaviorNeutral = false;
 	m_LastAmbientChatTick = Server()->Tick();
+	m_AggroAbilityUsed = false;
+	m_CastingUntilTick = 0;
+	m_HoldPosition = false;
+	if(m_pMobInfo)
+		m_aAbilityCooldownEnd.assign(m_pMobInfo->m_vAbilities.size(), 0);
 }
 
 bool CMobAI::CanDamage(CPlayer *pFrom)
@@ -275,33 +296,94 @@ void CMobAI::HandleAmbientChat()
 
 void CMobAI::HandleSkillBehaviors()
 {
-	// Simplified skill behaviors since TDA doesn't have MRPG's attribute/skill system
-	// This is a placeholder that could be extended with weapon-switching logic
+	TryMobAbilities();
+}
 
+void CMobAI::TryMobAbilities()
+{
+	if(!m_pMobInfo || m_pMobInfo->m_vAbilities.empty())
+		return;
 	if(!m_pCharacter || !m_pCharacter->IsAlive())
 		return;
 
-	const int Now = Server()->Tick();
-	const int TickSpeed = Server()->TickSpeed();
-
-	if(Now < m_BehaviorSkillNextTick)
+	CPlayer *pMobPlayer = m_pCharacter->GetPlayer();
+	SMMOBotData *pData = pMobPlayer ? pMobPlayer->m_pMMOBotData : nullptr;
+	if(!pData)
 		return;
-	m_BehaviorSkillNextTick = Now + TickSpeed * 3;
 
-	// Simple weapon switching for variety
-	int CurWeapon = m_pCharacter->GetActiveWeapon();
-	switch(CurWeapon)
+	const int Now = Server()->Tick();
+	if(Now < m_CastingUntilTick)
+		return;
+
+	CGameContext *pGS = GS();
+	if(!pGS)
+		return;
+
+	m_HoldPosition = false;
+
+	for(size_t i = 0; i < m_pMobInfo->m_vAbilities.size(); i++)
 	{
-	case WEAPON_HAMMER:
-		m_pCharacter->SetForcedWeapon(WEAPON_GUN);
-		break;
-	case WEAPON_GUN:
-	case WEAPON_SHOTGUN:
-		m_pCharacter->SetForcedWeapon(WEAPON_GRENADE);
-		break;
-	default:
-		m_pCharacter->SetForcedWeapon(WEAPON_GUN);
-		break;
+		const SMMOMobAbilityDef &Ability = m_pMobInfo->m_vAbilities[i];
+		if(i >= m_aAbilityCooldownEnd.size())
+			break;
+		if(Now < m_aAbilityCooldownEnd[i])
+			continue;
+
+		bool ShouldCast = false;
+		vec2 TargetPos = m_pCharacter->GetPos();
+		float DistToTarget = 0.f;
+
+		CPlayer *pTarget = nullptr;
+		if(!m_Target.IsEmpty())
+		{
+			const int TargetCID = m_Target.GetCID();
+			if(TargetCID >= 0 && TargetCID < MAX_CLIENTS)
+				pTarget = pGS->m_apPlayers[TargetCID];
+		}
+
+		switch(Ability.m_Trigger)
+		{
+		case MOB_ABILITY_IN_RANGE:
+			if(pTarget && pTarget->GetCharacter() && pTarget->GetCharacter()->IsAlive())
+			{
+				TargetPos = pTarget->GetCharacter()->GetPos();
+				DistToTarget = distance(m_pCharacter->GetPos(), TargetPos);
+				ShouldCast = DistToTarget <= Ability.m_Range;
+			}
+			break;
+		case MOB_ABILITY_ON_AGGRO:
+			if(!m_AggroAbilityUsed && pTarget && pTarget->GetCharacter())
+			{
+				TargetPos = pTarget->GetCharacter()->GetPos();
+				ShouldCast = true;
+			}
+			break;
+		case MOB_ABILITY_ON_LOW_HP:
+			if(pData->m_MaxHP > 0 && pData->GetHPPct() * 100.f <= Ability.m_ThresholdPct)
+				ShouldCast = true;
+			break;
+		case MOB_ABILITY_PERIODIC:
+			ShouldCast = true;
+			break;
+		}
+
+		if(!ShouldCast)
+			continue;
+
+		if(length(TargetPos - m_pCharacter->GetPos()) > 0.01f)
+			m_pCharacter->SetAim(TargetPos - m_pCharacter->GetPos());
+
+		if(ExecuteMobAbility(m_pCharacter, Ability, pData->m_Attack, pData->m_Level))
+		{
+			m_aAbilityCooldownEnd[i] = Now + maximum(1, Ability.m_CooldownTicks);
+			if(Ability.m_Trigger == MOB_ABILITY_ON_AGGRO)
+				m_AggroAbilityUsed = true;
+			if(Ability.m_CastTicks > 0)
+				m_CastingUntilTick = Now + Ability.m_CastTicks;
+			if(m_pMobInfo->m_Archetype == MOB_ARCHETYPE_CASTER && Ability.m_Trigger == MOB_ABILITY_IN_RANGE)
+				m_HoldPosition = true;
+			return;
+		}
 	}
 }
 
@@ -348,8 +430,8 @@ void CMobAI::Process()
 	// ── Step 3: Skill behaviors ──
 	HandleSkillBehaviors();
 
-	// ── Step 4: If asleep, return early (no movement/attack) ──
-	if(bAsleep)
+	// ── Step 4: If asleep or casting, return early ──
+	if(bAsleep || IsBusyCasting())
 		return;
 
 	// ── Zone patrol: if outside zone, return to zone center ──
@@ -389,6 +471,13 @@ void CMobAI::Process()
 	if(m_BehaviorNeutral)
 	{
 		m_pCharacter->m_BotTargetPos.reset();
+		return;
+	}
+
+	if(m_HoldPosition && m_pMobInfo && m_pMobInfo->m_Archetype == MOB_ARCHETYPE_CASTER)
+	{
+		m_pCharacter->m_BotTargetPos.reset();
+		m_pCharacter->Fire();
 		return;
 	}
 

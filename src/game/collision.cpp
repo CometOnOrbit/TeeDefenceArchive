@@ -115,46 +115,66 @@ void CCollision::Init(class CLayers *pLayers)
 	m_pExtraTiles = TryLoadTileLayerData<CTile>(pMap, pGameLayer, pGameLayer->m_Data);
 }
 
+static bool ParseGatheringSettingsLine(const std::string &Line, const std::string &Prefix, std::string &Name, int &Level, int &Health, std::string &ItemsData)
+{
+	if(Line.size() <= Prefix.size() || Line.compare(0, Prefix.size(), Prefix) != 0)
+		return false;
+	const char *pRest = Line.c_str() + Prefix.size();
+	while(*pRest == ' ')
+		pRest++;
+	Name.clear();
+	while(*pRest && *pRest != ' ')
+		Name += *pRest++;
+	while(*pRest == ' ')
+		pRest++;
+	if(!*pRest)
+		return false;
+	Level = str_toint(pRest);
+	while(*pRest && *pRest != ' ')
+		pRest++;
+	while(*pRest == ' ')
+		pRest++;
+	if(!*pRest)
+		return false;
+	Health = str_toint(pRest);
+	while(*pRest && *pRest != ' ')
+		pRest++;
+	while(*pRest == ' ')
+		pRest++;
+	ItemsData = pRest;
+	return !Name.empty() && Level > 0 && Health > 0;
+}
+
 static void initGatheringNode(const std::string &nodeType, const std::vector<std::string> &vSettings, int Number,
 	std::unordered_map<int, GatheringNode> &vNodesContainer)
 {
-	std::string ItemsData {};
+	const std::string Prefix = nodeType + " " + std::to_string(Number) + " ";
+	std::string ItemsData;
 	GatheringNode detail;
-	const auto Identity = nodeType + " " + std::to_string(Number);
-
-	char aName[64] = {0};
-	int Level = 0, Health = 0;
-	char aItems[256] = {0};
-	if(sscanf(Identity.c_str(), "%63[^ ] %d %d %255[^\n]", aName, &Level, &Health, aItems) >= 3)
+	for(const auto &Line : vSettings)
 	{
-		detail.Name = aName;
-		detail.Level = Level;
-		detail.Health = Health;
-		if(aItems[0])
+		if(!ParseGatheringSettingsLine(Line, Prefix, detail.Name, detail.Level, detail.Health, ItemsData))
+			continue;
+
+		for(size_t i = 0; i < ItemsData.size();)
 		{
-			// simple semicolon-delimited tokenizer
-			char *pIter = aItems;
-			while(*pIter)
-			{
-				while(*pIter == ';' || *pIter == ' ') pIter++;
-				if(!*pIter) break;
-				const char *pTokenStart = pIter;
-				while(*pIter && *pIter != ';') pIter++;
-				const char Saved = *pIter;
-				*pIter = '\0';
-				
-				int ItemID;
-				float Chance;
-				if(sscanf(pTokenStart, "[%d/%f]", &ItemID, &Chance) == 2)
-					detail.m_vItems.addElement(ItemID, Chance);
-				
-				*pIter = Saved;
-				if(Saved) pIter++;
-			}
+			while(i < ItemsData.size() && (ItemsData[i] == ';' || ItemsData[i] == ' '))
+				i++;
+			if(i >= ItemsData.size())
+				break;
+			const size_t Start = i;
+			while(i < ItemsData.size() && ItemsData[i] != ';')
+				i++;
+			const std::string Token = ItemsData.substr(Start, i - Start);
+			int ItemID = 0;
+			float Chance = 0.f;
+			if(sscanf(Token.c_str(), "[%d/%f]", &ItemID, &Chance) == 2)
+				detail.m_vItems.addElement(ItemID, Chance);
 		}
 		detail.m_vItems.normalizeChances();
 		vNodesContainer[Number] = detail;
 		dbg_msg("map-init", "Gathering '%s' (switch: %d) initialized: Items='%d'", detail.Name.c_str(), Number, (int)detail.m_vItems.size());
+		return;
 	}
 }
 
@@ -352,20 +372,23 @@ void CCollision::InitEntities(InitEntityCallback pfnCallback, void *pUser) const
 	}
 }
 
-void CCollision::InitSwitchEntities(InitEntityCallback pfnCallback, void *pUser) const
+void CCollision::InitSwitchEntities(InitSwitchEntityCallback pfnCallback, void *pUser) const
 {
 	if(!m_pSwitchExtra || !pfnCallback)
 		return;
+
 	const int NumTiles = m_Width * m_Height;
 	for(int i = 0; i < NumTiles; ++i)
 	{
-		const int number = m_pSwitchExtra[i].m_Number;
-		const int type = m_pSwitchExtra[i].m_Type;
-		if(number > 0 || type > 0)
-		{
-			vec2 Pos = CalculateTileCenter(i, m_Width);
-			pfnCallback(number, Pos, i, pUser);
-		}
+		const int Type = m_pSwitchExtra[i].m_Type;
+		const int Number = m_pSwitchExtra[i].m_Number;
+		if(Type < ENTITY_OFFSET)
+			continue;
+
+		const vec2 Pos = CalculateTileCenter(i, m_Width);
+		const int EntityIndex = Type - ENTITY_OFFSET;
+		const int Flags = m_pSwitchExtra[i].m_Flags;
+		pfnCallback(EntityIndex, Pos, Flags, Number, pUser);
 	}
 }
 
@@ -585,6 +608,28 @@ bool CCollision::IntersectLineDoor(vec2 From, vec2 To) const
 	return false;
 }
 
+bool CCollision::GetTeleportOutByNumber(int Number, vec2 FromPos, vec2 *pOut) const
+{
+	auto it = m_vTeleOuts.find(Number);
+	if(it == m_vTeleOuts.end() || it->second.empty())
+		return false;
+
+	vec2 Best = it->second.front();
+	float BestDist = distance(FromPos, Best);
+	for(size_t i = 1; i < it->second.size(); ++i)
+	{
+		const float D = distance(FromPos, it->second[i]);
+		if(D < BestDist)
+		{
+			BestDist = D;
+			Best = it->second[i];
+		}
+	}
+	if(pOut)
+		*pOut = Best;
+	return true;
+}
+
 bool CCollision::GetTeleportOut(vec2 currentPos, vec2 *pOut) const
 {
 	const int Index = GetMapIndex(currentPos);
@@ -595,23 +640,7 @@ bool CCollision::GetTeleportOut(vec2 currentPos, vec2 *pOut) const
 	if(tile.m_Type != TILE_TELE_FROM)
 		return false;
 
-	auto it = m_vTeleOuts.find(tile.m_Number);
-	if(it == m_vTeleOuts.end() || it->second.empty())
-		return false;
-
-	vec2 Best;
-	float BestDist = 1e9;
-	for(const auto &Out : it->second)
-	{
-		const float D = distance(currentPos, Out);
-		if(D < BestDist)
-		{
-			BestDist = D;
-			Best = Out;
-		}
-	}
-	if(pOut) *pOut = Best;
-	return true;
+	return GetTeleportOutByNumber(tile.m_Number, currentPos, pOut);
 }
 
 bool CCollision::GetFixedCamPos(vec2 currentPos, vec2 *pOutPos, bool *pOutSmooth) const

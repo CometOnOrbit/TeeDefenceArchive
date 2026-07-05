@@ -17,6 +17,7 @@
 #include <game/server/core/components/skills/skill_manager.h>
 #include <game/server/core/components/localization/localization_manager.h>
 #include <game/server/core/components/worlds/world_manager.h>
+#include <game/server/core/components/npcs/npc_service.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/entities/character.h>
@@ -32,6 +33,7 @@
 #include <game/server/turret_ammo.h>
 
 #include <generated/server_data.h>
+#include <game/server/interaction_sound.h>
 
 const char *CVoteMenuManager::VL(CGameContext *pCtx, CPlayer *pP, const char *pKey, const char *pDefault)
 {
@@ -723,8 +725,17 @@ void CVoteMenuManager::InitVotes(int ClientID)
 	SetVoteBuildClientID(ClientID);
 
 	SPlayerVote *pVote = GetPlayerVote(ClientID);
-	const int Page = pVote->m_Page;
+	int Page = pVote->m_Page;
 	SAccSyncData &Data = pP->m_AccData;
+
+	if(!EnsureNpcServiceAccess(GS(), pP, pVote))
+	{
+		if(IsNpcServicePage(Page) || IsRemoteShopBrowserPage(Page))
+			NotifyNpcServiceDenied(GS(), ClientID);
+		ClearNpcService(pVote);
+		pVote->m_Page = PAGE_MENU;
+		Page = PAGE_MENU;
+	}
 
 	// Try component dispatch first
 	if(BuildMenuPage(ClientID, Page))
@@ -780,17 +791,14 @@ void CVoteMenuManager::InitVotes(int ClientID)
 			}
 			AddVote_Section(VL(GS(), pP, "menu.section.gear", "物品与装备"));
 			AddVote_Goto(PAGE_INVENTORY, VL(GS(), pP, "menu.goto.inventory", "  ☞ 背包"));
-			AddVote_Goto(PAGE_CRAFT, VL(GS(), pP, "menu.goto.craft", "  ☞ 合成"));
 			AddVote_Goto(PAGE_EQUIPMENT, VL(GS(), pP, "menu.goto.equipment", "  ☞ 装备"));
 			AddVote_Goto(PAGE_TURRET, VL(GS(), pP, "menu.goto.turret", "  ☞ 炮塔"));
 			AddVote_Space();
 			AddVote_Section(VL(GS(), pP, "menu.section.growth", "成长与目标"));
-			AddVote_Goto(PAGE_QUESTS, VL(GS(), pP, "menu.goto.quests", "  ☞ 任务"));
 			AddVote_Goto(PAGE_DUTIES, VL(GS(), pP, "menu.goto.duties", "  ☞ 日常"));
 			AddVote_Goto(PAGE_ACHIEVEMENTS, VL(GS(), pP, "menu.goto.achievements", "  ☞ 成就"));
 			AddVote_Space();
 			AddVote_Section(VL(GS(), pP, "menu.section.power", "角色能力"));
-			AddVote_Goto(PAGE_SKILLS, VL(GS(), pP, "menu.goto.skills", "  ☞ 魔法"));
 			AddVote_Goto(PAGE_TRAITS, VL(GS(), pP, "menu.goto.traits", "  ☞ 特质"));
 			AddVote_Space();
 			AddVote_Section(VL(GS(), pP, "menu.section.other", "其他"));
@@ -849,7 +857,6 @@ void CVoteMenuManager::InitVotes(int ClientID)
 
 			AddVote_GroupTitle("个人菜单");
 			AddVote_Goto(PAGE_ATTRIBUTES, "属性分配");
-			AddVote_Goto(PAGE_SKILLS, "魔法");
 			AddVote_Goto(VOTE_PAGE_MMO_BACKPACK, "背包");
 			AddVote_Goto(VOTE_PAGE_MMO_EQUIP, "装备");
 			AddVote_GroupLine();
@@ -866,6 +873,10 @@ void CVoteMenuManager::InitVotes(int ClientID)
 
 			AddVote_GroupTitle("PvP");
 			AddVote_Goto(VOTE_PAGE_MMO_PVP, "公会 / Boss");
+			AddVote_GroupLine();
+
+			AddVote_GroupTitle("小游戏");
+			AddVote_Goto(VOTE_PAGE_MMO_DEFENCE, "塔防模式 (Defence)");
 			AddVote_Footer();
 		}
 	}
@@ -1124,11 +1135,6 @@ void CVoteMenuManager::ClearVotes(int ClientID)
 	GS()->Server()->SendPackMsg(&ClearMsg, MSGFLAG_VITAL, ClientID);
 
 	InitVotes(ClientID);
-
-	// make some noise (player may have disconnected)
-	CPlayer *pPlayer = GS()->m_apPlayers[ClientID];
-	if(pPlayer)
-		GS()->m_World.CreateSound(pPlayer->m_ViewPos, SOUND_WEAPON_NOAMMO, CmaskOne(ClientID));
 }
 
 void CVoteMenuManager::ClearVoteOptions(int ClientID)
@@ -1213,9 +1219,31 @@ void CVoteMenuManager::ProcessVoteMenuCommand(int ClientID, const char *pCmdLine
 		pArgs = aMergedArgs;
 	}
 
+	if(str_comp(aName, "null") != 0)
+	{
+		if(str_comp(aName, "menugoto") == 0)
+			PlayUiMenuOpen(GS()->m_World, ClientID);
+		else
+			PlayUiMenuSelect(GS()->m_World, ClientID);
+	}
+
+	bool Handled = false;
 	if(Core() && Core()->DispatchPlayerVoteCommand(ClientID, aName, pArgs, ReasonNumber, pReason))
-		return;
-	GS()->CommandManager()->OnCommand(aName, pArgs, ClientID);
+		Handled = true;
+	else
+	{
+		char aVoteCmdArgs[VOTE_CMD_LENGTH];
+		const char *pVoteCmdArgs = pArgs;
+		if(pReason && pReason[0] && pArgs && pArgs[0] && !str_find(pArgs, " "))
+		{
+			str_format(aVoteCmdArgs, sizeof(aVoteCmdArgs), "%s %s", pArgs, pReason);
+			pVoteCmdArgs = aVoteCmdArgs;
+		}
+		if(GS()->CommandManager()->OnVoteCommand(aName, pVoteCmdArgs, ClientID) == 0)
+			Handled = true;
+	}
+	if(!Handled)
+		GS()->SendChatLoc(ClientID, "vote.cmd.invalid", "该选项当前不可用。");
 }
 
 static void ComChatMenu(IConsole::IResult *pResult, void *pUser)
@@ -1236,6 +1264,7 @@ static void ComChatMenu(IConsole::IResult *pResult, void *pUser)
 	}
 	if(pGame->Core() && pGame->Core()->VoteMenuManager())
 	{
+		PlayUiMenuOpen(pGame->m_World, pCtx->m_ClientID);
 		pGame->Core()->VoteMenuManager()->GetPlayerVote(pCtx->m_ClientID)->m_Page = PAGE_MENU;
 		pGame->Core()->VoteMenuManager()->ClearVotes(pCtx->m_ClientID);
 	}

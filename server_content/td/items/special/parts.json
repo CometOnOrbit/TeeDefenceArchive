@@ -16,8 +16,8 @@
           "barrel_spread"
         ],
         "formula": {
-          "Log": 200,
-          "Iron": 10
+          "0": 200,
+          "3": 10
         },
         "name_key": "$td.item.35.name",
         "description_key": "$td.item.35.desc"
@@ -36,14 +36,14 @@
           "turret_cooldown"
         ],
         "formula": {
-          "Log": 100,
-          "Coal": 340,
-          "Copper": 500,
-          "Iron": 200,
-          "Golden": 100,
-          "Diamond": 10,
-          "Enegry": 5,
-          "Zombie's Heart": 500
+          "0": 100,
+          "1": 340,
+          "2": 500,
+          "3": 200,
+          "4": 100,
+          "5": 10,
+          "6": 5,
+          "7": 500
         },
         "name_key": "$td.item.36.name",
         "description_key": "$td.item.36.desc"
@@ -64,9 +64,9 @@
           "magazine_bonus"
         ],
         "formula": {
-          "Log": 150,
-          "Iron": 30,
-          "Copper": 20
+          "0": 150,
+          "3": 30,
+          "2": 20
         },
         "name_key": "$td.item.37.name",
         "description_key": "$td.item.37.desc"
@@ -85,9 +85,9 @@
           "stabilizer"
         ],
         "formula": {
-          "Log": 200,
-          "Copper": 80,
-          "Titanium": 5
+          "0": 200,
+          "2": 80,
+          "39": 5
         },
         "name_key": "$td.item.38.name",
         "description_key": "$td.item.38.desc"

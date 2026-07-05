@@ -47,10 +47,9 @@ void CMMOManager::OnConsoleInit()
 	RegisterRankingCommands();
 	RegisterAuctionCommands();
 	RegisterHouseCommands();
-	RegisterMountCommands();
 	RegisterAutoPathCommands();
 	RegisterFashionCommands();
-	RegisterPetCommands();
+	RegisterVehicleCommands();
 	RegisterMarriageCommands();
 
 	if(CWorldBossManager *pWB = Core() ? Core()->GetWorldBossManager() : nullptr)

@@ -436,6 +436,9 @@ file(COPY ${PROJECT_SOURCE_DIR}/server_lang DESTINATION ${PROJECT_BINARY_DIR})
 # Storage searches $DATADIR (data/) before $CURRENTDIR — keep both in sync.
 file(COPY ${PROJECT_SOURCE_DIR}/server_lang DESTINATION ${PROJECT_BINARY_DIR}/data)
 
+# Runtime arena maps (vanilla/, def/, fng/, …) — guild/arena map picker scans maps/ under storage paths.
+file(COPY ${CMAKE_SOURCE_DIR}/maps/ DESTINATION ${CMAKE_BINARY_DIR}/maps)
+
 ########################################################################
 # CODE GENERATION
 ########################################################################
@@ -667,8 +670,6 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   account_crypto.cpp
   account.h
   alloc.h
-  ai/defence.cpp
-  ai/defence.h
   ai/genetics.cpp
   ai/genetics.h
   ai/strategy.cpp
@@ -708,6 +709,14 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   core/components/guilds/guild_data.h
   core/components/guilds/guild_manager.cpp
   core/components/guilds/guild_manager.h
+  core/components/guilds/guild_match_mode.cpp
+  core/components/guilds/guild_match_mode.h
+  core/components/guilds/guild_arena_maps.cpp
+  core/components/guilds/guild_arena_maps.h
+  core/components/arena/arena_lobby_manager.cpp
+  core/components/arena/arena_lobby_manager.h
+  core/components/defence/defence_lobby_manager.cpp
+  core/components/defence/defence_lobby_manager.h
   core/components/mmo/mmo_types.h
   core/components/mmo/mmo_item.cpp
   core/components/mmo/mmo_item.h
@@ -747,6 +756,10 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entities/ai_core/base_ai.h
   entities/ai_core/mob_ai.cpp
   entities/ai_core/mob_ai.h
+  entities/ai_core/mob_combat.cpp
+  entities/ai_core/mob_combat.h
+  entities/ai_core/mob_ability_executor.cpp
+  entities/ai_core/mob_ability_executor.h
   entities/ai_core/npc_ai.cpp
   entities/ai_core/npc_ai.h
   entities/ai_core/quest_mob_ai.cpp
@@ -761,6 +774,14 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   core/tools/path_finder_result.h
   entities/electro.cpp
   entities/electro.h
+  entities/flag.cpp
+  entities/flag.h
+  entities/rpg_ck.cpp
+  entities/rpg_ck.h
+  entities/physics/rope.cpp
+  entities/physics/rope.h
+  entities/rpg_fishing.cpp
+  entities/rpg_fishing.h
   entities/growingexplosion.cpp
   entities/growingexplosion.h
   entities/laser.cpp
@@ -769,6 +790,8 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entities/lightning.h
   entities/pickup.cpp
   entities/pickup.h
+  entities/mmo_drop_pickup.cpp
+  entities/mmo_drop_pickup.h
   entities/plasma.cpp
   entities/plasma.h
   entities/mmo/hammer_lamp_bolt.cpp
@@ -779,6 +802,57 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entities/mmo/magnetic_pulse.h
   entities/mmo/mmo_weapon_common.cpp
   entities/mmo/mmo_weapon_common.h
+  entities/skills/skill_cast_ring.cpp
+  entities/skills/skill_cast_ring.h
+  entities/skills/skill_target_query.cpp
+  entities/skills/skill_target_query.h
+  entities/skills/skill_follow_aura.cpp
+  entities/skills/skill_follow_aura.h
+  entities/skills/skill_zone_aura.cpp
+  entities/skills/skill_zone_aura.h
+  entities/skills/skill_link_beam.cpp
+  entities/skills/skill_link_beam.h
+  entities/skills/skill_hit_burst.cpp
+  entities/skills/skill_hit_burst.h
+  entities/skills/skill_vfx_common.h
+  entities/skills/skill_fireball.cpp
+  entities/skills/skill_fireball.h
+  entities/skills/skill_magic_bolt.cpp
+  entities/skills/skill_magic_bolt.h
+  entities/skills/skill_poison_cloud.cpp
+  entities/skills/skill_poison_cloud.h
+  entities/skills/skill_meteor.cpp
+  entities/skills/skill_meteor.h
+  entities/skills/skill_beam_sweep.cpp
+  entities/skills/skill_beam_sweep.h
+  entities/skills/skill_void_vortex.cpp
+  entities/skills/skill_void_vortex.h
+  entities/skills/skill_fork_lightning.cpp
+  entities/skills/skill_fork_lightning.h
+  entities/skills/skill_super_nova.cpp
+  entities/skills/skill_super_nova.h
+  entities/skills/skill_smoke_veil.cpp
+  entities/skills/skill_smoke_veil.h
+  entities/skills/skill_spin_laser.cpp
+  entities/skills/skill_spin_laser.h
+  entities/skills/skill_gravity_well.cpp
+  entities/skills/skill_gravity_well.h
+  entities/skills/skill_scatter_grenade.cpp
+  entities/skills/skill_scatter_grenade.h
+  entities/skills/skill_detonation_beam.cpp
+  entities/skills/skill_detonation_beam.h
+  entities/skills/skill_homing_plasma.cpp
+  entities/skills/skill_homing_plasma.h
+  entities/skills/skill_ricochet_shot.cpp
+  entities/skills/skill_ricochet_shot.h
+  entities/skills/skill_acid_pool.cpp
+  entities/skills/skill_acid_pool.h
+  entities/skills/skill_laser_trap.cpp
+  entities/skills/skill_laser_trap.h
+  entities/skills/skill_bomb_sentinel.cpp
+  entities/skills/skill_bomb_sentinel.h
+  entities/skills/skill_spawn.cpp
+  entities/skills/skill_spawn.h
   entities/mmo/tesla_chain.cpp
   entities/mmo/tesla_chain.h
   entities/mmo/tracked_plasma.cpp
@@ -793,14 +867,18 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   entities/turret.h
   entities/spider_boss.cpp
   entities/spider_boss.h
-  entities/pet.cpp
-  entities/pet.h
+  entities/vehicle/aircraft.cpp
+  entities/vehicle/aircraft.h
+  entities/vehicle/vehicle.cpp
+  entities/vehicle/vehicle.h
+  entities/vehicle/vehicle_util.cpp
+  entities/vehicle/vehicle_util.h
+  entities/vehicle/vehicle_visual.cpp
+  entities/vehicle/vehicle_visual.h
   entity.cpp
   entity.h
   eventhandler.cpp
   eventhandler.h
-  core/components/bots/defence_bot_manager.cpp
-  core/components/bots/defence_bot_manager.h
   core/components/localization/localization_manager.cpp
   core/components/localization/localization_manager.h
   core/components/worlds/portal_manager.cpp
@@ -860,6 +938,8 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   gamecontroller.h
   gameworld.cpp
   gameworld.h
+  interaction_sound.cpp
+  interaction_sound.h
   item_card_ops.cpp
   item_card_ops.h
   item_system.cpp
@@ -882,6 +962,16 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   worldmodes/rpg.h
   worldmodes/pvp.cpp
   worldmodes/pvp.h
+  worldmodes/arena.cpp
+  worldmodes/arena.h
+  worldmodes/fng.cpp
+  worldmodes/fng.h
+  worldmodes/tdm.cpp
+  worldmodes/tdm.h
+  worldmodes/itdm.cpp
+  worldmodes/itdm.h
+  worldmodes/ctf.cpp
+  worldmodes/ctf.h
   global_state.cpp
   global_state.h
   data_center.cpp
@@ -912,6 +1002,13 @@ add_executable(${TARGET_SERVER}
   $<TARGET_OBJECTS:game-shared>
 )
 target_link_libraries(${TARGET_SERVER} ${LIBS_SERVER})
+
+# Keep build/maps in sync when maps/ changes (arena map picker, world travel).
+add_custom_command(TARGET ${TARGET_SERVER} PRE_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/maps ${CMAKE_BINARY_DIR}/maps
+  COMMENT "Syncing maps/ to build directory"
+)
 
 option(ENABLE_MYSQL "Build server with MySQL client (account system)" ON)
 set(MYSQL_CLIENT_INCLUDE_DIR "")

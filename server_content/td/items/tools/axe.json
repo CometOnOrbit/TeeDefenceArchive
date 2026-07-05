@@ -11,7 +11,7 @@
         "capacity": 0,
         "max": 0,
         "formula": {
-          "Log": 10
+          "0": 10
         },
         "name_key": "$td.item.9.name",
         "description_key": "$td.item.9.desc"
@@ -25,8 +25,8 @@
         "capacity": 10,
         "max": 0,
         "formula": {
-          "Log": 60,
-          "Copper": 25
+          "0": 60,
+          "2": 25
         },
         "name_key": "$td.item.12.name",
         "description_key": "$td.item.12.desc"
@@ -40,8 +40,8 @@
         "capacity": 20,
         "max": 0,
         "formula": {
-          "Log": 220,
-          "Iron": 25
+          "0": 220,
+          "3": 25
         },
         "name_key": "$td.item.14.name",
         "description_key": "$td.item.14.desc"
@@ -55,8 +55,8 @@
         "capacity": 30,
         "max": 0,
         "formula": {
-          "Log": 500,
-          "Golden": 10
+          "0": 500,
+          "4": 10
         },
         "name_key": "$td.item.17.name",
         "description_key": "$td.item.17.desc"
@@ -70,8 +70,8 @@
         "capacity": 50,
         "max": 0,
         "formula": {
-          "Log": 500,
-          "Diamond": 25
+          "0": 500,
+          "5": 25
         },
         "name_key": "$td.item.20.name",
         "description_key": "$td.item.20.desc"

@@ -31,7 +31,7 @@
       "id": 3,
       "name": "粗铁矿石",
       "description": "未经提炼的粗铁矿石，常用于基础锻造",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 50,
       "stackable": true,
@@ -45,7 +45,7 @@
       "id": 4,
       "name": "粗金矿石",
       "description": "含有金矿物的粗糙矿石，提炼后可锻造优质装备",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 200,
       "stackable": true,
@@ -60,7 +60,7 @@
       "id": 5,
       "name": "原钻",
       "description": "未经打磨的天然钻石，蕴含着闪耀的力量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 500,
       "stackable": true,
@@ -70,6 +70,55 @@
       "rarity": "rare",
       "name_key": "$mmo.item.5.name",
       "description_key": "$mmo.item.5.desc"
+    },
+    {
+      "id": 7,
+      "name": "新手匕首",
+      "description": "一把朴素但锋利的匕首，新手冒险者的第一件武器",
+      "group": "equipment",
+      "type": "equiphammer",
+      "base_price": 10,
+      "stackable": false,
+      "can_trade": false,
+      "can_drop": true,
+      "level_required": 1,
+      "attributes": [
+        {
+          "attribute": "attack",
+          "value": 3
+        },
+        {
+          "attribute": "health",
+          "value": 5
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "新手护符",
+      "description": "一枚简单的护身符，散发着微弱的光芒",
+      "group": "equipment",
+      "type": "equipeidolon",
+      "base_price": 5,
+      "stackable": false,
+      "can_trade": false,
+      "can_drop": true,
+      "level_required": 1,
+      "attributes": [
+        {
+          "attribute": "defense",
+          "value": 1
+        },
+        {
+          "attribute": "health",
+          "value": 10
+        }
+      ]
     },
     {
       "id": 10,
@@ -458,7 +507,7 @@
       "id": 30,
       "name": "铜矿石",
       "description": "常见的铜矿石，用于基础合成",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 5,
       "stackable": true,
@@ -470,7 +519,7 @@
       "id": 31,
       "name": "铁矿石",
       "description": "铁矿石，用于武器和护甲合成",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 10,
       "stackable": true,
@@ -482,7 +531,7 @@
       "id": 32,
       "name": "银矿石",
       "description": "闪亮的银矿石，蕴含光明灵魂能量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 25,
       "stackable": true,
@@ -495,7 +544,7 @@
       "id": 33,
       "name": "金矿石",
       "description": "珍贵的金矿石，用于高阶合成",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 50,
       "stackable": true,
@@ -508,7 +557,7 @@
       "id": 34,
       "name": "秘银矿石",
       "description": "来自远古时代的传奇蓝色金属",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 200,
       "stackable": true,
@@ -521,7 +570,7 @@
       "id": 35,
       "name": "山铜矿石",
       "description": "密度极高的金属，嗡嗡作响着力量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 500,
       "stackable": true,
@@ -534,7 +583,7 @@
       "id": 36,
       "name": "钛锭",
       "description": "轻量却极其坚固的锻造钛锭",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 150,
       "stackable": true,
@@ -547,7 +596,7 @@
       "id": 37,
       "name": "暗钢锭",
       "description": "由稀有暗铁锻造的锭，闪烁着暗影能量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 400,
       "stackable": true,
@@ -560,7 +609,7 @@
       "id": 38,
       "name": "木板",
       "description": "加工过的木板，基础建筑材料",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 3,
       "stackable": true,
@@ -572,7 +621,7 @@
       "id": 39,
       "name": "远古木料",
       "description": "来自原始森林的木材，蕴含自然精华",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 120,
       "stackable": true,
@@ -585,7 +634,7 @@
       "id": 40,
       "name": "治疗草药",
       "description": "具有温和治疗效果的野生草药",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 8,
       "stackable": true,
@@ -597,7 +646,7 @@
       "id": 41,
       "name": "魔法草药",
       "description": "散发着魔力的药草，用于药水合成",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 15,
       "stackable": true,
@@ -610,7 +659,7 @@
       "id": 42,
       "name": "布料碎片",
       "description": "剩余的布料，可用于轻甲和绷带",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 4,
       "stackable": true,
@@ -622,7 +671,7 @@
       "id": 43,
       "name": "魔法布",
       "description": "用附魔线织成的布料，闪烁着能量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 30,
       "stackable": true,
@@ -635,7 +684,7 @@
       "id": 44,
       "name": "丝绸",
       "description": "来自大沙漠蜘蛛的奢华丝绸，以其强度著称",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 80,
       "stackable": true,
@@ -648,7 +697,7 @@
       "id": 45,
       "name": "皮革条",
       "description": "加工过的皮革条，用于装备合成",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 6,
       "stackable": true,
@@ -660,7 +709,7 @@
       "id": 46,
       "name": "宝石碎片",
       "description": "魔法宝石的小碎片",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 20,
       "stackable": true,
@@ -673,7 +722,7 @@
       "id": 47,
       "name": "附魔宝石",
       "description": "完整的宝石，脉动着灵魂能量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 100,
       "stackable": true,
@@ -686,7 +735,7 @@
       "id": 48,
       "name": "净化水晶",
       "description": "纯净之光的水晶，据说能净化一切黑暗",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 300,
       "stackable": true,
@@ -699,7 +748,7 @@
       "id": 49,
       "name": "世界灵魂精华",
       "description": "世界本身的原始精华，极其稀有",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 800,
       "stackable": true,
@@ -712,7 +761,7 @@
       "id": 50,
       "name": "史莱姆核心",
       "description": "击败史莱姆后留下的核心",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 3,
       "stackable": true,
@@ -724,7 +773,7 @@
       "id": 51,
       "name": "哥布林耳朵",
       "description": "哥布林的耳朵，狩猎的证明",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 5,
       "stackable": true,
@@ -736,7 +785,7 @@
       "id": 52,
       "name": "狼牙",
       "description": "森林狼的锋利尖牙",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 8,
       "stackable": true,
@@ -748,7 +797,7 @@
       "id": 53,
       "name": "蝙蝠翅膀",
       "description": "洞穴蝙蝠的革质翅膀",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 4,
       "stackable": true,
@@ -760,7 +809,7 @@
       "id": 54,
       "name": "蜘蛛丝",
       "description": "来自巨型蜘蛛的精细蛛丝",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 12,
       "stackable": true,
@@ -772,7 +821,7 @@
       "id": 55,
       "name": "骷髅骨头",
       "description": "活化骷髅的碎片",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 10,
       "stackable": true,
@@ -784,7 +833,7 @@
       "id": 56,
       "name": "老鼠尾巴",
       "description": "下水道老鼠的肮脏尾巴",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 2,
       "stackable": true,
@@ -796,7 +845,7 @@
       "id": 57,
       "name": "仙尘",
       "description": "顽皮森林仙子的闪亮粉末",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 15,
       "stackable": true,
@@ -809,7 +858,7 @@
       "id": 58,
       "name": "雪人毛皮",
       "description": "山地雪人的厚实温暖毛皮",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 20,
       "stackable": true,
@@ -822,7 +871,7 @@
       "id": 59,
       "name": "蝎子毒刺",
       "description": "沙漠蝎子的有毒螫针",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 18,
       "stackable": true,
@@ -835,7 +884,7 @@
       "id": 60,
       "name": "幽灵精华",
       "description": "游荡灵魂的灵质残留",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 30,
       "stackable": true,
@@ -848,7 +897,7 @@
       "id": 61,
       "name": "熔岩核心",
       "description": "熔岩之核，仍然滚烫",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 40,
       "stackable": true,
@@ -861,7 +910,7 @@
       "id": 62,
       "name": "冰晶",
       "description": "永不融化的冰冻水晶，散发着寒意",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 35,
       "stackable": true,
@@ -874,7 +923,7 @@
       "id": 63,
       "name": "树精之根",
       "description": "树精的古老树根，仍然涌动着自然的脉动",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 28,
       "stackable": true,
@@ -887,7 +936,7 @@
       "id": 64,
       "name": "鹰身女妖羽毛",
       "description": "鹰身女妖的锋利羽毛",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 25,
       "stackable": true,
@@ -899,7 +948,7 @@
       "id": 65,
       "name": "龟壳",
       "description": "巨龟的厚重龟壳，几乎坚不可摧",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 45,
       "stackable": true,
@@ -912,7 +961,7 @@
       "id": 66,
       "name": "蛇发女妖之眼",
       "description": "蛇发女妖的石化之眼，仍然闪烁着力量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 50,
       "stackable": true,
@@ -925,7 +974,7 @@
       "id": 67,
       "name": "魔像岩石",
       "description": "石魔像的碎片，蕴含着古老的能量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 55,
       "stackable": true,
@@ -938,7 +987,7 @@
       "id": 68,
       "name": "暗影精华",
       "description": "来自暗影生物的高浓度暗影能量",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 60,
       "stackable": true,
@@ -951,7 +1000,7 @@
       "id": 69,
       "name": "吸血鬼尖牙",
       "description": "吸血鬼领主的血迹斑斑的尖牙",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 80,
       "stackable": true,
@@ -964,7 +1013,7 @@
       "id": 70,
       "name": "死灵法师头骨",
       "description": "堕落死灵法师的头骨，仍在低语黑暗的秘密",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 100,
       "stackable": true,
@@ -977,7 +1026,7 @@
       "id": 71,
       "name": "双足飞龙鳞片",
       "description": "凶猛双足飞龙的鳞片，比钢铁更硬",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 120,
       "stackable": true,
@@ -990,7 +1039,7 @@
       "id": 72,
       "name": "牛头人角",
       "description": "迷宫牛头人的巨大角",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 110,
       "stackable": true,
@@ -1003,7 +1052,7 @@
       "id": 73,
       "name": "巨兽皮革",
       "description": "传奇巨兽的厚皮，几乎无法穿透",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 150,
       "stackable": true,
@@ -1016,7 +1065,7 @@
       "id": 74,
       "name": "九头蛇之血",
       "description": "多头九头蛇的再生之血",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 200,
       "stackable": true,
@@ -1029,7 +1078,7 @@
       "id": 75,
       "name": "龙鳞",
       "description": "远古巨龙的光芒四射的鳞片，涌动着元素之怒",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 300,
       "stackable": true,
@@ -1042,7 +1091,7 @@
       "id": 76,
       "name": "远古遗物",
       "description": "来自失落时代的神秘工艺品",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 200,
       "stackable": true,
@@ -1297,7 +1346,7 @@
       "id": 95,
       "name": "升级石",
       "description": "用于升级装备的普通石头",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 50,
       "stackable": true,
@@ -1310,7 +1359,7 @@
       "id": 96,
       "name": "高级升级石",
       "description": "可以升级高阶装备的稀有石头",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 200,
       "stackable": true,
@@ -1338,7 +1387,7 @@
       "id": 98,
       "name": "镶嵌宝石·红",
       "description": "镶嵌后提升攻击力的火红宝石",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 400,
       "stackable": true,
@@ -1352,7 +1401,7 @@
       "id": 99,
       "name": "镶嵌宝石·蓝",
       "description": "镶嵌后提升防御力的深蓝宝石",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 400,
       "stackable": true,
@@ -1450,42 +1499,10 @@
       "description_key": "$mmo.item.105.desc"
     },
     {
-      "id": 106,
-      "name": "基础鱼竿",
-      "description": "用于钓鱼的简单鱼竿",
-      "group": "usable",
-      "type": "default",
-      "base_price": 100,
-      "stackable": false,
-      "can_trade": true,
-      "level_required": 1,
-      "name_key": "$mmo.item.106.name",
-      "description_key": "$mmo.item.106.desc"
-    },
-    {
-      "id": 107,
-      "name": "生鱼",
-      "description": "刚捕到的鱼，可以烹饪或生吃",
-      "group": "usable",
-      "type": "usesingle",
-      "base_price": 10,
-      "stackable": true,
-      "can_trade": true,
-      "name_key": "$mmo.item.107.name",
-      "description_key": "$mmo.item.107.desc",
-      "attributes": [
-        {
-          "type": "hp",
-          "base_value": 5,
-          "per_enchant": 0
-        }
-      ]
-    },
-    {
       "id": 108,
       "name": "珍珠",
       "description": "来自深海的光泽珍珠",
-      "group": "resource",
+      "group": "material",
       "type": "default",
       "base_price": 100,
       "stackable": true,
@@ -2562,335 +2579,548 @@
     },
     {
       "id": 140,
-      "name": "皮帽",
-      "description": "提供最低限度防护的基础皮帽",
+      "name": "雷霆之锤",
+      "description": "CSTT 风格的电锤，命中时释放闪电",
       "group": "equipment",
-      "type": "default",
-      "base_price": 30,
+      "type": "equiphammer",
+      "base_price": 3500,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
-      "level_required": 1,
-      "attributes": [
-        {
-          "type": "defense",
-          "base_value": 1,
-          "per_enchant": 1
-        }
-      ],
-      "name_key": "$mmo.item.140.name",
-      "description_key": "$mmo.item.140.desc"
-    },
-    {
-      "id": 141,
-      "name": "铁头盔",
-      "description": "提供坚实头部防护的坚固铁头盔",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 150,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 5,
-      "attributes": [
-        {
-          "type": "defense",
-          "base_value": 3,
-          "per_enchant": 1
-        }
-      ],
-      "name_key": "$mmo.item.141.name",
-      "description_key": "$mmo.item.141.desc"
-    },
-    {
-      "id": 142,
-      "name": "钢头盔",
-      "description": "为前线战斗锻造的加固钢头盔",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 500,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 12,
-      "rarity": "uncommon",
-      "attributes": [
-        {
-          "type": "defense",
-          "base_value": 6,
-          "per_enchant": 2
-        }
-      ],
-      "name_key": "$mmo.item.142.name",
-      "description_key": "$mmo.item.142.desc"
-    },
-    {
-      "id": 143,
-      "name": "守护者之冠",
-      "description": "受远古守护者祝福的冠冕式头盔",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 2000,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 22,
+      "level_required": 15,
       "rarity": "rare",
       "attributes": [
         {
-          "type": "defense",
-          "base_value": 10,
-          "per_enchant": 3
-        }
-      ],
-      "name_key": "$mmo.item.143.name",
-      "description_key": "$mmo.item.143.desc"
-    },
-    {
-      "id": 144,
-      "name": "龙之首",
-      "description": "用巨龙颅骨锻造的恐怖头盔，散发着强大力量",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 5000,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 38,
-      "rarity": "epic",
-      "attributes": [
-        {
-          "type": "defense",
-          "base_value": 18,
-          "per_enchant": 5
-        }
-      ],
-      "name_key": "$mmo.item.144.name",
-      "description_key": "$mmo.item.144.desc"
-    },
-    {
-      "id": 145,
-      "name": "皮背心",
-      "description": "简单的皮质护胸",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 50,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 1,
-      "attributes": [
+          "type": "attack",
+          "base_value": 22,
+          "per_enchant": 6
+        },
         {
           "type": "defense",
           "base_value": 2,
           "per_enchant": 1
         }
       ],
-      "name_key": "$mmo.item.145.name",
-      "description_key": "$mmo.item.145.desc"
+      "name_key": "$mmo.item.140.name",
+      "description_key": "$mmo.item.140.desc",
+      "weapon_profile": {
+        "fire_style": "thunder_hammer",
+        "pulse_reach": 140,
+        "reload_speed": 125,
+        "force": 130,
+        "damage_mul": 115,
+        "recoil": 90
+      }
     },
     {
-      "id": 146,
-      "name": "铁胸甲",
-      "description": "提供可靠防护的坚固铁胸甲",
+      "id": 141,
+      "name": "乌兹",
+      "description": "高射速冲锋枪，换弹极快",
       "group": "equipment",
-      "type": "default",
-      "base_price": 200,
+      "type": "equipgun",
+      "base_price": 1200,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
-      "level_required": 5,
+      "level_required": 10,
+      "rarity": "uncommon",
       "attributes": [
         {
+          "type": "attack",
+          "base_value": 12,
+          "per_enchant": 3
+        },
+        {
           "type": "defense",
-          "base_value": 5,
-          "per_enchant": 2
+          "base_value": 0,
+          "per_enchant": 0
+        },
+        {
+          "type": "attack_spd",
+          "base_value": 145,
+          "per_enchant": 0
         }
       ],
-      "name_key": "$mmo.item.146.name",
-      "description_key": "$mmo.item.146.desc"
+      "name_key": "$mmo.item.141.name",
+      "description_key": "$mmo.item.141.desc",
+      "weapon_profile": {
+        "spread": 8,
+        "reload_speed": 62,
+        "force": 90,
+        "damage_mul": 85,
+        "proj_range": 95
+      }
     },
     {
-      "id": 147,
-      "name": "钢板甲",
-      "description": "大师铁匠锻造的重型钢甲",
+      "id": 142,
+      "name": "马格南",
+      "description": "大口径爆炸弹手枪",
       "group": "equipment",
-      "type": "default",
-      "base_price": 600,
+      "type": "equipgun",
+      "base_price": 1800,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
       "level_required": 12,
-      "rarity": "uncommon",
-      "attributes": [
-        {
-          "type": "defense",
-          "base_value": 9,
-          "per_enchant": 3
-        }
-      ],
-      "name_key": "$mmo.item.147.name",
-      "description_key": "$mmo.item.147.desc"
-    },
-    {
-      "id": 148,
-      "name": "守护者板甲",
-      "description": "受世界灵魂祝福的远古盔甲",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 2500,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 22,
       "rarity": "rare",
       "attributes": [
         {
-          "type": "defense",
-          "base_value": 15,
+          "type": "attack",
+          "base_value": 16,
           "per_enchant": 4
-        }
-      ],
-      "name_key": "$mmo.item.148.name",
-      "description_key": "$mmo.item.148.desc"
-    },
-    {
-      "id": 149,
-      "name": "龙鳞锁甲",
-      "description": "用龙鳞编织的传奇盔甲，几乎不可摧毁",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 6000,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 38,
-      "rarity": "epic",
-      "attributes": [
+        },
         {
           "type": "defense",
-          "base_value": 25,
-          "per_enchant": 7
+          "base_value": 0,
+          "per_enchant": 0
         }
       ],
-      "name_key": "$mmo.item.149.name",
-      "description_key": "$mmo.item.149.desc"
+      "name_key": "$mmo.item.142.name",
+      "description_key": "$mmo.item.142.desc",
+      "weapon_profile": {
+        "explosive": true,
+        "spread": 0,
+        "reload_speed": 100,
+        "force": 140,
+        "damage_mul": 110,
+        "recoil": 180
+      }
     },
     {
-      "id": 150,
-      "name": "布裤",
-      "description": "提供基础腿部防护的简单布裤",
+      "id": 143,
+      "name": "泰瑟枪",
+      "description": "发射电弧的电击武器",
       "group": "equipment",
-      "type": "default",
-      "base_price": 25,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 1,
-      "attributes": [
-        {
-          "type": "defense",
-          "base_value": 1,
-          "per_enchant": 1
-        }
-      ],
-      "name_key": "$mmo.item.150.name",
-      "description_key": "$mmo.item.150.desc"
-    },
-    {
-      "id": 151,
-      "name": "铁护胫",
-      "description": "从腰部保护到小腿的铁制护腿",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 120,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 5,
-      "attributes": [
-        {
-          "type": "defense",
-          "base_value": 3,
-          "per_enchant": 1
-        }
-      ],
-      "name_key": "$mmo.item.151.name",
-      "description_key": "$mmo.item.151.desc"
-    },
-    {
-      "id": 152,
-      "name": "钢护腿",
-      "description": "钢加固的护腿，提供持久的腿部防护",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 400,
-      "stackable": false,
-      "enchantable": true,
-      "can_trade": true,
-      "level_required": 12,
-      "rarity": "uncommon",
-      "attributes": [
-        {
-          "type": "defense",
-          "base_value": 5,
-          "per_enchant": 2
-        }
-      ],
-      "name_key": "$mmo.item.152.name",
-      "description_key": "$mmo.item.152.desc"
-    },
-    {
-      "id": 153,
-      "name": "守护者腿甲",
-      "description": "被祝福的腿甲，如风一般敏捷",
-      "group": "equipment",
-      "type": "default",
+      "type": "equipgun",
       "base_price": 1500,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
-      "level_required": 22,
-      "rarity": "rare",
+      "level_required": 11,
+      "rarity": "uncommon",
       "attributes": [
         {
-          "type": "defense",
-          "base_value": 8,
+          "type": "attack",
+          "base_value": 14,
           "per_enchant": 3
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
         }
       ],
-      "name_key": "$mmo.item.153.name",
-      "description_key": "$mmo.item.153.desc"
+      "name_key": "$mmo.item.143.name",
+      "description_key": "$mmo.item.143.desc",
+      "weapon_profile": {
+        "fire_style": "electro_arc",
+        "pulse_reach": 190,
+        "reload_speed": 62,
+        "damage_mul": 95,
+        "force": 0
+      }
     },
     {
-      "id": 154,
-      "name": "泰坦腿甲",
-      "description": "远古泰坦穿戴的巨型腿甲",
+      "id": 144,
+      "name": "双管霰弹枪",
+      "description": "一次齐射六颗弹丸的双管猎枪",
       "group": "equipment",
-      "type": "default",
-      "base_price": 4000,
+      "type": "equipshotgun",
+      "base_price": 900,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
-      "level_required": 38,
+      "level_required": 8,
+      "rarity": "uncommon",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 10,
+          "per_enchant": 3
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.144.name",
+      "description_key": "$mmo.item.144.desc",
+      "weapon_profile": {
+        "shotgun_pellets": 6,
+        "spread": 4,
+        "reload_speed": 90,
+        "force": 125,
+        "damage_mul": 95,
+        "recoil": 150
+      }
+    },
+    {
+      "id": 145,
+      "name": "战斗霰弹枪",
+      "description": "改良的战斗霰弹枪，射速与弹丸数均衡",
+      "group": "equipment",
+      "type": "equipshotgun",
+      "base_price": 2200,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 14,
+      "rarity": "rare",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 18,
+          "per_enchant": 5
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.145.name",
+      "description_key": "$mmo.item.145.desc",
+      "weapon_profile": {
+        "shotgun_pellets": 5,
+        "spread": 3,
+        "reload_speed": 86,
+        "force": 120,
+        "damage_mul": 105,
+        "recoil": 130
+      }
+    },
+    {
+      "id": 146,
+      "name": "榴弹发射器",
+      "description": "发射榴弹并在爆炸点产生冲击波",
+      "group": "equipment",
+      "type": "equipgrenade",
+      "base_price": 2800,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 16,
+      "rarity": "rare",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 20,
+          "per_enchant": 6
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.146.name",
+      "description_key": "$mmo.item.146.desc",
+      "weapon_profile": {
+        "fire_style": "mega_blast",
+        "hammer_blast_radius": 128,
+        "proj_speed": 92,
+        "proj_range": 140,
+        "reload_speed": 88,
+        "force": 0,
+        "damage_mul": 100,
+        "recoil": 130
+      }
+    },
+    {
+      "id": 147,
+      "name": "末日发射器",
+      "description": "更大范围的毁灭性榴弹发射器",
+      "group": "equipment",
+      "type": "equipgrenade",
+      "base_price": 5500,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 22,
       "rarity": "epic",
       "attributes": [
         {
+          "type": "attack",
+          "base_value": 32,
+          "per_enchant": 9
+        },
+        {
           "type": "defense",
-          "base_value": 14,
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.147.name",
+      "description_key": "$mmo.item.147.desc",
+      "weapon_profile": {
+        "fire_style": "mega_blast",
+        "hammer_blast_radius": 256,
+        "proj_speed": 88,
+        "proj_range": 150,
+        "reload_speed": 75,
+        "force": 0,
+        "damage_mul": 130,
+        "recoil": 160
+      }
+    },
+    {
+      "id": 148,
+      "name": "电击发射器",
+      "description": "榴弹爆炸时释放电弧",
+      "group": "equipment",
+      "type": "equipgrenade",
+      "base_price": 3200,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 17,
+      "rarity": "rare",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 22,
+          "per_enchant": 6
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.148.name",
+      "description_key": "$mmo.item.148.desc",
+      "weapon_profile": {
+        "fire_style": "electric_grenade",
+        "proj_speed": 92,
+        "proj_range": 140,
+        "reload_speed": 88,
+        "force": 0,
+        "damage_mul": 100,
+        "recoil": 135
+      }
+    },
+    {
+      "id": 149,
+      "name": "突击步枪",
+      "description": "全自动突击步枪，稳定可靠",
+      "group": "equipment",
+      "type": "equipgun",
+      "base_price": 2500,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 15,
+      "rarity": "rare",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 20,
+          "per_enchant": 5
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        },
+        {
+          "type": "attack_spd",
+          "base_value": 125,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.149.name",
+      "description_key": "$mmo.item.149.desc",
+      "weapon_profile": {
+        "spread": 4,
+        "reload_speed": 75,
+        "force": 145,
+        "damage_mul": 115,
+        "proj_range": 110
+      }
+    },
+    {
+      "id": 150,
+      "name": "闪电步枪",
+      "description": "发射分叉闪电束的步枪",
+      "group": "equipment",
+      "type": "equiplaser",
+      "base_price": 2000,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 13,
+      "rarity": "rare",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 16,
           "per_enchant": 4
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.150.name",
+      "description_key": "$mmo.item.150.desc",
+      "weapon_profile": {
+        "fire_style": "lightning_bolt",
+        "pulse_reach": 200,
+        "tesla_chain_targets": 1,
+        "reload_speed": 78,
+        "damage_mul": 100,
+        "force": 0
+      }
+    },
+    {
+      "id": 151,
+      "name": "风暴步枪",
+      "description": "闪电会在目标间链式传导",
+      "group": "equipment",
+      "type": "equiplaser",
+      "base_price": 4200,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 20,
+      "rarity": "epic",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 24,
+          "per_enchant": 7
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.151.name",
+      "description_key": "$mmo.item.151.desc",
+      "weapon_profile": {
+        "fire_style": "lightning_bolt",
+        "pulse_reach": 200,
+        "tesla_chain_targets": 2,
+        "reload_speed": 78,
+        "damage_mul": 95,
+        "force": 0
+      }
+    },
+    {
+      "id": 152,
+      "name": "激光步枪",
+      "description": "经典高能激光步枪",
+      "group": "equipment",
+      "type": "equiplaser",
+      "base_price": 2400,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 14,
+      "rarity": "rare",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 22,
+          "per_enchant": 6
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.152.name",
+      "description_key": "$mmo.item.152.desc",
+      "weapon_profile": {
+        "spread": 0,
+        "reload_speed": 55,
+        "damage_mul": 125,
+        "force": 0,
+        "laser_reach": 105
+      }
+    },
+    {
+      "id": 153,
+      "name": "电弧步枪",
+      "description": "同时射出两道分形电弧",
+      "group": "equipment",
+      "type": "equiplaser",
+      "base_price": 4800,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 21,
+      "rarity": "epic",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 26,
+          "per_enchant": 8
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
+        }
+      ],
+      "name_key": "$mmo.item.153.name",
+      "description_key": "$mmo.item.153.desc",
+      "weapon_profile": {
+        "fire_style": "electro_arc",
+        "pulse_reach": 400,
+        "fan_shots": 2,
+        "reload_speed": 68,
+        "damage_mul": 100,
+        "force": 0
+      }
+    },
+    {
+      "id": 154,
+      "name": "末日射线",
+      "description": "激光束末端引发巨型爆炸",
+      "group": "equipment",
+      "type": "equiplaser",
+      "base_price": 6500,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 25,
+      "rarity": "legendary",
+      "attributes": [
+        {
+          "type": "attack",
+          "base_value": 34,
+          "per_enchant": 10
+        },
+        {
+          "type": "defense",
+          "base_value": 0,
+          "per_enchant": 0
         }
       ],
       "name_key": "$mmo.item.154.name",
-      "description_key": "$mmo.item.154.desc"
+      "description_key": "$mmo.item.154.desc",
+      "weapon_profile": {
+        "fire_style": "doom_ray",
+        "hammer_blast_radius": 256,
+        "spread": 0,
+        "reload_speed": 50,
+        "damage_mul": 120,
+        "force": 0,
+        "laser_reach": 110
+      }
     },
     {
       "id": 155,
-      "name": "皮靴",
-      "description": "适合日常探险的结实皮靴",
+      "name": "布裤",
+      "description": "提供基础腿部防护的简单布裤",
       "group": "equipment",
-      "type": "default",
-      "base_price": 30,
+      "type": "equiparmorhealer",
+      "base_price": 25,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
@@ -2907,11 +3137,11 @@
     },
     {
       "id": 156,
-      "name": "铁靴",
-      "description": "铁加固的战靴，在战斗中保护双脚",
+      "name": "铁护胫",
+      "description": "从腰部保护到小腿的铁制护腿",
       "group": "equipment",
-      "type": "default",
-      "base_price": 100,
+      "type": "equiparmorhealer",
+      "base_price": 120,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
@@ -2919,7 +3149,7 @@
       "attributes": [
         {
           "type": "defense",
-          "base_value": 2,
+          "base_value": 3,
           "per_enchant": 1
         }
       ],
@@ -2928,11 +3158,11 @@
     },
     {
       "id": 157,
-      "name": "钢护胫",
-      "description": "为战场耐久性锻造的重型钢靴",
+      "name": "钢护腿",
+      "description": "钢加固的护腿，提供持久的腿部防护",
       "group": "equipment",
-      "type": "default",
-      "base_price": 350,
+      "type": "equiparmorhealer",
+      "base_price": 400,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
@@ -2941,7 +3171,7 @@
       "attributes": [
         {
           "type": "defense",
-          "base_value": 4,
+          "base_value": 5,
           "per_enchant": 2
         }
       ],
@@ -2950,11 +3180,11 @@
     },
     {
       "id": 158,
-      "name": "迅捷靴",
-      "description": "轻量附魔靴子，让你步伐更轻盈",
+      "name": "守护者腿甲",
+      "description": "被祝福的腿甲，如风一般敏捷",
       "group": "equipment",
-      "type": "default",
-      "base_price": 1800,
+      "type": "equiparmorhealer",
+      "base_price": 1500,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
@@ -2963,8 +3193,8 @@
       "attributes": [
         {
           "type": "defense",
-          "base_value": 6,
-          "per_enchant": 2
+          "base_value": 8,
+          "per_enchant": 3
         }
       ],
       "name_key": "$mmo.item.158.name",
@@ -2972,11 +3202,11 @@
     },
     {
       "id": 159,
-      "name": "泰坦践踏者",
-      "description": "每一步都能震撼大地的巨型靴子",
+      "name": "泰坦腿甲",
+      "description": "远古泰坦穿戴的巨型腿甲",
       "group": "equipment",
-      "type": "default",
-      "base_price": 4500,
+      "type": "equiparmortank",
+      "base_price": 4000,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
@@ -2985,8 +3215,8 @@
       "attributes": [
         {
           "type": "defense",
-          "base_value": 10,
-          "per_enchant": 3
+          "base_value": 14,
+          "per_enchant": 4
         }
       ],
       "name_key": "$mmo.item.159.name",
@@ -2994,11 +3224,11 @@
     },
     {
       "id": 160,
-      "name": "布手套",
-      "description": "提供基础手部防护的简单布手套",
+      "name": "皮靴",
+      "description": "适合日常探险的结实皮靴",
       "group": "equipment",
-      "type": "default",
-      "base_price": 25,
+      "type": "equipgloves",
+      "base_price": 30,
       "stackable": false,
       "enchantable": true,
       "can_trade": true,
@@ -3015,10 +3245,118 @@
     },
     {
       "id": 161,
+      "name": "铁靴",
+      "description": "铁加固的战靴，在战斗中保护双脚",
+      "group": "equipment",
+      "type": "equipgloves",
+      "base_price": 100,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 5,
+      "attributes": [
+        {
+          "type": "defense",
+          "base_value": 2,
+          "per_enchant": 1
+        }
+      ],
+      "name_key": "$mmo.item.161.name",
+      "description_key": "$mmo.item.161.desc"
+    },
+    {
+      "id": 162,
+      "name": "钢护胫",
+      "description": "为战场耐久性锻造的重型钢靴",
+      "group": "equipment",
+      "type": "equipgloves",
+      "base_price": 350,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 12,
+      "rarity": "uncommon",
+      "attributes": [
+        {
+          "type": "defense",
+          "base_value": 4,
+          "per_enchant": 2
+        }
+      ],
+      "name_key": "$mmo.item.162.name",
+      "description_key": "$mmo.item.162.desc"
+    },
+    {
+      "id": 163,
+      "name": "迅捷靴",
+      "description": "轻量附魔靴子，让你步伐更轻盈",
+      "group": "equipment",
+      "type": "equipgloves",
+      "base_price": 1800,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 22,
+      "rarity": "rare",
+      "attributes": [
+        {
+          "type": "defense",
+          "base_value": 6,
+          "per_enchant": 2
+        }
+      ],
+      "name_key": "$mmo.item.163.name",
+      "description_key": "$mmo.item.163.desc"
+    },
+    {
+      "id": 164,
+      "name": "泰坦践踏者",
+      "description": "每一步都能震撼大地的巨型靴子",
+      "group": "equipment",
+      "type": "equipgloves",
+      "base_price": 4500,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 38,
+      "rarity": "epic",
+      "attributes": [
+        {
+          "type": "defense",
+          "base_value": 10,
+          "per_enchant": 3
+        }
+      ],
+      "name_key": "$mmo.item.164.name",
+      "description_key": "$mmo.item.164.desc"
+    },
+    {
+      "id": 165,
+      "name": "布手套",
+      "description": "提供基础手部防护的简单布手套",
+      "group": "equipment",
+      "type": "equipgloves",
+      "base_price": 25,
+      "stackable": false,
+      "enchantable": true,
+      "can_trade": true,
+      "level_required": 1,
+      "attributes": [
+        {
+          "type": "defense",
+          "base_value": 1,
+          "per_enchant": 1
+        }
+      ],
+      "name_key": "$mmo.item.165.name",
+      "description_key": "$mmo.item.165.desc"
+    },
+    {
+      "id": 166,
       "name": "铁护手",
       "description": "既能提供防护又能握紧武器的铁护手",
       "group": "equipment",
-      "type": "default",
+      "type": "equipgloves",
       "base_price": 150,
       "stackable": false,
       "enchantable": true,
@@ -3036,15 +3374,15 @@
           "per_enchant": 1
         }
       ],
-      "name_key": "$mmo.item.161.name",
-      "description_key": "$mmo.item.161.desc"
+      "name_key": "$mmo.item.166.name",
+      "description_key": "$mmo.item.166.desc"
     },
     {
-      "id": 162,
+      "id": 167,
       "name": "钢手套",
       "description": "增强攻防的钢制手套",
       "group": "equipment",
-      "type": "default",
+      "type": "equipgloves",
       "base_price": 500,
       "stackable": false,
       "enchantable": true,
@@ -3063,15 +3401,15 @@
           "per_enchant": 1
         }
       ],
-      "name_key": "$mmo.item.162.name",
-      "description_key": "$mmo.item.162.desc"
+      "name_key": "$mmo.item.167.name",
+      "description_key": "$mmo.item.167.desc"
     },
     {
-      "id": 163,
+      "id": 168,
       "name": "守护者之握",
       "description": "通过双手传导守护者之力的附魔手套",
       "group": "equipment",
-      "type": "default",
+      "type": "equipgloves",
       "base_price": 2200,
       "stackable": false,
       "enchantable": true,
@@ -3090,15 +3428,15 @@
           "per_enchant": 1
         }
       ],
-      "name_key": "$mmo.item.163.name",
-      "description_key": "$mmo.item.163.desc"
+      "name_key": "$mmo.item.168.name",
+      "description_key": "$mmo.item.168.desc"
     },
     {
-      "id": 164,
+      "id": 169,
       "name": "泰坦之拳",
       "description": "泰坦战士佩戴的巨型护手，碾碎一切阻碍",
       "group": "equipment",
-      "type": "default",
+      "type": "equipgloves",
       "base_price": 5000,
       "stackable": false,
       "enchantable": true,
@@ -3117,15 +3455,15 @@
           "per_enchant": 2
         }
       ],
-      "name_key": "$mmo.item.164.name",
-      "description_key": "$mmo.item.164.desc"
+      "name_key": "$mmo.item.169.name",
+      "description_key": "$mmo.item.169.desc"
     },
     {
       "id": 170,
       "name": "灵魂戒指",
       "description": "注入灵魂能量的戒指，同时增强攻击和防御",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 300,
       "stackable": false,
       "enchantable": true,
@@ -3152,7 +3490,7 @@
       "name": "防护之戒",
       "description": "在佩戴者周围生成防护屏障的戒指",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 400,
       "stackable": false,
       "enchantable": true,
@@ -3174,7 +3512,7 @@
       "name": "力量之戒",
       "description": "噼啪作响着原始力量的戒指，增强佩戴者力量",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 400,
       "stackable": false,
       "enchantable": true,
@@ -3196,7 +3534,7 @@
       "name": "巨人之戒",
       "description": "赋予远古巨人生命力的戒指",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 1000,
       "stackable": false,
       "enchantable": true,
@@ -3218,7 +3556,7 @@
       "name": "风之护符",
       "description": "随着微风低鸣的护符，ATK+8, DEF+8，来自一段遗失的恋情",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 3000,
       "stackable": false,
       "enchantable": true,
@@ -3245,7 +3583,7 @@
       "name": "迅捷项链",
       "description": "让你感觉更敏捷的轻量项链",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 1200,
       "stackable": false,
       "enchantable": true,
@@ -3267,7 +3605,7 @@
       "name": "专注耳环",
       "description": "在战斗中提高注意力的耳环",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 300,
       "stackable": false,
       "enchantable": true,
@@ -3289,7 +3627,7 @@
       "name": "力量手镯",
       "description": "由纯力量增强合金锻造的手镯",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 2500,
       "stackable": false,
       "enchantable": true,
@@ -3311,7 +3649,7 @@
       "name": "巨人腰带",
       "description": "用巨人毛发编织的粗腰带，赋予巨大耐久力",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 1800,
       "stackable": false,
       "enchantable": true,
@@ -3333,7 +3671,7 @@
       "name": "幽灵披风",
       "description": "在月光下如幽灵般闪烁的半透明斗篷",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 4000,
       "stackable": false,
       "enchantable": true,
@@ -3355,7 +3693,7 @@
       "name": "凤凰护符",
       "description": "蕴含凤凰羽毛的传说护符，可以复活佩戴者一次",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 10000,
       "stackable": false,
       "enchantable": false,
@@ -3377,7 +3715,7 @@
       "name": "龙骨之戒",
       "description": "用龙骨锻造的戒指，散发着远古力量",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 7000,
       "stackable": false,
       "enchantable": true,
@@ -3404,7 +3742,7 @@
       "name": "星辰胸针",
       "description": "星形胸针，赋予佩戴者均衡的力量",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 3500,
       "stackable": false,
       "enchantable": true,
@@ -3431,7 +3769,7 @@
       "name": "世界核心",
       "description": "世界之心的结晶，赋予难以想象的力量",
       "group": "equipment",
-      "type": "default",
+      "type": "equipeidolon",
       "base_price": 20000,
       "stackable": false,
       "enchantable": true,
@@ -3454,331 +3792,7 @@
       "description_key": "$mmo.item.183.desc"
     },
     {
-      "id": 190,
-      "name": "天使之翼",
-      "description": "散发着圣光的一对光辉天使翅膀",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 500,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "rarity": "epic",
-      "name_key": "$mmo.item.190.name",
-      "description_key": "$mmo.item.190.desc"
-    },
-    {
-      "id": 191,
-      "name": "恶魔之角",
-      "description": "将你标记为令人恐惧存在的邪恶之角",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 300,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "rarity": "rare",
-      "name_key": "$mmo.item.191.name",
-      "description_key": "$mmo.item.191.desc"
-    },
-    {
-      "id": 192,
-      "name": "光环王冠",
-      "description": "将你标记为神圣祝福者的浮空光环王冠",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 1000,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "rarity": "legendary",
-      "name_key": "$mmo.item.192.name",
-      "description_key": "$mmo.item.192.desc"
-    },
-    {
-      "id": 193,
-      "name": "花之书签",
-      "description": "来自图书馆的精美书签，隐约散发着旧纸的气息",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 0,
-      "stackable": false,
-      "can_trade": false,
-      "can_drop": false,
-      "rarity": "uncommon",
-      "name_key": "$mmo.item.193.name",
-      "description_key": "$mmo.item.193.desc"
-    },
-    {
-      "id": 194,
-      "name": "迷你史莱姆宠物",
-      "description": "跟着你到处走的可爱迷你史莱姆，开心地弹跳着",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 50,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "name_key": "$mmo.item.194.name",
-      "description_key": "$mmo.item.194.desc"
-    },
-    {
-      "id": 195,
-      "name": "迷你龙宠物",
-      "description": "栖息在你肩膀上的小龙崽",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 800,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "rarity": "epic",
-      "name_key": "$mmo.item.195.name",
-      "description_key": "$mmo.item.195.desc"
-    },
-    {
-      "id": 196,
-      "name": "高顶礼帽",
-      "description": "适合有品味的探险家的高雅礼帽",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 80,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "rarity": "uncommon",
-      "name_key": "$mmo.item.196.name",
-      "description_key": "$mmo.item.196.desc"
-    },
-    {
-      "id": 197,
-      "name": "派对帽",
-      "description": "用于庆祝的彩色锥形帽",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 30,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "name_key": "$mmo.item.197.name",
-      "description_key": "$mmo.item.197.desc"
-    },
-    {
-      "id": 198,
-      "name": "太阳镜",
-      "description": "让一切看起来都很酷的墨镜",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 200,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "rarity": "rare",
-      "name_key": "$mmo.item.198.name",
-      "description_key": "$mmo.item.198.desc"
-    },
-    {
-      "id": 199,
-      "name": "黄金王冠",
-      "description": "镶满珠宝的华丽王冠，适合皇室",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 1500,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "rarity": "legendary",
-      "name_key": "$mmo.item.199.name",
-      "description_key": "$mmo.item.199.desc"
-    },
-    {
-      "id": 200,
-      "name": "基础鱼竿",
-      "description": "配有基础钓具的简单竹制鱼竿",
-      "group": "usable",
-      "type": "default",
-      "base_price": 50,
-      "stackable": false,
-      "can_trade": true,
-      "level_required": 1,
-      "name_key": "$mmo.item.200.name",
-      "description_key": "$mmo.item.200.desc"
-    },
-    {
-      "id": 201,
-      "name": "坚固鱼竿",
-      "description": "可以钓上更大鱼获的加固鱼竿",
-      "group": "usable",
-      "type": "default",
-      "base_price": 300,
-      "stackable": false,
-      "can_trade": true,
-      "level_required": 10,
-      "rarity": "uncommon",
-      "name_key": "$mmo.item.201.name",
-      "description_key": "$mmo.item.201.desc"
-    },
-    {
-      "id": 202,
-      "name": "魔法鱼竿",
-      "description": "能吸引远处稀有鱼类的附魔鱼竿",
-      "group": "usable",
-      "type": "default",
-      "base_price": 1500,
-      "stackable": false,
-      "can_trade": true,
-      "level_required": 25,
-      "rarity": "rare",
-      "name_key": "$mmo.item.202.name",
-      "description_key": "$mmo.item.202.desc"
-    },
-    {
-      "id": 203,
-      "name": "生鱼",
-      "description": "刚捕到的鱼，可以烹饪或生吃",
-      "group": "usable",
-      "type": "usesingle",
-      "base_price": 10,
-      "stackable": true,
-      "can_trade": true,
-      "name_key": "$mmo.item.203.name",
-      "description_key": "$mmo.item.203.desc",
-      "attributes": [
-        {
-          "type": "hp",
-          "base_value": 5,
-          "per_enchant": 0
-        }
-      ]
-    },
-    {
-      "id": 204,
-      "name": "金鱼",
-      "description": "闪闪发光的稀有金色鱼",
-      "group": "decoration",
-      "type": "default",
-      "base_price": 200,
-      "stackable": false,
-      "can_trade": true,
-      "can_drop": false,
-      "rarity": "rare",
-      "name_key": "$mmo.item.204.name",
-      "description_key": "$mmo.item.204.desc"
-    },
-    {
-      "id": 205,
-      "name": "旧靴子",
-      "description": "湿漉漉的旧靴子，没什么用",
-      "group": "other",
-      "type": "default",
-      "base_price": 1,
-      "stackable": true,
-      "can_trade": true,
-      "name_key": "$mmo.item.205.name",
-      "description_key": "$mmo.item.205.desc"
-    },
-    {
-      "id": 206,
-      "name": "宝箱",
-      "description": "可能装有值钱物品的小型浸水箱子",
-      "group": "usable",
-      "type": "default",
-      "base_price": 0,
-      "stackable": false,
-      "can_trade": true,
-      "rarity": "rare",
-      "name_key": "$mmo.item.206.name",
-      "description_key": "$mmo.item.206.desc"
-    },
-    {
-      "id": 207,
-      "name": "瓶中信",
-      "description": "装在瓶子里的信，从远方漂流而来",
-      "group": "quest",
-      "type": "default",
-      "base_price": 0,
-      "stackable": false,
-      "can_trade": false,
-      "can_drop": false,
-      "name_key": "$mmo.item.207.name",
-      "description_key": "$mmo.item.207.desc"
-    },
-    {
-      "id": 208,
-      "name": "鱼饵",
-      "description": "用于吸引普通鱼类的标准鱼饵",
-      "group": "usable",
-      "type": "default",
-      "base_price": 5,
-      "stackable": true,
-      "can_trade": true,
-      "name_key": "$mmo.item.208.name",
-      "description_key": "$mmo.item.208.desc"
-    },
-    {
-      "id": 209,
-      "name": "幸运鱼饵",
-      "description": "附魔的特殊鱼饵，吸引稀有鱼获",
-      "group": "usable",
-      "type": "default",
-      "base_price": 50,
-      "stackable": true,
-      "can_trade": true,
-      "rarity": "uncommon",
-      "name_key": "$mmo.item.209.name",
-      "description_key": "$mmo.item.209.desc"
-    },
-    {
-      "id": 7,
-      "name": "新手匕首",
-      "description": "一把朴素但锋利的匕首，新手冒险者的第一件武器",
-      "group": "equipment",
-      "type": "equiphammer",
-      "base_price": 10,
-      "stackable": false,
-      "can_trade": false,
-      "can_drop": true,
-      "level_required": 1,
-      "attributes": [
-        {
-          "attribute": "attack",
-          "value": 3
-        },
-        {
-          "attribute": "health",
-          "value": 5
-        },
-        {
-          "type": "defense",
-          "base_value": 0,
-          "per_enchant": 0
-        }
-      ]
-    },
-    {
-      "id": 8,
-      "name": "新手护符",
-      "description": "一枚简单的护身符，散发着微弱的光芒",
-      "group": "equipment",
-      "type": "default",
-      "base_price": 5,
-      "stackable": false,
-      "can_trade": false,
-      "can_drop": true,
-      "level_required": 1,
-      "attributes": [
-        {
-          "attribute": "defense",
-          "value": 1
-        },
-        {
-          "attribute": "health",
-          "value": 10
-        }
-      ]
-    },
-    {
-      "id": 901,
+      "id": 184,
       "name": "布帽",
       "type": "equiphelmetdps",
       "rarity": "common",
@@ -3797,10 +3811,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.184.name",
+      "description_key": "$mmo.item.184.desc"
     },
     {
-      "id": 902,
+      "id": 185,
       "name": "皮帽",
       "type": "equiphelmetdps",
       "rarity": "uncommon",
@@ -3824,10 +3840,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.185.name",
+      "description_key": "$mmo.item.185.desc"
     },
     {
-      "id": 903,
+      "id": 186,
       "name": "银饰头盔",
       "type": "equiphelmetdps",
       "rarity": "rare",
@@ -3846,10 +3864,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.186.name",
+      "description_key": "$mmo.item.186.desc"
     },
     {
-      "id": 904,
+      "id": 187,
       "name": "水晶之冠",
       "type": "equiphelmetdps",
       "rarity": "epic",
@@ -3868,10 +3888,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.187.name",
+      "description_key": "$mmo.item.187.desc"
     },
     {
-      "id": 905,
+      "id": 188,
       "name": "龙鳞头冠",
       "type": "equiphelmetdps",
       "rarity": "legendary",
@@ -3890,10 +3912,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.188.name",
+      "description_key": "$mmo.item.188.desc"
     },
     {
-      "id": 906,
+      "id": 189,
       "name": "铁盔",
       "type": "equiphelmettank",
       "rarity": "common",
@@ -3912,10 +3936,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.189.name",
+      "description_key": "$mmo.item.189.desc"
     },
     {
-      "id": 907,
+      "id": 190,
       "name": "钢盔",
       "type": "equiphelmettank",
       "rarity": "uncommon",
@@ -3934,10 +3960,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.190.name",
+      "description_key": "$mmo.item.190.desc"
     },
     {
-      "id": 908,
+      "id": 191,
       "name": "泰坦面甲",
       "type": "equiphelmettank",
       "rarity": "rare",
@@ -3956,10 +3984,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.191.name",
+      "description_key": "$mmo.item.191.desc"
     },
     {
-      "id": 909,
+      "id": 192,
       "name": "不朽王冠",
       "type": "equiphelmettank",
       "rarity": "epic",
@@ -3978,10 +4008,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.192.name",
+      "description_key": "$mmo.item.192.desc"
     },
     {
-      "id": 911,
+      "id": 193,
       "name": "布衣",
       "type": "equiparmordps",
       "rarity": "common",
@@ -4000,10 +4032,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.193.name",
+      "description_key": "$mmo.item.193.desc"
     },
     {
-      "id": 912,
+      "id": 194,
       "name": "皮甲",
       "type": "equiparmordps",
       "rarity": "uncommon",
@@ -4027,10 +4061,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.194.name",
+      "description_key": "$mmo.item.194.desc"
     },
     {
-      "id": 913,
+      "id": 195,
       "name": "锁子甲",
       "type": "equiparmordps",
       "rarity": "rare",
@@ -4049,10 +4085,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.195.name",
+      "description_key": "$mmo.item.195.desc"
     },
     {
-      "id": 914,
+      "id": 196,
       "name": "秘银胸甲",
       "type": "equiparmordps",
       "rarity": "epic",
@@ -4071,10 +4109,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.196.name",
+      "description_key": "$mmo.item.196.desc"
     },
     {
-      "id": 915,
+      "id": 197,
       "name": "龙鳞甲",
       "type": "equiparmordps",
       "rarity": "legendary",
@@ -4093,10 +4133,12 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.197.name",
+      "description_key": "$mmo.item.197.desc"
     },
     {
-      "id": 916,
+      "id": 198,
       "name": "板甲",
       "type": "equiparmortank",
       "rarity": "rare",
@@ -4115,7 +4157,284 @@
         }
       ],
       "stackable": false,
-      "group": "armor"
+      "group": "equipment",
+      "name_key": "$mmo.item.198.name",
+      "description_key": "$mmo.item.198.desc"
+    },
+    {
+      "id": 200,
+      "name": "天使之翼",
+      "description": "散发着圣光的一对光辉天使翅膀",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 500,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "rarity": "epic",
+      "name_key": "$mmo.item.200.name",
+      "description_key": "$mmo.item.200.desc"
+    },
+    {
+      "id": 201,
+      "name": "恶魔之角",
+      "description": "将你标记为令人恐惧存在的邪恶之角",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 300,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "rarity": "rare",
+      "name_key": "$mmo.item.201.name",
+      "description_key": "$mmo.item.201.desc"
+    },
+    {
+      "id": 202,
+      "name": "光环王冠",
+      "description": "将你标记为神圣祝福者的浮空光环王冠",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 1000,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "rarity": "legendary",
+      "name_key": "$mmo.item.202.name",
+      "description_key": "$mmo.item.202.desc"
+    },
+    {
+      "id": 203,
+      "name": "花之书签",
+      "description": "来自图书馆的精美书签，隐约散发着旧纸的气息",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 0,
+      "stackable": false,
+      "can_trade": false,
+      "can_drop": false,
+      "rarity": "uncommon",
+      "name_key": "$mmo.item.203.name",
+      "description_key": "$mmo.item.203.desc"
+    },
+    {
+      "id": 204,
+      "name": "史莱姆飞行器",
+      "description": "可部署的史莱姆造型飞行器，适合短途飞行",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 50,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "name_key": "$mmo.item.204.name",
+      "description_key": "$mmo.item.204.desc"
+    },
+    {
+      "id": 205,
+      "name": "幼龙飞行器",
+      "description": "可部署的幼龙造型飞行器，飞行速度更快",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 800,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "rarity": "epic",
+      "name_key": "$mmo.item.205.name",
+      "description_key": "$mmo.item.205.desc"
+    },
+    {
+      "id": 206,
+      "name": "高顶礼帽",
+      "description": "适合有品味的探险家的高雅礼帽",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 80,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "rarity": "uncommon",
+      "name_key": "$mmo.item.206.name",
+      "description_key": "$mmo.item.206.desc"
+    },
+    {
+      "id": 207,
+      "name": "派对帽",
+      "description": "用于庆祝的彩色锥形帽",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 30,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "name_key": "$mmo.item.207.name",
+      "description_key": "$mmo.item.207.desc"
+    },
+    {
+      "id": 208,
+      "name": "太阳镜",
+      "description": "让一切看起来都很酷的墨镜",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 200,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "rarity": "rare",
+      "name_key": "$mmo.item.208.name",
+      "description_key": "$mmo.item.208.desc"
+    },
+    {
+      "id": 209,
+      "name": "黄金王冠",
+      "description": "镶满珠宝的华丽王冠，适合皇室",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 1500,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "rarity": "legendary",
+      "name_key": "$mmo.item.209.name",
+      "description_key": "$mmo.item.209.desc"
+    },
+    {
+      "id": 210,
+      "name": "基础鱼竿",
+      "description": "配有基础钓具的简单竹制鱼竿",
+      "group": "equipment",
+      "type": "equipfishrod",
+      "base_price": 50,
+      "stackable": false,
+      "can_trade": true,
+      "level_required": 1,
+      "name_key": "$mmo.item.210.name",
+      "description_key": "$mmo.item.210.desc"
+    },
+    {
+      "id": 211,
+      "name": "坚固鱼竿",
+      "description": "可以钓上更大鱼获的加固鱼竿",
+      "group": "equipment",
+      "type": "equipfishrod",
+      "base_price": 300,
+      "stackable": false,
+      "can_trade": true,
+      "level_required": 10,
+      "rarity": "uncommon",
+      "name_key": "$mmo.item.211.name",
+      "description_key": "$mmo.item.211.desc"
+    },
+    {
+      "id": 212,
+      "name": "魔法鱼竿",
+      "description": "能吸引远处稀有鱼类的附魔鱼竿",
+      "group": "equipment",
+      "type": "equipfishrod",
+      "base_price": 1500,
+      "stackable": false,
+      "can_trade": true,
+      "level_required": 25,
+      "rarity": "rare",
+      "name_key": "$mmo.item.212.name",
+      "description_key": "$mmo.item.212.desc"
+    },
+    {
+      "id": 213,
+      "name": "生鱼",
+      "description": "刚捕到的鱼，可以烹饪或生吃",
+      "group": "usable",
+      "type": "usesingle",
+      "base_price": 10,
+      "stackable": true,
+      "can_trade": true,
+      "name_key": "$mmo.item.213.name",
+      "description_key": "$mmo.item.213.desc",
+      "attributes": [
+        {
+          "type": "hp",
+          "base_value": 5,
+          "per_enchant": 0
+        }
+      ]
+    },
+    {
+      "id": 214,
+      "name": "金鱼",
+      "description": "闪闪发光的稀有金色鱼",
+      "group": "decoration",
+      "type": "default",
+      "base_price": 200,
+      "stackable": false,
+      "can_trade": true,
+      "can_drop": false,
+      "rarity": "rare",
+      "name_key": "$mmo.item.214.name",
+      "description_key": "$mmo.item.214.desc"
+    },
+    {
+      "id": 215,
+      "name": "旧靴子",
+      "description": "湿漉漉的旧靴子，没什么用",
+      "group": "other",
+      "type": "default",
+      "base_price": 1,
+      "stackable": true,
+      "can_trade": true,
+      "name_key": "$mmo.item.215.name",
+      "description_key": "$mmo.item.215.desc"
+    },
+    {
+      "id": 216,
+      "name": "宝箱",
+      "description": "可能装有值钱物品的小型浸水箱子",
+      "group": "usable",
+      "type": "default",
+      "base_price": 0,
+      "stackable": false,
+      "can_trade": true,
+      "rarity": "rare",
+      "name_key": "$mmo.item.216.name",
+      "description_key": "$mmo.item.216.desc"
+    },
+    {
+      "id": 217,
+      "name": "瓶中信",
+      "description": "装在瓶子里的信，从远方漂流而来",
+      "group": "quest",
+      "type": "default",
+      "base_price": 0,
+      "stackable": false,
+      "can_trade": false,
+      "can_drop": false,
+      "name_key": "$mmo.item.217.name",
+      "description_key": "$mmo.item.217.desc"
+    },
+    {
+      "id": 218,
+      "name": "鱼饵",
+      "description": "用于吸引普通鱼类的标准鱼饵",
+      "group": "usable",
+      "type": "default",
+      "base_price": 5,
+      "stackable": true,
+      "can_trade": true,
+      "name_key": "$mmo.item.218.name",
+      "description_key": "$mmo.item.218.desc"
+    },
+    {
+      "id": 219,
+      "name": "幸运鱼饵",
+      "description": "附魔的特殊鱼饵，吸引稀有鱼获",
+      "group": "usable",
+      "type": "default",
+      "base_price": 50,
+      "stackable": true,
+      "can_trade": true,
+      "rarity": "uncommon",
+      "name_key": "$mmo.item.219.name",
+      "description_key": "$mmo.item.219.desc"
     }
   ]
 }

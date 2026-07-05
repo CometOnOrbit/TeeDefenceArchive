@@ -11,7 +11,7 @@
         "capacity": 0,
         "max": 0,
         "formula": {
-          "Log": 25
+          "0": 25
         },
         "name_key": "$td.item.8.name",
         "description_key": "$td.item.8.desc"
@@ -25,8 +25,8 @@
         "capacity": 30,
         "max": 0,
         "formula": {
-          "Log": 220,
-          "Iron": 25
+          "0": 220,
+          "3": 25
         },
         "name_key": "$td.item.11.name",
         "description_key": "$td.item.11.desc"
@@ -40,8 +40,8 @@
         "capacity": 35,
         "max": 0,
         "formula": {
-          "Log": 500,
-          "Golden": 25
+          "0": 500,
+          "4": 25
         },
         "name_key": "$td.item.16.name",
         "description_key": "$td.item.16.desc"
@@ -55,8 +55,8 @@
         "capacity": 50,
         "max": 0,
         "formula": {
-          "Log": 700,
-          "Diamond": 25
+          "0": 700,
+          "5": 25
         },
         "name_key": "$td.item.19.name",
         "description_key": "$td.item.19.desc"
@@ -70,9 +70,9 @@
         "capacity": 100,
         "max": 0,
         "formula": {
-          "Log": 2666,
-          "Diamond": 50,
-          "Enegry": 150
+          "0": 2666,
+          "5": 50,
+          "6": 150
         },
         "name_key": "$td.item.22.name",
         "description_key": "$td.item.22.desc"
@@ -87,9 +87,9 @@
         "max": 0,
         "effect": "burn_on_hit",
         "formula": {
-          "Iron Sword": 1,
-          "Coal": 500,
-          "Enegry": 8
+          "11": 1,
+          "1": 500,
+          "6": 8
         },
         "name_key": "$td.item.48.name",
         "description_key": "$td.item.48.desc"

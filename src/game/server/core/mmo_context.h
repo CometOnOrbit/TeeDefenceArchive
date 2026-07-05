@@ -8,7 +8,7 @@ enum class ItemGroup
 	Quest,
 	Currency,
 	Usable,
-	Resource,
+	Material,
 	Other,
 	Settings,
 	Equipment,
@@ -63,7 +63,7 @@ static inline const char *ItemGroupToName(ItemGroup G)
 	switch(G)
 	{
 	case ItemGroup::Usable:      return "消耗品";
-	case ItemGroup::Resource:    return "材料";
+	case ItemGroup::Material:    return "材料";
 	case ItemGroup::Equipment:   return "装备";
 	case ItemGroup::Potion:      return "药水";
 	case ItemGroup::Quest:       return "任务";
@@ -95,7 +95,7 @@ static inline const char *ItemTypeToName(ItemType T)
 	case EquipArmorTank:  return "胸甲(坦克)";
 	case EquipArmorDPS:   return "胸甲(输出)";
 	case EquipArmorHealer: return "胸甲(治疗)";
-	case EquipEidolon:    return "英灵";
+	case EquipEidolon:    return "护符";
 	case EquipTitle:      return "称号";
 	case EquipPotionHeal: return "治疗药水";
 	case EquipPotionMana: return "法力药水";
@@ -111,7 +111,7 @@ static inline const char *ItemTypeToSlotGroup(ItemType T)
 	if(T == EquipGloves) return "手套";
 	if(T >= EquipHelmetTank && T <= EquipHelmetHealer) return "头盔";
 	if(T >= EquipArmorTank && T <= EquipArmorHealer) return "胸甲";
-	if(T == EquipEidolon) return "英灵";
+	if(T == EquipEidolon) return "护符";
 	if(T == EquipTitle) return "称号";
 	return "";
 }

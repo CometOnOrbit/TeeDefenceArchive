@@ -19,7 +19,7 @@
 
 CProjectile::CProjectile(CGameWorld *pGameWorld, int Type, int Owner, vec2 Pos, vec2 Dir, int Span,
 	int Damage, bool Explosive, float Force, int SoundImpact, int Weapon, float SpeedMul, float LifeMul,
-	int Pierce, int LifestealPercent) : CChildEntity(pGameWorld, CGameWorld::ENTTYPE_PROJECTILE, 0, vec2(round_to_int(Pos.x), round_to_int(Pos.y)))
+	int Pierce, int LifestealPercent, bool Electric, int MegaBlastRadius) : CChildEntity(pGameWorld, CGameWorld::ENTTYPE_PROJECTILE, 0, vec2(round_to_int(Pos.x), round_to_int(Pos.y)))
 {
 	m_Type = Type;
 	m_Direction.x = round_to_int(Dir.x * 100.0f) / 100.0f;
@@ -36,6 +36,8 @@ CProjectile::CProjectile(CGameWorld *pGameWorld, int Type, int Owner, vec2 Pos, 
 	m_Weapon = Weapon;
 	m_StartTick = Server()->Tick();
 	m_Explosive = Explosive;
+	m_Electric = Electric;
+	m_MegaBlastRadius = MegaBlastRadius > 0 ? MegaBlastRadius : 0;
 
 	GameWorld()->InsertEntity(this);
 }
@@ -174,14 +176,27 @@ void CProjectile::Tick()
 
 		if(m_Explosive || ExplosionCard)
 		{
-			if(ElectronStacks > 0)
+			if(m_MegaBlastRadius > 0)
 			{
-				float ElRadius = (float)ElectronStacks;
-				if(FusionStacks > 0)
-					ElRadius = 0.5f;
-				new CGrowingExplosion(GameWorld(), CurPos, vec2(0.f, 0.f), m_Owner, maximum(1, (int)(5.f * ElRadius)), GROWINGEXPLOSIONEFFECT_ELECTRIC, FusionStacks > 0);
+				new CGrowingExplosion(GameWorld(), CurPos, vec2(0.f, -1.f), m_Owner, m_MegaBlastRadius,
+					GROWINGEXPLOSIONEFFECT_BOOM, FusionStacks > 0, GE_TARGET_MMO_HOSTILE, maximum(1, m_Damage));
 			}
-			GameWorld()->CreateExplosion(CurPos, this, m_Weapon, maximum(1, m_Damage));
+			else if(m_Electric)
+			{
+				new CGrowingExplosion(GameWorld(), CurPos, vec2(0.f, -1.f), m_Owner, maximum(3, 5),
+					GROWINGEXPLOSIONEFFECT_ELECTRIC, FusionStacks > 0, GE_TARGET_MMO_HOSTILE, maximum(1, m_Damage));
+			}
+			else
+			{
+				if(ElectronStacks > 0)
+				{
+					float ElRadius = (float)ElectronStacks;
+					if(FusionStacks > 0)
+						ElRadius = 0.5f;
+					new CGrowingExplosion(GameWorld(), CurPos, vec2(0.f, 0.f), m_Owner, maximum(1, (int)(5.f * ElRadius)), GROWINGEXPLOSIONEFFECT_ELECTRIC, FusionStacks > 0);
+				}
+				GameWorld()->CreateExplosion(CurPos, this, m_Weapon, maximum(1, m_Damage));
+			}
 		}
 		else if(pTargetEnt)
 		{

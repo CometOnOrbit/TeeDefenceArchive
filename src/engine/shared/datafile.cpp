@@ -361,6 +361,24 @@ void *CDataFileReader::GetDataSwapped(int Index)
 	return GetDataImpl(Index, 1);
 }
 
+const void *CDataFileReader::GetRawData(int Index, int *pSize) const
+{
+	if(!m_pDataFile || Index < 0 || Index >= m_pDataFile->m_Header.m_NumRawData)
+	{
+		if(pSize)
+			*pSize = 0;
+		return nullptr;
+	}
+
+	*pSize = GetFileDataSize(Index);
+
+	void *pRawData = mem_alloc(*pSize);
+	io_seek(m_pDataFile->m_File, m_pDataFile->m_DataStartOffset + m_pDataFile->m_Info.m_pDataOffsets[Index], IOSEEK_START);
+	io_read(m_pDataFile->m_File, pRawData, *pSize);
+
+	return pRawData;
+}
+
 void CDataFileReader::ReplaceData(int Index, char *pData, int Size)
 {
 	if(Index < 0 || Index >= m_pDataFile->m_Header.m_NumRawData)
@@ -566,7 +584,7 @@ int CDataFileWriter::AddItem(int Type, int ID, int Size, const void *pData)
 	if(!m_File)
 		return 0;
 
-	dbg_assert(Type >= 0 && Type < 0xFFFF, "incorrect type");
+	dbg_assert(Type >= 0 && Type < MAX_ITEM_TYPES, "incorrect type");
 	dbg_assert(m_NumItems < 1024, "too many items");
 	dbg_assert(Size % sizeof(int) == 0, "incorrect boundary");
 
@@ -620,7 +638,26 @@ int CDataFileWriter::AddData(int Size, const void *pData)
 	pInfo->m_CompressedSize = (int) s;
 	pInfo->m_pCompressedData = mem_alloc(pInfo->m_CompressedSize);
 	mem_copy(pInfo->m_pCompressedData, pCompData, pInfo->m_CompressedSize);
+	pInfo->m_IsRaw = false;
 	mem_free(pCompData);
+
+	m_NumDatas++;
+	return m_NumDatas - 1;
+}
+
+int CDataFileWriter::AddDataRaw(const void *pCompressedData, int CompressedSize, int UncompressedSize)
+{
+	if(!m_File)
+		return 0;
+
+	dbg_assert(m_NumDatas < 1024, "too much data");
+
+	CDataInfo *pInfo = &m_pDatas[m_NumDatas];
+	pInfo->m_UncompressedSize = UncompressedSize;
+	pInfo->m_CompressedSize = CompressedSize;
+	pInfo->m_pCompressedData = mem_alloc(CompressedSize);
+	mem_copy(pInfo->m_pCompressedData, pCompressedData, CompressedSize);
+	pInfo->m_IsRaw = true;
 
 	m_NumDatas++;
 	return m_NumDatas - 1;
@@ -704,7 +741,7 @@ int CDataFileWriter::Finish()
 	}
 
 	// write types
-	for(int i = 0, Count = 0; i < 0xffff; i++)
+	for(int i = 0, Count = 0; i < MAX_ITEM_TYPES; i++)
 	{
 		if(m_pItemTypes[i].m_Num)
 		{
@@ -724,7 +761,7 @@ int CDataFileWriter::Finish()
 	}
 
 	// write item offsets
-	for(int i = 0, Offset = 0; i < 0xffff; i++)
+	for(int i = 0, Offset = 0; i < MAX_ITEM_TYPES; i++)
 	{
 		if(m_pItemTypes[i].m_Num)
 		{
@@ -773,7 +810,7 @@ int CDataFileWriter::Finish()
 	}
 
 	// write m_pItems
-	for(int i = 0; i < 0xffff; i++)
+	for(int i = 0; i < MAX_ITEM_TYPES; i++)
 	{
 		if(m_pItemTypes[i].m_Num)
 		{

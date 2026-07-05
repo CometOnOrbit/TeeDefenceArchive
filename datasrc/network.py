@@ -315,6 +315,10 @@ Objects = [
 		NetIntAny("m_Subtype", -1),
 		NetFlag("m_Flags", LaserFlags),
 	]),
+
+	NetEventEx("MapSoundWorld:Common", "map-sound-world@netevent.ddnet.org", [
+		NetIntAny("m_SoundId"),
+	]),
 ]
 
 Messages = [
@@ -528,6 +532,10 @@ Messages = [
 	NetMessage("Cl_Command", [
 			NetStringStrict("m_Name"),
 			NetStringStrict("m_Arguments")
+	]),
+
+	NetMessageEx("Sv_MapSoundGlobal", "map-sound-global@netmsg.ddnet.org", [
+		NetIntAny("m_SoundId"),
 	]),
 
 ]

@@ -57,6 +57,7 @@ private:
 
 	/* State */
 	bool m_MarkedForDestroy;
+	int m_SpatialCellIdx = -1;
 
 protected:
 	/* State */

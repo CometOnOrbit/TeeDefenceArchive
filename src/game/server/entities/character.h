@@ -9,6 +9,9 @@
 #include <game/server/entity.h>
 #include <game/server/core/tools/tiles_handler.h>
 
+class CVehicle;
+class CEntityFishingRod;
+
 // MRPG safety flags for safe zones
 enum
 {
@@ -65,6 +68,7 @@ public:
 	void OnDirectInput(CNetObj_PlayerInput *pNewInput);
 	void ResetInput();
 	void FireWeapon();
+	void TickVehicleWeapon();
 
 	void Die(int Killer, int Weapon);
 	bool TakeDamage(vec2 Force, vec2 Source, int Dmg, int From, int Weapon);
@@ -81,6 +85,7 @@ public:
 	bool IncreaseArmor(int Amount);
 	void ReduceArmor(int Amount);
 	void SetHealthDirect(int Amount);
+	void SetArmorDirect(int Amount);
 	void SetBossHealth(int Amount);
 	void SetHitRadius(float Radius);
 	void SyncSpiderBody(vec2 Pos);
@@ -93,6 +98,13 @@ public:
 	void SetNinjaActivationTick(int Tick) { m_Ninja.m_ActivationTick = Tick; }
 
 	void SetEmote(int Emote, int Tick);
+	bool Freeze(float Seconds, bool BlockHoldFire = false);
+	bool IsFrozen() const;
+	int GetFreezeTicks() const { return m_FreezeTime; }
+	bool UnFreeze();
+	bool ReduceFreeze(float Seconds);
+	void SetAllowFrozenWeaponSwitch(bool Allow);
+	void TickFreeze();
 	void SetCharacterPos(vec2 NewPos) { m_Core.m_Pos = NewPos; m_Pos = NewPos; }
 	// Weapon category: classifies a weapon index (WEAPON_HAMMER etc.) into melee or ranged
 	static int WeaponCategoryForWeapon(int Weapon);
@@ -155,17 +167,28 @@ public:
 	void HandleSafeFlags();
 	void ApplyMoveRestrictions();
 	void TickFashionAura();
+	bool IsTileActive(int Tile) const;
+	bool IsTileEnter(int Tile);
+	bool IsTileExit(int Tile);
 	bool IncreaseMana(int Amount);
 	bool TryUseMana(int Mana);
+	void RefillMana();
 	int Mana() const { return m_Mana; }
+	int GetMaxMana() const;
 
 	bool m_InMining;
 	int m_MiningTick;
+	CEntityFishingRod *m_pFishingRod{};
+	bool m_AutoFishingEnabled{};
 	bool m_LockedCK;
 	vec2 m_LockPos;
 
 	int m_RetaliationExpireTick;
 	int m_RetaliationStacks;
+
+	bool m_OnVehicle;
+	int m_VehicleSeat;
+	int m_VehicleDismountTick;
 
 	// need this hook for gamecontroller to call ninja fire
 	void DoNinjaFire(vec2 Direction, int MoveTime);
@@ -185,6 +208,9 @@ private:
 	friend class CQuestNpcAI;
 	friend class CTargetAI;
 	friend class CWorldBossManager;
+	friend class CVehicle;
+	friend class CAircraft;
+	friend class CEntityFishingRod;
 
 	// player controlling this character
 	class CPlayer *m_pPlayer;
@@ -227,6 +253,11 @@ private:
 
 	int m_Health;
 	int m_Armor;
+
+	int m_FreezeTime;
+	int m_FreezeTick;
+	bool m_FreezeAllowHoldFire;
+	bool m_FreezeWeaponSwitch;
 
 	int m_CardElectronTicks;
 

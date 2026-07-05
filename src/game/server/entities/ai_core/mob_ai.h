@@ -3,6 +3,8 @@
 
 #include "base_ai.h"
 
+#include <vector>
+
 class CGameContext;
 class CPlayer;
 struct SMMOMobDef;
@@ -21,6 +23,12 @@ class CMobAI final : public CBaseAI
 
 	// Ambient chat
 	int m_LastAmbientChatTick{};
+
+	// Mob abilities
+	std::vector<int> m_aAbilityCooldownEnd{};
+	bool m_AggroAbilityUsed{};
+	int m_CastingUntilTick{};
+	bool m_HoldPosition{};
 
 	// Zone patrol
 	char m_ZoneName[64] = {};
@@ -45,11 +53,14 @@ public:
 	void ShowHealth();
 
 	void SetActiveRadius(float R) { m_ActiveRadius = R; }
-	void SetMobInfo(const SMMOMobDef *pInfo) { m_pMobInfo = pInfo; }
+	void SetMobInfo(const SMMOMobDef *pInfo);
 	void SetZone(const char *pZoneName, vec2 BoundsMin, vec2 BoundsMax);
 	bool IsOutsideZone() const;
+	bool IsBusyCasting() const;
+	bool ShouldHoldPosition() const { return m_HoldPosition; }
 
 private:
+	void TryMobAbilities();
 	void UpdateTarget();
 };
 

@@ -158,7 +158,7 @@ void CMMOManager::LoadNPCBots()
 
 
 
-int CMMOManager::SpawnMob(int DefID, vec2 Pos)
+int CMMOManager::SpawnMob(int DefID, vec2 Pos, int PreferredSlot)
 {
 	const SMMOMobDef *pDef = SMMOMobDef::Get(DefID);
 	if(!pDef)
@@ -170,20 +170,33 @@ int CMMOManager::SpawnMob(int DefID, vec2 Pos)
 	CGameContext *pGS = GS();
 	if(!pGS) { dbg_msg("mmo_bot", "SpawnMob: no game context"); return -1; }
 
-	// Find a free bot slot (MAX_HUMAN_CLIENTS..MAX_CLIENTS)
 	int CID = -1;
 	const int BotSlotStart = MAX_HUMAN_CLIENTS;
-	for(int i = BotSlotStart; i < MAX_CLIENTS; i++)
+
+	auto SlotUsable = [&](int Slot) {
+		if(Slot < BotSlotStart || Slot >= MAX_CLIENTS)
+			return false;
+		if(pGS->m_apPlayers[Slot] && !pGS->m_apPlayers[Slot]->IsDummy())
+			return false;
+		if(pGS->m_apPlayers[Slot] && pGS->m_apPlayers[Slot]->m_pMMOBotData && pGS->m_apPlayers[Slot]->m_pMMOBotData->IsAlive())
+			return false;
+		return CCharacterBotAI::PoolSlotFree(Slot);
+	};
+
+	if(PreferredSlot >= 0 && SlotUsable(PreferredSlot))
+		CID = PreferredSlot;
+
+	if(CID < 0)
 	{
-		// Only consider slots where no CPlayer exists (or CPlayer has no MMO bot data)
-		if(!pGS->m_apPlayers[i] || !pGS->m_apPlayers[i]->m_pMMOBotData)
+		for(int i = BotSlotStart; i < MAX_CLIENTS; i++)
 		{
-			// Also verify the CCharacterBotAI pool slot is actually free.
-			// If the old entity wasn't destroyed, the pool slot is still occupied.
-			if(CCharacterBotAI::PoolSlotFree(i))
+			if(!pGS->m_apPlayers[i] || !pGS->m_apPlayers[i]->m_pMMOBotData)
 			{
-				CID = i;
-				break;
+				if(CCharacterBotAI::PoolSlotFree(i))
+				{
+					CID = i;
+					break;
+				}
 			}
 		}
 	}
@@ -261,10 +274,6 @@ int CMMOManager::SpawnMob(int DefID, vec2 Pos)
 		delete pData;
 		return -1;
 	}
-
-	// Give default weapon (hammer + gun)
-	pChr->GiveWeapon(0, -1);  // hammer, unlimited ammo
-	pChr->GiveWeapon(1, 100); // gun, limited ammo
 
 	// Set the bot character's world ID from its player's world
 	pChr->GetCore()->m_WorldID = pPlayer->GetCurrentWorldID();

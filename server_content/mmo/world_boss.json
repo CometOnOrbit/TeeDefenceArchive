@@ -1,0 +1,93 @@
+{
+  "spawns": [
+    {
+      "id": "frpg_fallen_celestial",
+      "enabled": true,
+      "world": 0,
+      "mob_id": 55,
+      "spawn": { "x": 960, "y": 1408 },
+      "slot": 63,
+      "display_name_key": "world_boss.fallen_celestial.name",
+      "schedule": {
+        "initial_min_sec": 300,
+        "initial_max_sec": 900,
+        "respawn_sec": 3600
+      },
+      "broadcast": {
+        "spawn": {
+          "key": "world_boss.spawn",
+          "fallback": "%s 已降临！HP %d/%d"
+        },
+        "kill": {
+          "key": "world_boss.kill",
+          "fallback": "%s 已被击败！击杀者：%s"
+        },
+        "hp": {
+          "key": "world_boss.hp",
+          "fallback": "%s HP: %d/%d (%d%%)"
+        },
+        "status_alive": {
+          "key": "world_boss.status.alive",
+          "fallback": "%s 存活中 | HP: %d/%d (%d%%)"
+        },
+        "status_waiting": {
+          "key": "world_boss.status.waiting",
+          "fallback": "%s 已消失，约 %d 秒后刷新"
+        },
+        "status_soon": {
+          "key": "world_boss.status.soon",
+          "fallback": "%s 即将降临…"
+        },
+        "clan": {
+          "key": "world_boss.clan",
+          "fallback": "%s: %d/%d [%d%%]"
+        }
+      },
+      "rewards": {
+        "leaderboard_lines": 5,
+        "tiers": [
+          {
+            "rank_min": 1,
+            "rank_max": 1,
+            "gold": 5000,
+            "exp": 2000,
+            "reputation": 50,
+            "label": "🏆",
+            "items": [{ "id": 1, "count": 1 }]
+          },
+          {
+            "rank_min": 2,
+            "rank_max": 2,
+            "gold": 3000,
+            "exp": 1000,
+            "reputation": 30,
+            "label": "🥈",
+            "items": [{ "id": 1, "count": 1 }]
+          },
+          {
+            "rank_min": 3,
+            "rank_max": 3,
+            "gold": 2000,
+            "exp": 500,
+            "reputation": 20,
+            "label": "🥉",
+            "items": [{ "id": 1, "count": 1 }]
+          },
+          {
+            "rank_min": 4,
+            "rank_max": 999,
+            "gold": 500,
+            "exp": 200,
+            "reputation": 5,
+            "label": "💫",
+            "items": []
+          }
+        ],
+        "kill_bonus": {
+          "reputation": 100,
+          "items": [{ "id": 1, "count": 2 }]
+        }
+      }
+    }
+  ]
+}

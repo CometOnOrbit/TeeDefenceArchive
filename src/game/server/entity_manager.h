@@ -16,6 +16,7 @@ public:
 	void Text(vec2 Pos, const char *pText, int LifeTicks = 50) const;
 	void TextForClient(int ClientID, vec2 Pos, const char *pText) const;
 	void DropItem(vec2 Pos, int ClientID, int ItemId, int Num, vec2 Force = vec2(0.f, 0.f)) const;
+	void DropPickup(vec2 Pos, int Type, int Subtype, int Value, int NumDrop = 1, vec2 Force = vec2(0.f, 0.f), int OwnerClientID = -1) const;
 };
 
 #endif

@@ -4,16 +4,22 @@
 #include <generated/server_data.h>
 
 #include <engine/shared/config.h>
+#include <engine/shared/world_detail.h>
+#include <generated/protocol.h>
 
 #include "entities/character.h"
 #include "entities/growingexplosion.h"
 #include "entities/plasma.h"
+#include "entities/skills/skill_vfx_common.h"
 #include "entity.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
 #include "gameworld.h"
 #include "player.h"
 
+#include <game/collision.h>
+
+#include <base/math.h>
 #include <algorithm>
 
 //////////////////////////////////////////////////
@@ -27,6 +33,8 @@ CGameWorld::CGameWorld()
 	m_NumMarkedBotsActive = 0;
 	mem_zero(m_aBotsActive, sizeof(m_aBotsActive));
 	mem_zero(m_aMarkedBotsActive, sizeof(m_aMarkedBotsActive));
+	mem_zero(m_aLastMapViewPos, sizeof(m_aLastMapViewPos));
+	mem_zero(m_aLastMapUpdateTick, sizeof(m_aLastMapUpdateTick));
 
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 	{
@@ -37,6 +45,14 @@ CGameWorld::CGameWorld()
 
 CGameWorld::~CGameWorld()
 {
+	if(m_pGameServer && m_pServer)
+	{
+		const int WorldId = m_pGameServer->GetWorldID();
+		for(int i = 0; i < m_aLaserDots.size(); i++)
+			m_pServer->SnapFreeID(m_aLaserDots[i].m_SnapId, WorldId);
+		m_aLaserDots.clear();
+	}
+
 	// delete all entities
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 		while(m_alpEntityLists[i].size())
@@ -62,10 +78,217 @@ CGameWorld::FlagRange CGameWorld::DoFlagRange(int Flag)
 	return FlagRange(m_lpFlagEntityList.all(), CFlagCheck(Flag));
 }
 
+void CGameWorld::EnsureSpatialDimensions()
+{
+	if(m_SpatialCellsX > 0 && m_SpatialCellsY > 0)
+		return;
+
+	int MapW = 8192;
+	int MapH = 8192;
+	if(m_pGameServer && m_pGameServer->Collision())
+	{
+		MapW = maximum(32, m_pGameServer->Collision()->GetWidth() * 32);
+		MapH = maximum(32, m_pGameServer->Collision()->GetHeight() * 32);
+	}
+
+	m_SpatialCellsX = maximum(1, (MapW + SPATIAL_CELL_SIZE - 1) / SPATIAL_CELL_SIZE);
+	m_SpatialCellsY = maximum(1, (MapH + SPATIAL_CELL_SIZE - 1) / SPATIAL_CELL_SIZE);
+	const int NumCells = m_SpatialCellsX * m_SpatialCellsY;
+
+	m_aSpatialCharacter.clear();
+	m_aSpatialCharacter.set_size(NumCells);
+	m_aSpatialRpgCk.clear();
+	m_aSpatialRpgCk.set_size(NumCells);
+	m_aBotSpatial.clear();
+	m_aBotSpatial.set_size(NumCells);
+}
+
+int CGameWorld::SpatialCellAt(vec2 Pos) const
+{
+	if(m_SpatialCellsX <= 0 || m_SpatialCellsY <= 0)
+		return 0;
+
+	int Cx = (int)(Pos.x / (float)SPATIAL_CELL_SIZE);
+	int Cy = (int)(Pos.y / (float)SPATIAL_CELL_SIZE);
+	Cx = clamp(Cx, 0, m_SpatialCellsX - 1);
+	Cy = clamp(Cy, 0, m_SpatialCellsY - 1);
+	return Cy * m_SpatialCellsX + Cx;
+}
+
+void CGameWorld::SpatialClear(array<SSpatialCell> &Grid)
+{
+	for(int i = 0; i < Grid.size(); i++)
+		Grid[i].m_aEnts.clear();
+}
+
+void CGameWorld::SpatialAddEntity(CEntity *pEnt, array<SSpatialCell> &Grid)
+{
+	if(!pEnt || Grid.size() == 0)
+		return;
+
+	EnsureSpatialDimensions();
+	const int Idx = SpatialCellAt(pEnt->m_Pos);
+	Grid[Idx].m_aEnts.add(pEnt);
+	pEnt->m_SpatialCellIdx = Idx;
+}
+
+void CGameWorld::SpatialRemoveEntity(CEntity *pEnt, array<SSpatialCell> &Grid)
+{
+	if(!pEnt || pEnt->m_SpatialCellIdx < 0 || pEnt->m_SpatialCellIdx >= Grid.size())
+		return;
+
+	array<CEntity *> &Cell = Grid[pEnt->m_SpatialCellIdx].m_aEnts;
+	for(int i = 0; i < Cell.size(); i++)
+	{
+		if(Cell[i] == pEnt)
+		{
+			Cell.remove_index(i);
+			break;
+		}
+	}
+	pEnt->m_SpatialCellIdx = -1;
+}
+
+void CGameWorld::RebuildCharacterSpatial()
+{
+	EnsureSpatialDimensions();
+	SpatialClear(m_aSpatialCharacter);
+	for(int i = 0; i < m_alpEntityLists[ENTTYPE_CHARACTER].size(); i++)
+	{
+		CEntity *pEnt = m_alpEntityLists[ENTTYPE_CHARACTER][i];
+		if(!pEnt)
+			continue;
+		const int Idx = SpatialCellAt(pEnt->m_Pos);
+		m_aSpatialCharacter[Idx].m_aEnts.add(pEnt);
+		pEnt->m_SpatialCellIdx = Idx;
+	}
+	m_SpatialCharacterRebuildTick = Server()->Tick();
+}
+
+int CGameWorld::FindEntitiesInGrid(const array<SSpatialCell> &Grid, vec2 Pos, float Radius, array<CEntity *> &lpEnts) const
+{
+	if(Grid.size() == 0 || m_SpatialCellsX <= 0)
+		return 0;
+
+	const int MinCx = maximum(0, (int)((Pos.x - Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MaxCx = minimum(m_SpatialCellsX - 1, (int)((Pos.x + Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MinCy = maximum(0, (int)((Pos.y - Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MaxCy = minimum(m_SpatialCellsY - 1, (int)((Pos.y + Radius) / (float)SPATIAL_CELL_SIZE));
+
+	int Num = 0;
+	for(int Cy = MinCy; Cy <= MaxCy; Cy++)
+	{
+		for(int Cx = MinCx; Cx <= MaxCx; Cx++)
+		{
+			const array<CEntity *> &Cell = Grid[Cy * m_SpatialCellsX + Cx].m_aEnts;
+			for(int i = 0; i < Cell.size(); i++)
+			{
+				CEntity *pEnt = Cell[i];
+				if(!pEnt)
+					continue;
+				if(distance(pEnt->m_Pos, Pos) < Radius + pEnt->m_ProximityRadius)
+				{
+					lpEnts.add(pEnt);
+					Num++;
+				}
+			}
+		}
+	}
+	return Num;
+}
+
+CEntity *CGameWorld::ClosestEntityInGrid(const array<SSpatialCell> &Grid, vec2 Pos, float Radius, CEntity *pNotThis) const
+{
+	if(Grid.size() == 0 || m_SpatialCellsX <= 0)
+		return nullptr;
+
+	float ClosestRange = Radius * 2.f;
+	CEntity *pClosest = nullptr;
+
+	const int MinCx = maximum(0, (int)((Pos.x - Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MaxCx = minimum(m_SpatialCellsX - 1, (int)((Pos.x + Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MinCy = maximum(0, (int)((Pos.y - Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MaxCy = minimum(m_SpatialCellsY - 1, (int)((Pos.y + Radius) / (float)SPATIAL_CELL_SIZE));
+
+	for(int Cy = MinCy; Cy <= MaxCy; Cy++)
+	{
+		for(int Cx = MinCx; Cx <= MaxCx; Cx++)
+		{
+			const array<CEntity *> &Cell = Grid[Cy * m_SpatialCellsX + Cx].m_aEnts;
+			for(int i = 0; i < Cell.size(); i++)
+			{
+				CEntity *pEnt = Cell[i];
+				if(!pEnt || pEnt == pNotThis)
+					continue;
+
+				const float Len = distance(Pos, pEnt->m_Pos);
+				if(Len < pEnt->m_ProximityRadius + Radius && Len < ClosestRange)
+				{
+					ClosestRange = Len;
+					pClosest = pEnt;
+				}
+			}
+		}
+	}
+	return pClosest;
+}
+
+void CGameWorld::BuildBotSpatialIndex()
+{
+	EnsureSpatialDimensions();
+	for(int i = 0; i < m_aBotSpatial.size(); i++)
+		m_aBotSpatial[i].m_aClientIds.clear();
+
+	if(!m_pGameServer)
+		return;
+
+	const int WorldId = m_pGameServer->GetWorldID();
+	for(int ClientID = MAX_HUMAN_CLIENTS; ClientID < MAX_CLIENTS; ClientID++)
+	{
+		if(!Server()->ClientIngame(ClientID) || Server()->GetClientWorldID(ClientID) != WorldId)
+			continue;
+
+		CPlayer *pBot = m_pGameServer->m_apPlayers[ClientID];
+		if(!pBot || !pBot->GetCharacter())
+			continue;
+
+		const int Cell = SpatialCellAt(pBot->GetCharacter()->GetPos());
+		m_aBotSpatial[Cell].m_aClientIds.add(ClientID);
+	}
+}
+
+void CGameWorld::CollectBotsNearView(vec2 ViewPos, float Radius, array<int> &apBotIds) const
+{
+	apBotIds.clear();
+	if(m_aBotSpatial.size() == 0 || m_SpatialCellsX <= 0)
+		return;
+
+	const int MinCx = maximum(0, (int)((ViewPos.x - Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MaxCx = minimum(m_SpatialCellsX - 1, (int)((ViewPos.x + Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MinCy = maximum(0, (int)((ViewPos.y - Radius) / (float)SPATIAL_CELL_SIZE));
+	const int MaxCy = minimum(m_SpatialCellsY - 1, (int)((ViewPos.y + Radius) / (float)SPATIAL_CELL_SIZE));
+
+	for(int Cy = MinCy; Cy <= MaxCy; Cy++)
+	{
+		for(int Cx = MinCx; Cx <= MaxCx; Cx++)
+		{
+			const array<int> &Cell = m_aBotSpatial[Cy * m_SpatialCellsX + Cx].m_aClientIds;
+			for(int i = 0; i < Cell.size(); i++)
+				apBotIds.add(Cell[i]);
+		}
+	}
+}
+
 int CGameWorld::FindEntities(vec2 Pos, float Radius, array<CEntity *> &lpEnts, int Type)
 {
 	if(Type < 0 || Type >= NUM_ENTTYPES)
 		return 0;
+
+	if(Type == ENTTYPE_CHARACTER && m_aSpatialCharacter.size() > 0 && m_SpatialCharacterRebuildTick >= 0)
+		return FindEntitiesInGrid(m_aSpatialCharacter, Pos, Radius, lpEnts);
+
+	if(Type == ENTTYPE_RPG_CK && m_aSpatialRpgCk.size() > 0)
+		return FindEntitiesInGrid(m_aSpatialRpgCk, Pos, Radius, lpEnts);
 
 	int Num = 0;
 	for(auto &pEnt : m_alpEntityLists[Type])
@@ -102,6 +325,9 @@ void CGameWorld::InsertEntity(CEntity *pEnt)
 	m_alpEntityLists[pEnt->m_ObjType].add(pEnt);
 	if(pEnt->ObjFlag() != 0)
 		m_lpFlagEntityList.add(pEnt);
+
+	if(pEnt->m_ObjType == ENTTYPE_RPG_CK)
+		SpatialAddEntity(pEnt, m_aSpatialRpgCk);
 }
 
 void CGameWorld::DestroyEntity(CEntity *pEnt)
@@ -111,6 +337,9 @@ void CGameWorld::DestroyEntity(CEntity *pEnt)
 
 void CGameWorld::RemoveEntity(CEntity *pEnt)
 {
+	if(pEnt->m_ObjType == ENTTYPE_RPG_CK)
+		SpatialRemoveEntity(pEnt, m_aSpatialRpgCk);
+
 	m_alpEntityLists[pEnt->m_ObjType].remove_fast(pEnt);
 	m_lpFlagEntityList.remove_fast(pEnt);
 
@@ -131,6 +360,7 @@ void CGameWorld::Snap(int SnappingClient)
 		for(auto &pEnt : m_alpEntityLists[i])
 			if(pEnt)
 				pEnt->Snap(SnappingClient);
+	SnapLaserDots(SnappingClient);
 	m_Events.Snap(SnappingClient);
 }
 
@@ -165,11 +395,14 @@ void CGameWorld::Tick()
 			if(m_alpEntityLists[i][j])
 				m_alpEntityLists[i][j]->Tick();
 
+	RebuildCharacterSpatial();
+
 	for(int i = 0; i < NUM_ENTTYPES; i++)
 		for(int j = 0; j < m_alpEntityLists[i].size(); j++)
 			if(m_alpEntityLists[i][j])
 				m_alpEntityLists[i][j]->TickDefered();
 
+	TickLaserDots();
 	RemoveEntities();
 	UpdatePlayerMaps();
 }
@@ -185,6 +418,13 @@ void CGameWorld::UpdatePlayerMaps(bool Force)
 		return;
 
 	std::pair<float, int> Dist[MAX_CLIENTS];
+	array<int> apNearbyBots;
+	apNearbyBots.hint_size(64);
+
+	const float MaxBotQueryRadius = m_pConfig ? (float)m_pConfig->m_SvMapDistanceActiveBot : 1000.f;
+
+	int aUpdateClients[MAX_HUMAN_CLIENTS];
+	int NumUpdateClients = 0;
 
 	for(int ClientID = 0; ClientID < MAX_HUMAN_CLIENTS; ClientID++)
 	{
@@ -192,35 +432,59 @@ void CGameWorld::UpdatePlayerMaps(bool Force)
 		if(!Server()->ClientIngame(ClientID) || Server()->GetClientWorldID(ClientID) != m_pGameServer->GetWorldID() || !pPlayer)
 			continue;
 
+		const vec2 ViewPos = pPlayer->m_ViewPos;
+		const vec2 ViewDelta = ViewPos - m_aLastMapViewPos[ClientID];
+		const float ViewMoveSq = dot(ViewDelta, ViewDelta);
+		if(!Force && ViewMoveSq < 64.f * 64.f
+			&& Server()->Tick() - m_aLastMapUpdateTick[ClientID] < m_pConfig->m_SvMapUpdateRate * 2)
+			continue;
+
+		aUpdateClients[NumUpdateClients++] = ClientID;
+	}
+
+	if(NumUpdateClients == 0)
+		return;
+
+	BuildBotSpatialIndex();
+
+	for(int u = 0; u < NumUpdateClients; u++)
+	{
+		const int ClientID = aUpdateClients[u];
+		CPlayer *pPlayer = m_pGameServer->m_apPlayers[ClientID];
+		const vec2 ViewPos = pPlayer->m_ViewPos;
+		m_aLastMapViewPos[ClientID] = ViewPos;
+		m_aLastMapUpdateTick[ClientID] = Server()->Tick();
+
 		int *pMap = Server()->GetIdMap(ClientID);
 
 		for(int j = MAX_HUMAN_CLIENTS; j < MAX_CLIENTS; j++)
 		{
 			Dist[j].second = j;
-			CPlayer *pBotPlayer = m_pGameServer->m_apPlayers[j];
-			if(!Server()->ClientIngame(j) || !pBotPlayer || !pBotPlayer->GetCharacter())
-			{
-				Dist[j].first = 1e10f;
+			Dist[j].first = 1e10f;
+		}
+
+		CollectBotsNearView(ViewPos, MaxBotQueryRadius, apNearbyBots);
+		for(int i = 0; i < apNearbyBots.size(); i++)
+		{
+			const int j = apNearbyBots[i];
+			if(j < MAX_HUMAN_CLIENTS || j >= MAX_CLIENTS)
 				continue;
-			}
+
+			CPlayer *pBotPlayer = m_pGameServer->m_apPlayers[j];
+			if(!pBotPlayer || !pBotPlayer->GetCharacter())
+				continue;
 
 			const float ActiveBotDistSq = pBotPlayer->GetActiveDistance() * pBotPlayer->GetActiveDistance();
 			const vec2 BotPos = pBotPlayer->GetCharacter()->GetPos();
-			const float BotDist = distance(pPlayer->m_ViewPos, BotPos);
+			const float BotDist = distance(ViewPos, BotPos);
 			const float DistanceSq = BotDist * BotDist;
 			if(DistanceSq > ActiveBotDistSq)
-			{
-				Dist[j].first = 1e10f;
 				continue;
-			}
 
 			if(pBotPlayer->IsSnappingInactiveForClient(ClientID))
-				Dist[j].first = 1e10f;
-			else
-			{
-				Dist[j].first = 0;
-				Dist[j].first += DistanceSq;
-			}
+				continue;
+
+			Dist[j].first = DistanceSq;
 		}
 
 		Dist[ClientID].first = 0.f;
@@ -386,6 +650,12 @@ CEntity *CGameWorld::IntersectFlagEntitySkippingTurrets(vec2 Pos0, vec2 Pos1, fl
 
 CEntity *CGameWorld::ClosestEntity(vec2 Pos, float Radius, int Type, CEntity *pNotThis)
 {
+	if(Type == ENTTYPE_CHARACTER && m_aSpatialCharacter.size() > 0 && m_SpatialCharacterRebuildTick >= 0)
+		return ClosestEntityInGrid(m_aSpatialCharacter, Pos, Radius, pNotThis);
+
+	if(Type == ENTTYPE_RPG_CK && m_aSpatialRpgCk.size() > 0)
+		return ClosestEntityInGrid(m_aSpatialRpgCk, Pos, Radius, pNotThis);
+
 	// Find other entities
 	float ClosestRange = Radius * 2;
 	CEntity *pClosest = 0;
@@ -583,15 +853,111 @@ void CGameWorld::CreateDeath(vec2 Pos, int ClientID)
 
 void CGameWorld::CreateSound(vec2 Pos, int Sound, int64 Mask)
 {
-	if(Sound < 0)
+	if(IsCustomSound(Sound))
+	{
+		const CWorldDetail *pDetail = GameServer()->Server()->GetWorldDetail(GameServer()->GetWorldID());
+		if(pDetail && pDetail->HasFlag(WORLD_FLAG_NO_PREPARE_MAP))
+			return;
+
+		CNetEvent_MapSoundWorld *pEvent = (CNetEvent_MapSoundWorld *)m_Events.Create(NETEVENTTYPE_MAPSOUNDWORLD, sizeof(CNetEvent_MapSoundWorld), Mask);
+		if(pEvent)
+		{
+			pEvent->m_X = (int)Pos.x;
+			pEvent->m_Y = (int)Pos.y;
+			pEvent->m_SoundId = SpecialSoundToPreparedIndex(Sound);
+		}
+	}
+	else if(Sound >= 0)
+	{
+		CNetEvent_SoundWorld *pEvent = (CNetEvent_SoundWorld *)m_Events.Create(NETEVENTTYPE_SOUNDWORLD, sizeof(CNetEvent_SoundWorld), Mask);
+		if(pEvent)
+		{
+			pEvent->m_X = (int)Pos.x;
+			pEvent->m_Y = (int)Pos.y;
+			pEvent->m_SoundID = Sound;
+		}
+	}
+}
+
+void CGameWorld::CreatePlayerSound(int ClientID, int Sound)
+{
+	if(IsCustomSound(Sound))
+	{
+		const CWorldDetail *pDetail = GameServer()->Server()->GetWorldDetail(GameServer()->GetWorldID());
+		if(pDetail && pDetail->HasFlag(WORLD_FLAG_NO_PREPARE_MAP))
+			return;
+
+		CNetMsg_Sv_MapSoundGlobal Msg;
+		Msg.m_SoundId = SpecialSoundToPreparedIndex(Sound);
+		Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, ClientID);
+	}
+	else if(Sound >= 0)
+	{
+		CNetEvent_SoundWorld *pEvent = (CNetEvent_SoundWorld *)m_Events.Create(NETEVENTTYPE_SOUNDWORLD, sizeof(CNetEvent_SoundWorld), CmaskOne(ClientID));
+		if(pEvent && GameServer()->m_apPlayers[ClientID])
+		{
+			pEvent->m_X = (int)GameServer()->m_apPlayers[ClientID]->m_ViewPos.x;
+			pEvent->m_Y = (int)GameServer()->m_apPlayers[ClientID]->m_ViewPos.y;
+			pEvent->m_SoundID = Sound;
+		}
+	}
+}
+
+void CGameWorld::CreateLaserDot(vec2 From, vec2 To, int LifeSpan)
+{
+	if(!m_pGameServer || LifeSpan <= 0)
 		return;
 
-	// create a sound
-	CNetEvent_SoundWorld *pEvent = (CNetEvent_SoundWorld *) m_Events.Create(NETEVENTTYPE_SOUNDWORLD, sizeof(CNetEvent_SoundWorld), Mask);
-	if(pEvent)
+	const int WorldId = m_pGameServer->GetWorldID();
+	SLaserDotSegment Segment;
+	Segment.m_From = From;
+	Segment.m_To = To;
+	Segment.m_LifeSpan = LifeSpan;
+	Segment.m_StartTick = m_pServer->Tick();
+	Segment.m_SnapId = m_pServer->SnapNewID(WorldId);
+	m_aLaserDots.add(Segment);
+}
+
+void CGameWorld::TickLaserDots()
+{
+	if(!m_pGameServer)
+		return;
+
+	const int WorldId = m_pGameServer->GetWorldID();
+	for(int i = 0; i < m_aLaserDots.size();)
 	{
-		pEvent->m_X = (int) Pos.x;
-		pEvent->m_Y = (int) Pos.y;
-		pEvent->m_SoundID = Sound;
+		m_aLaserDots[i].m_LifeSpan--;
+		if(m_aLaserDots[i].m_LifeSpan <= 0)
+		{
+			m_pServer->SnapFreeID(m_aLaserDots[i].m_SnapId, WorldId);
+			m_aLaserDots.remove_index(i);
+		}
+		else
+			i++;
+	}
+}
+
+void CGameWorld::SnapLaserDots(int SnappingClient)
+{
+	if(!m_pServer)
+		return;
+
+	for(int i = 0; i < m_aLaserDots.size(); i++)
+	{
+		const SLaserDotSegment &Dot = m_aLaserDots[i];
+		if(SnappingClient >= 0 && m_pGameServer)
+		{
+			const vec2 CheckPos = (Dot.m_From + Dot.m_To) * 0.5f;
+			CPlayer *pSnap = m_pGameServer->m_apPlayers[SnappingClient];
+			if(pSnap)
+			{
+				if(absolute(pSnap->m_ViewPos.x - CheckPos.x) > 1000.0f || absolute(pSnap->m_ViewPos.y - CheckPos.y) > 800.0f)
+					continue;
+				if(distance(pSnap->m_ViewPos, CheckPos) > 1100.0f)
+					continue;
+			}
+		}
+
+		SnapLaserSegment(m_pServer, Dot.m_SnapId, Dot.m_From, Dot.m_To, Dot.m_StartTick);
 	}
 }

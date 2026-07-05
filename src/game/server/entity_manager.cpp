@@ -8,6 +8,7 @@
 #include <game/server/account.h>
 #include <game/server/core/tworld_controller.h>
 #include <game/server/core/tools/event_listener.h>
+#include <game/server/entities/mmo_drop_pickup.h>
 #include <game/server/gamecontext.h>
 #include <game/server/gameworld.h>
 #include <game/server/item_system.h>
@@ -95,4 +96,18 @@ void CEntityManager::DropItem(vec2 Pos, int ClientID, int ItemId, int Num, vec2 
 
 	if(m_pGS->Accounts() && m_pGS->Accounts()->IsEnabled() && pP->GetAccountId() >= 0)
 		m_pGS->Accounts()->RequestSaveItems(ClientID);
+}
+
+void CEntityManager::DropPickup(vec2 Pos, int Type, int Subtype, int Value, int NumDrop, vec2 Force, int OwnerClientID) const
+{
+	if(!m_pGS || NumDrop <= 0 || Value <= 0)
+		return;
+
+	for(int i = 0; i < NumDrop; i++)
+	{
+		vec2 Vel = Force;
+		Vel.x += random_float() * 30.0f - 15.0f;
+		Vel.y += random_float() * 30.0f - 15.0f;
+		new CEntityDropPickup(&m_pGS->m_World, Pos, Vel, Type, Subtype, Value, OwnerClientID);
+	}
 }

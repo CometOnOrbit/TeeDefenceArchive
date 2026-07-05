@@ -55,6 +55,8 @@ enum
 	ENTITY_DIAMOND,
 	ENTITY_MAIN_TOWER,
 	ENTITY_ENERGY,
+	ENTITY_ORE, // RPG switch-layer ore CK (Defence uses ENTITY_LOG..ENERGY game-layer CKs)
+	ENTITY_PLANT, // RPG switch-layer plant CK (#node_plant)
 	NUM_ENTITIES,
 
 	// tiles — TDA / DDNet base

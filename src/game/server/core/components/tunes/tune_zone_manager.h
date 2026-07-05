@@ -2,8 +2,12 @@
 #define GAME_SERVER_CORE_COMPONENTS_TUNES_TUNE_ZONE_MANAGER_H
 
 #include <map>
+#include <optional>
+#include <string>
+#include <vector>
 
 class CTuningParams;
+class IStorage;
 
 enum class ETuneZone
 {
@@ -12,6 +16,11 @@ enum class ETuneZone
 	WALKING,
 	WATER,
 	NUM_TUNE_ZONES
+};
+
+struct CSoundData
+{
+	std::vector<char> m_vData;
 };
 
 class CTuneZoneManager
@@ -23,6 +32,12 @@ public:
 	const CTuningParams *GetParams(ETuneZone Zone) const;
 	const CTuningParams *GetParams(int ZoneID) const;
 
+	void LoadSoundsFromDirectory(const char *pDirectory, IStorage *pStorage);
+	void RegisterSound(const std::string &sName, const void *pData, size_t DataSize);
+
+	std::optional<std::string> BakePreparedMap(const char *pMapName, IStorage *pStorage);
+
+	std::map<std::string, CSoundData> m_Sounds;
 	std::map<ETuneZone, CTuningParams> m_Zones;
 
 private:

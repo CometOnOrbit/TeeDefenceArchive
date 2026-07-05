@@ -7,6 +7,7 @@
 #include <game/server/core/tworld_controller.h>
 
 #include <game/server/core/components/mmo/mmo_manager.h>
+#include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/components/worlds/world_manager.h>
 #include <game/server/entities/character.h>
 #include <game/server/account.h>
@@ -14,6 +15,8 @@
 #include <game/server/sql_query.h>
 #include <mysql.h>
 #include "guild_manager.h"
+#include "guild_arena_maps.h"
+#include "guild_match_mode.h"
 
 // ─── Constants ───────────────────────────────────────────────────────
 
@@ -55,8 +58,31 @@ void CGuildManager::OnConsoleInit()
 	// We keep OnConsoleInit for potential future console-only commands.
 }
 
-// Forward declaration for match mode enforcement
-static void ApplyMatchModeRules(CPlayer *pPlayer, const char *pMode);
+// ─── Match mode helpers ──────────────────────────────────────────────
+
+static bool IsWarOfficer(const SGuildData *pGuild, int ClientID)
+{
+	if(!pGuild)
+		return false;
+	const EGuildRank Rank = pGuild->GetRank(ClientID);
+	return Rank == GUILDRANK_LEADER || Rank == GUILDRANK_CO_LEADER;
+}
+
+void CGuildManager::OnCharacterSpawn(CPlayer *pPlayer)
+{
+	(void)pPlayer;
+	// Arena worldmodes apply loadout via CGameController::OnCharacterSpawn.
+}
+
+bool CGuildManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)
+{
+	(void)pPlayer;
+	(void)pCmd;
+	(void)pArgs;
+	(void)ReasonNumber;
+	(void)pReason;
+	return false;
+}
 
 void CGuildManager::OnTick()
 {
@@ -91,14 +117,6 @@ void CGuildManager::OnTick()
 		}
 		M.m_ScoreA = ScoreA;
 		M.m_ScoreB = ScoreB;
-
-		// Apply mode-specific rules continuously (FNG: strip weapons, iDM: refill ammo)
-		for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
-		{
-			int CID = M.m_aParticipants[pi].m_ClientID;
-			CPlayer *pP = GS()->m_apPlayers[CID];
-			ApplyMatchModeRules(pP, M.m_aMode);
-		}
 
 		// Check for win condition
 		if(ScoreA >= M.m_TargetScore || ScoreB >= M.m_TargetScore)
@@ -1576,43 +1594,446 @@ bool CGuildManager::LoadGuilds()
 
 // ─── Chat Command Registration ─────────────────────────────────────
 
+bool CGuildManager::HasPendingInvite(int ClientID) const
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS)
+		return false;
+	return m_aPendingInvites[ClientID].m_GuildIdx >= 0;
+}
+
+const char *CGuildManager::GetPendingInviterName(int ClientID) const
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || m_aPendingInvites[ClientID].m_GuildIdx < 0)
+		return "";
+	return m_aPendingInvites[ClientID].m_aInviterName;
+}
+
 void CGuildManager::RegisterChatCommands(CCommandManager *pManager)
 {
 	if(!pManager) return;
 	CGameContext *pGame = GS();
 
-	pManager->AddCommand("guild", "公会命令。使用 /guild_<子命令> 查看帮助", "", ConGuildCreate, pGame);
-	pManager->AddCommand("guild_create", "<名称> [标签] - 创建公会", "s?r", ConGuildCreate, pGame);
-	pManager->AddCommand("guild_disband", "解散公会（会长）", "", ConGuildDisband, pGame);
-	pManager->AddCommand("guild_invite", "<玩家名> - 邀请加入公会", "s", ConGuildInvite, pGame);
-	pManager->AddCommand("guild_accept", "接受公会邀请", "", ConGuildAccept, pGame);
-	pManager->AddCommand("guild_decline", "拒绝公会邀请", "", ConGuildDecline, pGame);
-	pManager->AddCommand("guild_kick", "<玩家名> - 踢出成员", "s", ConGuildKick, pGame);
-	pManager->AddCommand("guild_leave", "退出公会", "", ConGuildLeave, pGame);
-	pManager->AddCommand("guild_promote", "<玩家名> - 晋升成员", "s", ConGuildPromote, pGame);
-	pManager->AddCommand("guild_demote", "<玩家名> - 降级成员", "s", ConGuildDemote, pGame);
-	pManager->AddCommand("guild_leader", "<玩家名> - 转让会长", "s", ConGuildLeader, pGame);
-	pManager->AddCommand("guild_donate", "<金币数> - 捐赠金币到公会银行", "i", ConGuildDonate, pGame);
-	pManager->AddCommand("guild_motd", "<消息> - 设置公会公告", "r", ConGuildMotd, pGame);
 	pManager->AddCommand("guild_info", "查看公会信息", "", ConGuildInfo, pGame);
-	pManager->AddCommand("guild_members", "查看公会成员列表", "", ConGuildMembers, pGame);
-
-	// Guild match commands
-	pManager->AddCommand("guild_war", "约战命令：/guild_war challenge <公会名> 等", "", ConGuildMatchChallenge, pGame);
-	pManager->AddCommand("guild_war_challenge", "<公会名> - 向目标公会发起约战（会长/副会长）", "s", ConGuildMatchChallenge, pGame);
-	pManager->AddCommand("guild_war_accept", "接受约战（被挑战方会长/副会长）", "", ConGuildMatchAccept, pGame);
-	pManager->AddCommand("guild_war_setmode", "<fng|idm|tdm> - 被挑战方选择比赛模式", "s", ConGuildMatchSetMode, pGame);
-	pManager->AddCommand("guild_war_join", "加入比赛队伍", "", ConGuildMatchJoin, pGame);
-	pManager->AddCommand("guild_war_leave", "离开比赛队伍", "", ConGuildMatchLeave, pGame);
-	pManager->AddCommand("guild_war_start", "开始比赛（双方会长/副会长）", "", ConGuildMatchStart, pGame);
-	pManager->AddCommand("guild_war_status", "查看当前比赛状态", "", ConGuildMatchStatus, pGame);
-	pManager->AddCommand("guild_war_cancel", "取消比赛", "", ConGuildMatchCancel, pGame);
+	// 其余公会操作仅通过投票菜单 ccv_guild_*（RegisterVoteCommands）
 }
 
 void CGuildManager::RegisterVoteCommands(CCommandManager *pManager)
 {
-	(void)pManager;
-	// Vote menu commands can be added later
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "guild_info", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GuildManager())
+			pG->Core()->GuildManager()->ShowGuildInfo(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_leave", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GuildManager())
+			pG->Core()->GuildManager()->LeaveGuild(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_challenge", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		const char *pName = pCtx->m_pArgs;
+		if(!pName || !pName[0])
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写目标公会名。");
+		else
+			pG->Core()->GuildManager()->WarChallenge(pCtx->m_ClientID, pName);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_accept", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GuildManager())
+			pG->Core()->GuildManager()->WarAccept(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_setmode", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		const char *pMode = pCtx->m_pArgs;
+		if(!pMode || !pMode[0])
+			pG->SendChatTo(pCtx->m_ClientID, "请选择模式：fng / ctf / tdm / itdm");
+		else
+			pG->Core()->GuildManager()->WarSetMode(pCtx->m_ClientID, pMode);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_setmap", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		const char *pMap = pCtx->m_pArgs;
+		if(!pMap || !pMap[0])
+			pG->SendChatTo(pCtx->m_ClientID, "请指定地图路径，例如：def/TDef-Deeply 或 fng/AliveFNG");
+		else
+			pG->Core()->GuildManager()->WarSetMap(pCtx->m_ClientID, pMap);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_join", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GuildManager())
+			pG->Core()->GuildManager()->WarJoin(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_leave", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GuildManager())
+			pG->Core()->GuildManager()->WarLeave(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_start", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GuildManager())
+			pG->Core()->GuildManager()->WarStart(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_status", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GuildManager())
+			pG->Core()->GuildManager()->WarStatus(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_war_cancel", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GuildManager())
+			pG->Core()->GuildManager()->WarCancel(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_browse", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_BROWSE, VOTE_PAGE_MMO_GUILD);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_detail", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		const int GuildID = pR->GetInteger(0);
+		if(GuildID <= 0)
+			return;
+		CVoteMenuManager *pVote = pG->Core()->VoteMenuManager();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
+		if(pSVote)
+		{
+			pSVote->m_Select[SPlayerVote::ITEMLIST] = GuildID;
+			pG->Core()->GetMMOManager()->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_DETAIL, VOTE_PAGE_MMO_GUILD_BROWSE);
+		}
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_apply", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core())
+			return;
+		const int GuildID = pR->GetInteger(0);
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		if(pGuildMgr && GuildID > 0)
+			pGuildMgr->RequestJoinGuild(pCtx->m_ClientID, GuildID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_DETAIL, VOTE_PAGE_MMO_GUILD_BROWSE);
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_create", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core())
+			return;
+		const char *pText = pCtx->m_pArgs;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		if(!pText || !pText[0])
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写公会名称（可选：名称 标签）。");
+			return;
+		}
+		if(pGuildMgr)
+		{
+			char aName[MAX_NAME_LENGTH];
+			char aTag[8];
+			aName[0] = 0;
+			aTag[0] = 0;
+			const char *pSpace = str_find(pText, " ");
+			if(pSpace)
+			{
+				str_copy(aName, pText, minimum((int)(pSpace - pText) + 1, (int)sizeof(aName)));
+				str_copy(aTag, str_skip_whitespaces_const(pSpace + 1), sizeof(aTag));
+			}
+			else
+				str_copy(aName, pText, sizeof(aName));
+			pGuildMgr->CreateGuild(pCtx->m_ClientID, aName, aTag[0] ? aTag : nullptr);
+		}
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD, VOTE_PAGE_MMO_PVP);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_members_page", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_MEMBERS, VOTE_PAGE_MMO_GUILD);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_requests", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_REQUESTS, VOTE_PAGE_MMO_GUILD);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_req_accept", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core())
+			return;
+		const int AccountID = pR->GetInteger(0);
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		if(pGuildMgr && AccountID > 0)
+			pGuildMgr->AcceptJoinRequest(pCtx->m_ClientID, AccountID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_REQUESTS, VOTE_PAGE_MMO_GUILD);
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_req_deny", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core())
+			return;
+		const int AccountID = pR->GetInteger(0);
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		if(pGuildMgr && AccountID > 0)
+			pGuildMgr->DenyJoinRequest(pCtx->m_ClientID, AccountID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_REQUESTS, VOTE_PAGE_MMO_GUILD);
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_invite", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const char *pName = pCtx->m_pArgs;
+		if(!pName || !pName[0])
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+			return;
+		}
+		const int TargetCID = pGuildMgr->FindClientByName(pName);
+		if(TargetCID < 0)
+			pG->SendChatTo(pCtx->m_ClientID, "⚠ 找不到该玩家。");
+		else
+			pGuildMgr->InviteMember(pCtx->m_ClientID, TargetCID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD, VOTE_PAGE_MMO_PVP);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_accept", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pGuildMgr->AcceptInvite(pCtx->m_ClientID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD, VOTE_PAGE_MMO_PVP);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_decline", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pGuildMgr->DeclineInvite(pCtx->m_ClientID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD, VOTE_PAGE_MMO_PVP);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_kick", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const char *pName = pCtx->m_pArgs;
+		if(!pName || !pName[0])
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+			return;
+		}
+		const int TargetCID = pGuildMgr->FindClientByName(pName);
+		if(TargetCID < 0)
+			pG->SendChatTo(pCtx->m_ClientID, "⚠ 找不到该玩家。");
+		else
+			pGuildMgr->KickMember(pCtx->m_ClientID, TargetCID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_MEMBERS, VOTE_PAGE_MMO_GUILD);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_promote", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const char *pName = pCtx->m_pArgs;
+		if(!pName || !pName[0])
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+			return;
+		}
+		const int TargetCID = pGuildMgr->FindClientByName(pName);
+		if(TargetCID < 0)
+			pG->SendChatTo(pCtx->m_ClientID, "⚠ 找不到该玩家。");
+		else
+			pGuildMgr->PromoteMember(pCtx->m_ClientID, TargetCID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_MEMBERS, VOTE_PAGE_MMO_GUILD);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_demote", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const char *pName = pCtx->m_pArgs;
+		if(!pName || !pName[0])
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+			return;
+		}
+		const int TargetCID = pGuildMgr->FindClientByName(pName);
+		if(TargetCID < 0)
+			pG->SendChatTo(pCtx->m_ClientID, "⚠ 找不到该玩家。");
+		else
+			pGuildMgr->DemoteMember(pCtx->m_ClientID, TargetCID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_MEMBERS, VOTE_PAGE_MMO_GUILD);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_leader", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const char *pName = pCtx->m_pArgs;
+		if(!pName || !pName[0])
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+			return;
+		}
+		const int TargetCID = pGuildMgr->FindClientByName(pName);
+		if(TargetCID < 0)
+			pG->SendChatTo(pCtx->m_ClientID, "⚠ 找不到该玩家。");
+		else
+			pGuildMgr->TransferLeadership(pCtx->m_ClientID, TargetCID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD_MEMBERS, VOTE_PAGE_MMO_GUILD);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_donate", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const char *pAmountText = pCtx->m_pArgs;
+		if(!pAmountText || !pAmountText[0])
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写捐赠金币数量。");
+			return;
+		}
+		pGuildMgr->DonateGold(pCtx->m_ClientID, str_toint(pAmountText));
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD, VOTE_PAGE_MMO_PVP);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_motd", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const char *pMotd = pCtx->m_pArgs;
+		if(!pMotd || !pMotd[0])
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写公告内容。");
+			return;
+		}
+		pGuildMgr->SetMotd(pCtx->m_ClientID, pMotd);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD, VOTE_PAGE_MMO_PVP);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "guild_disband", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GuildManager())
+			return;
+		CGuildManager *pGuildMgr = pG->Core()->GuildManager();
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pGuildMgr->DisbandGuild(pCtx->m_ClientID);
+		if(pMMO)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_GUILD, VOTE_PAGE_MMO_PVP);
+		(void)pR;
+	}, pGame);
 }
 
 // ─── Static Callbacks ───────────────────────────────────────────────
@@ -1627,23 +2048,10 @@ void CGuildManager::ConGuildCreate(IConsole::IResult *pResult, void *pUser)
 	if(pResult->NumArguments() == 0)
 	{
 		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1,
-			"═ 公会命令 ─────────────────────╕\n"
-			"/guild_create <名称> [标签]  - 创建公会\n"
-			"/guild_disband               - 解散公会（会长）\n"
-			"/guild_invite <玩家名>       - 邀请加入\n"
-			"/guild_accept                - 接受邀请\n"
-			"/guild_decline               - 拒绝邀请\n"
-			"/guild_kick <玩家名>         - 踢出成员\n"
-			"/guild_leave                 - 退出公会\n"
-			"/guild_promote <玩家名>      - 晋升\n"
-			"/guild_demote <玩家名>       - 降级\n"
-			"/guild_leader <玩家名>       - 转让会长\n"
-			"/guild_donate <金币>         - 捐赠金币\n"
-			"/guild_motd <消息>           - 设置公告\n"
-			"/guild_info                  - 公会信息\n"
-			"/guild_members               - 成员列表\n"
-			"/guild_war_challenge <公会>   - 约战\n"
-			"/guild_war_status            - 比赛状态\n"
+			"═ 公会操作 ─────────────────────╕\n"
+			"请打开投票菜单 → PvP → 公会\n"
+			"创建、邀请、捐赠、公告等均通过 ccv_guild_* 选项完成\n"
+			"/guild_info 仍可查看公会信息（聊天）\n"
 			"╘────────────────────────────────╛");
 		return;
 	}
@@ -2123,6 +2531,7 @@ bool CGuildManager::LoadActiveMatchesFromDB()
 				M.m_ChallengedGuild = atoi(Row[2]);
 				M.m_Status = atoi(Row[3]);
 				str_copy(M.m_aMode, Row[4] ? Row[4] : "", sizeof(M.m_aMode));
+				M.m_aMap[0] = '\0';
 				M.m_TeamSize = atoi(Row[5]);
 				M.m_TargetScore = atoi(Row[6]);
 				M.m_ArenaWorldID = -1; // fresh on restart; no stale arena world
@@ -2135,6 +2544,716 @@ bool CGuildManager::LoadActiveMatchesFromDB()
 
 	pPool->Release(pRaw);
 	dbg_msg("guild_match", "Loaded %d matches from DB", m_aMatches.size());
+	return true;
+}
+
+// ─── Guild War API ───────────────────────────────────────────────────
+
+bool CGuildManager::WarChallenge(int ClientID, const char *pTargetName)
+{
+	if(ClientID < 0 || ClientID >= MAX_CLIENTS || !pTargetName || !pTargetName[0])
+		return false;
+
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		return false;
+	}
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
+		return false;
+	}
+
+	SGuildData *pGuild = GetGuild(PlayerGuildID);
+	if(!pGuild)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 公会数据异常。");
+		return false;
+	}
+
+	if(!IsWarOfficer(pGuild, ClientID))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能发起约战。");
+		return false;
+	}
+
+	const int TargetGuildID = FindGuildByName(pTargetName);
+	if(TargetGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 找不到该公会。");
+		return false;
+	}
+
+	if(TargetGuildID == PlayerGuildID)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 不能向自己的公会发起约战。");
+		return false;
+	}
+
+	if(FindActiveMatchByGuild(PlayerGuildID) >= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你的公会已有进行中的比赛。");
+		return false;
+	}
+
+	if(FindActiveMatchByGuild(TargetGuildID) >= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 目标公会已有进行中的比赛。");
+		return false;
+	}
+
+	SMatchState M;
+	M.m_MatchID = 0;
+	M.m_ChallengerGuild = PlayerGuildID;
+	M.m_ChallengedGuild = TargetGuildID;
+	M.m_Status = 0;
+	M.m_aMode[0] = '\0';
+	M.m_aMap[0] = '\0';
+	M.m_TeamSize = 3;
+	M.m_TargetScore = 30;
+	M.m_StartTick = 0;
+	M.m_ScoreA = 0;
+	M.m_ScoreB = 0;
+	M.m_ArenaWorldID = -1;
+	m_aMatches.add(M);
+	const int MatchIdx = m_aMatches.size() - 1;
+
+	SaveMatchToDB(MatchIdx);
+
+	const SGuildData *pTargetGuild = GetGuild(TargetGuildID);
+	const char *pTargetName2 = pTargetGuild ? pTargetGuild->m_aName : "?";
+
+	char aMsg[256];
+	str_format(aMsg, sizeof(aMsg),
+		"⚔️ 公会「%s」向「%s」发起约战！被挑战方请使用 /guild_war_accept 接受。",
+		pGuild->m_aName, pTargetName2);
+	GS()->SendChat(-1, CHAT_ALL, -1, aMsg);
+	GS()->SendChat(ClientID, CHAT_ALL, -1, "✅ 约战已发起，等待对方接受。");
+	return true;
+}
+
+bool CGuildManager::WarAccept(int ClientID)
+{
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		return false;
+	}
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
+		return false;
+	}
+
+	SGuildData *pGuild = GetGuild(PlayerGuildID);
+	if(!pGuild)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 公会数据异常。");
+		return false;
+	}
+
+	if(!IsWarOfficer(pGuild, ClientID))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能接受约战。");
+		return false;
+	}
+
+	int MatchIdx = -1;
+	for(int mi = 0; mi < m_aMatches.size(); mi++)
+	{
+		if(m_aMatches[mi].m_Status == 0 && m_aMatches[mi].m_ChallengedGuild == PlayerGuildID)
+		{
+			MatchIdx = mi;
+			break;
+		}
+	}
+
+	if(MatchIdx < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 没有待接受的约战。");
+		return false;
+	}
+
+	m_aMatches[MatchIdx].m_Status = 1;
+
+	const SGuildData *pChallenger = GetGuild(m_aMatches[MatchIdx].m_ChallengerGuild);
+	const char *pChallengerName = pChallenger ? pChallenger->m_aName : "?";
+
+	GS()->SendChat(ClientID, CHAT_ALL, -1,
+		"✅ 约战已接受！被挑战方请选择模式：/guild_war_setmode <fng|ctf|tdm|itdm> 或投票菜单。");
+
+	char aMsg[256];
+	str_format(aMsg, sizeof(aMsg),
+		"⚔️ 公会「%s」接受了「%s」的约战！正在选择模式...",
+		pGuild->m_aName, pChallengerName);
+	BroadcastToGuild(FindGuildIndexByID(m_aMatches[MatchIdx].m_ChallengedGuild), aMsg);
+	BroadcastToGuild(FindGuildIndexByID(m_aMatches[MatchIdx].m_ChallengerGuild), aMsg);
+
+	SaveMatchToDB(MatchIdx);
+	return true;
+}
+
+bool CGuildManager::WarSetMode(int ClientID, const char *pMode)
+{
+	if(!pMode || !pMode[0])
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请指定模式：fng, ctf, tdm, itdm");
+		return false;
+	}
+
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		return false;
+	}
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
+		return false;
+	}
+
+	SGuildData *pGuild = GetGuild(PlayerGuildID);
+	if(!IsWarOfficer(pGuild, ClientID))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能设置模式。");
+		return false;
+	}
+
+	int MatchIdx = -1;
+	for(int mi = 0; mi < m_aMatches.size(); mi++)
+	{
+		if(m_aMatches[mi].m_Status == 1 && m_aMatches[mi].m_ChallengedGuild == PlayerGuildID)
+		{
+			MatchIdx = mi;
+			break;
+		}
+	}
+
+	if(MatchIdx < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 没有等待选择模式的比赛。");
+		return false;
+	}
+
+	if(!IsValidGuildWarMode(pMode))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 无效模式。可用：fng, ctf, tdm, itdm（idm 兼容旧版）");
+		return false;
+	}
+
+	const EGuildWarMode Mode = ParseGuildWarMode(pMode);
+	str_copy(m_aMatches[MatchIdx].m_aMode, GuildWarModeToString(Mode), sizeof(m_aMatches[MatchIdx].m_aMode));
+	m_aMatches[MatchIdx].m_TargetScore = GuildWarDefaultTargetScore(m_aMatches[MatchIdx].m_aMode);
+	m_aMatches[MatchIdx].m_Status = 2;
+	GuildWarDefaultArenaMap(Storage(), m_aMatches[MatchIdx].m_aMode,
+		m_aMatches[MatchIdx].m_aMap, sizeof(m_aMatches[MatchIdx].m_aMap));
+
+	char aMsg[256];
+	str_format(aMsg, sizeof(aMsg),
+		"✅ 比赛模式：%s（目标 %d 分）。默认地图：%s。双方 /guild_war_join 加入，"
+		"会长 /guild_war_setmap 换图，/guild_war_start 开始。",
+		GuildWarModeDisplayName(m_aMatches[MatchIdx].m_aMode),
+		m_aMatches[MatchIdx].m_TargetScore,
+		m_aMatches[MatchIdx].m_aMap[0] ? m_aMatches[MatchIdx].m_aMap : "（未设置）");
+	BroadcastToMatch(MatchIdx, aMsg);
+	BroadcastToGuild(FindGuildIndexByID(m_aMatches[MatchIdx].m_ChallengerGuild), aMsg);
+	BroadcastToGuild(FindGuildIndexByID(m_aMatches[MatchIdx].m_ChallengedGuild), aMsg);
+
+	SaveMatchToDB(MatchIdx);
+	return true;
+}
+
+bool CGuildManager::WarSetMap(int ClientID, const char *pMap)
+{
+	if(!pMap || !pMap[0])
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请指定地图路径，例如：def/TDef-Deeply");
+		return false;
+	}
+
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		return false;
+	}
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
+		return false;
+	}
+
+	SGuildData *pGuild = GetGuild(PlayerGuildID);
+	if(!IsWarOfficer(pGuild, ClientID))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能设置地图。");
+		return false;
+	}
+
+	int MatchIdx = -1;
+	for(int mi = 0; mi < m_aMatches.size(); mi++)
+	{
+		const SMatchState &M = m_aMatches[mi];
+		if(M.m_Status == 2 && (M.m_ChallengerGuild == PlayerGuildID || M.m_ChallengedGuild == PlayerGuildID))
+		{
+			MatchIdx = mi;
+			break;
+		}
+	}
+
+	if(MatchIdx < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 没有可设置地图的比赛（需先选择模式且未开始）。");
+		return false;
+	}
+
+	SMatchState &M = m_aMatches[MatchIdx];
+	if(M.m_aMode[0] == '\0')
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 尚未选择比赛模式。");
+		return false;
+	}
+
+	if(!IsArenaMapAllowedForMode(pMap, M.m_aMode))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 该地图不适用于当前比赛模式。");
+		return false;
+	}
+
+	if(!ArenaMapFileExists(Storage(), pMap))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 找不到该地图文件。");
+		return false;
+	}
+
+	str_copy(M.m_aMap, pMap, sizeof(M.m_aMap));
+
+	char aMsg[256];
+	str_format(aMsg, sizeof(aMsg),
+		"🗺️ 比赛地图已设为：%s（模式：%s）",
+		M.m_aMap, GuildWarModeDisplayName(M.m_aMode));
+	BroadcastToMatch(MatchIdx, aMsg);
+	BroadcastToGuild(FindGuildIndexByID(M.m_ChallengerGuild), aMsg);
+	BroadcastToGuild(FindGuildIndexByID(M.m_ChallengedGuild), aMsg);
+
+	SaveMatchToDB(MatchIdx);
+	return true;
+}
+
+bool CGuildManager::GetActiveWarMatchInfo(int ClientID, char *pMode, int ModeSize, char *pMap, int MapSize, int *pStatus)
+{
+	if(pMode && ModeSize > 0)
+		pMode[0] = '\0';
+	if(pMap && MapSize > 0)
+		pMap[0] = '\0';
+	if(pStatus)
+		*pStatus = -1;
+
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+		return false;
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+		return false;
+
+	const int MatchIdx = FindActiveMatchByGuild(PlayerGuildID);
+	if(MatchIdx < 0)
+		return false;
+
+	const SMatchState &M = m_aMatches[MatchIdx];
+	if(pStatus)
+		*pStatus = M.m_Status;
+	if(pMode && ModeSize > 0)
+		str_copy(pMode, M.m_aMode, ModeSize);
+	if(pMap && MapSize > 0)
+		str_copy(pMap, M.m_aMap, MapSize);
+	return true;
+}
+
+bool CGuildManager::WarJoin(int ClientID)
+{
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		return false;
+	}
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
+		return false;
+	}
+
+	int MatchIdx = -1;
+	for(int mi = 0; mi < m_aMatches.size(); mi++)
+	{
+		const SMatchState &M = m_aMatches[mi];
+		if(M.m_Status == 2 && (M.m_ChallengerGuild == PlayerGuildID || M.m_ChallengedGuild == PlayerGuildID))
+		{
+			MatchIdx = mi;
+			break;
+		}
+	}
+
+	if(MatchIdx < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 没有等待加入的比赛（请先接受约战并设置模式）。");
+		return false;
+	}
+
+	for(int pi = 0; pi < m_aMatches[MatchIdx].m_aParticipants.size(); pi++)
+	{
+		if(m_aMatches[MatchIdx].m_aParticipants[pi].m_ClientID == ClientID)
+		{
+			GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你已在比赛队伍中。");
+			return false;
+		}
+	}
+
+	int ChallengerCount = 0, ChallengedCount = 0;
+	for(int pi = 0; pi < m_aMatches[MatchIdx].m_aParticipants.size(); pi++)
+	{
+		const int CID = m_aMatches[MatchIdx].m_aParticipants[pi].m_ClientID;
+		if(CID < 0)
+			continue;
+		const int GID = GS()->m_apPlayers[CID] ? GS()->m_apPlayers[CID]->GetGuildID() : -1;
+		if(GID == m_aMatches[MatchIdx].m_ChallengerGuild)
+			ChallengerCount++;
+		else if(GID == m_aMatches[MatchIdx].m_ChallengedGuild)
+			ChallengedCount++;
+	}
+
+	const int MaxSize = m_aMatches[MatchIdx].m_TeamSize;
+	if(PlayerGuildID == m_aMatches[MatchIdx].m_ChallengerGuild && ChallengerCount >= MaxSize)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 挑战方队伍已满。");
+		return false;
+	}
+	if(PlayerGuildID == m_aMatches[MatchIdx].m_ChallengedGuild && ChallengedCount >= MaxSize)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 被挑战方队伍已满。");
+		return false;
+	}
+
+	SMatchParticipant Part;
+	Part.m_ClientID = ClientID;
+	Part.m_OriginalWorld = GS()->Server()->GetClientWorldID(ClientID);
+	CCharacter *pChar = pP->GetCharacter();
+	Part.m_OriginalPos = pChar ? pChar->GetCore()->m_Pos : vec2(0.0f, 0.0f);
+	Part.m_StartTeam = -1;
+	m_aMatches[MatchIdx].m_aParticipants.add(Part);
+	pP->m_MatchTeam = (PlayerGuildID == m_aMatches[MatchIdx].m_ChallengerGuild) ? -1 : 1;
+	pP->m_OriginalWorld = Part.m_OriginalWorld;
+
+	char aMsg[256];
+	str_format(aMsg, sizeof(aMsg),
+		"✅ %s 已加入比赛队伍（%s方）。当前人数：挑战方 %d/%d，被挑战方 %d/%d",
+		GS()->Server()->ClientName(ClientID),
+		(PlayerGuildID == m_aMatches[MatchIdx].m_ChallengerGuild) ? "挑战" : "被挑战",
+		(PlayerGuildID == m_aMatches[MatchIdx].m_ChallengerGuild) ? ChallengerCount + 1 : ChallengerCount,
+		MaxSize,
+		(PlayerGuildID == m_aMatches[MatchIdx].m_ChallengedGuild) ? ChallengedCount + 1 : ChallengedCount,
+		MaxSize);
+	BroadcastToMatch(MatchIdx, aMsg);
+	return true;
+}
+
+bool CGuildManager::WarLeave(int ClientID)
+{
+	const int MatchIdx = FindMatchByPlayer(ClientID);
+	if(MatchIdx < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你未加入任何比赛。");
+		return false;
+	}
+
+	if(m_aMatches[MatchIdx].m_Status >= 3)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 比赛已经开始，无法离开。");
+		return false;
+	}
+
+	for(int pi = 0; pi < m_aMatches[MatchIdx].m_aParticipants.size(); pi++)
+	{
+		if(m_aMatches[MatchIdx].m_aParticipants[pi].m_ClientID == ClientID)
+		{
+			m_aMatches[MatchIdx].m_aParticipants.remove_index(pi);
+			break;
+		}
+	}
+
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(pP)
+	{
+		pP->m_MatchTeam = 0;
+		pP->m_OriginalWorld = 0;
+	}
+
+	char aMsg[256];
+	str_format(aMsg, sizeof(aMsg), "🚪 %s 离开了比赛队伍。", GS()->Server()->ClientName(ClientID));
+	BroadcastToMatch(MatchIdx, aMsg);
+	GS()->SendChat(ClientID, CHAT_ALL, -1, "✅ 已离开比赛队伍。");
+	return true;
+}
+
+bool CGuildManager::WarStart(int ClientID)
+{
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		return false;
+	}
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
+		return false;
+	}
+
+	SGuildData *pGuild = GetGuild(PlayerGuildID);
+	if(!IsWarOfficer(pGuild, ClientID))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能开始比赛。");
+		return false;
+	}
+
+	int MatchIdx = -1;
+	for(int mi = 0; mi < m_aMatches.size(); mi++)
+	{
+		const SMatchState &M = m_aMatches[mi];
+		if(M.m_Status == 2 && (M.m_ChallengerGuild == PlayerGuildID || M.m_ChallengedGuild == PlayerGuildID))
+		{
+			MatchIdx = mi;
+			break;
+		}
+	}
+
+	if(MatchIdx < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 没有准备就绪的比赛。请先完成模式设置。");
+		return false;
+	}
+
+	SMatchState &M = m_aMatches[MatchIdx];
+	if(M.m_aMode[0] == '\0')
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 尚未选择比赛模式。");
+		return false;
+	}
+
+	int ChallengerCount = 0, ChallengedCount = 0;
+	for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
+	{
+		const int CID = M.m_aParticipants[pi].m_ClientID;
+		if(CID < 0)
+			continue;
+		const int GID = GS()->m_apPlayers[CID] ? GS()->m_apPlayers[CID]->GetGuildID() : -1;
+		if(GID == M.m_ChallengerGuild)
+			ChallengerCount++;
+		else if(GID == M.m_ChallengedGuild)
+			ChallengedCount++;
+	}
+
+	if(ChallengerCount < M.m_TeamSize || ChallengedCount < M.m_TeamSize)
+	{
+		char aMsg[256];
+		str_format(aMsg, sizeof(aMsg),
+			"⚠ 双方人数不足！需要至少 %d 人（当前：挑战方 %d，被挑战方 %d）",
+			M.m_TeamSize, ChallengerCount, ChallengedCount);
+		GS()->SendChat(ClientID, CHAT_ALL, -1, aMsg);
+		return false;
+	}
+
+	const char *pArenaMap = M.m_aMap[0] ? M.m_aMap : nullptr;
+	char aDefaultMap[128];
+	if(!pArenaMap)
+	{
+		GuildWarDefaultArenaMap(Storage(), M.m_aMode, aDefaultMap, sizeof(aDefaultMap));
+		pArenaMap = aDefaultMap;
+	}
+	const int ArenaWorldID = Core()->WorldManager()->CreateArenaWorld("Guild Arena", M.m_aMode, pArenaMap);
+	if(ArenaWorldID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 无法创建竞技场。");
+		return false;
+	}
+	M.m_ArenaWorldID = ArenaWorldID;
+	M.m_Status = 3;
+	M.m_StartTick = GS()->Server()->Tick();
+	M.m_ScoreA = 0;
+	M.m_ScoreB = 0;
+
+	for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
+	{
+		const int CID = M.m_aParticipants[pi].m_ClientID;
+		CPlayer *pPlayer = GS()->m_apPlayers[CID];
+		if(pPlayer)
+			pPlayer->m_Score = 0;
+	}
+
+	char aMsg[256];
+	str_format(aMsg, sizeof(aMsg),
+		"🎮 比赛开始！%s vs %s — 模式：%s，地图：%s，目标 %d 分！",
+		GetGuild(M.m_ChallengerGuild)->m_aName,
+		GetGuild(M.m_ChallengedGuild)->m_aName,
+		GuildWarModeDisplayName(M.m_aMode),
+		pArenaMap,
+		M.m_TargetScore);
+	BroadcastToMatch(MatchIdx, aMsg);
+	GS()->SendChat(-1, CHAT_ALL, -1, aMsg);
+
+	for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
+	{
+		const SMatchParticipant &P = M.m_aParticipants[pi];
+		const int CID = P.m_ClientID;
+		CPlayer *pPlayer = GS()->m_apPlayers[CID];
+		if(!pPlayer)
+			continue;
+
+		const int PlayerGID = pPlayer->GetGuildID();
+		const int MatchTeam = (PlayerGID == M.m_ChallengerGuild) ? TEAM_RED : TEAM_BLUE;
+		pPlayer->SetTeam(MatchTeam);
+
+		vec2 CenterPos(0.0f, 0.0f);
+		if(Core() && Core()->WorldManager())
+			Core()->WorldManager()->ExecuteWithSpawn(CID, ArenaWorldID, &CenterPos);
+	}
+
+	SaveMatchToDB(MatchIdx);
+	return true;
+}
+
+void CGuildManager::WarStatus(int ClientID)
+{
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		return;
+	}
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
+		return;
+	}
+
+	const int MatchIdx = FindActiveMatchByGuild(PlayerGuildID);
+	if(MatchIdx < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "✅ 你的公会当前没有进行中的比赛。");
+		return;
+	}
+
+	const SMatchState &M = m_aMatches[MatchIdx];
+	const char *pStatusStr[] = {"待接受", "选模式中", "准备中", "进行中", "已结束", "已取消"};
+	const char *pChallengerName = GetGuild(M.m_ChallengerGuild) ? GetGuild(M.m_ChallengerGuild)->m_aName : "?";
+	const char *pChallengedName = GetGuild(M.m_ChallengedGuild) ? GetGuild(M.m_ChallengedGuild)->m_aName : "?";
+
+	int ChallengerCount = 0, ChallengedCount = 0;
+	for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
+	{
+		const int CID = M.m_aParticipants[pi].m_ClientID;
+		if(CID < 0)
+			continue;
+		const int GID = GS()->m_apPlayers[CID] ? GS()->m_apPlayers[CID]->GetGuildID() : -1;
+		if(GID == M.m_ChallengerGuild)
+			ChallengerCount++;
+		else if(GID == M.m_ChallengedGuild)
+			ChallengedCount++;
+	}
+
+	char aBuf[256];
+	str_format(aBuf, sizeof(aBuf), "═══════ 比赛信息 ═══════");
+	GS()->SendChat(ClientID, CHAT_ALL, -1, aBuf);
+	str_format(aBuf, sizeof(aBuf), "状态：%s", pStatusStr[M.m_Status > 5 ? 5 : M.m_Status]);
+	GS()->SendChat(ClientID, CHAT_ALL, -1, aBuf);
+	str_format(aBuf, sizeof(aBuf), "%s（挑战） vs %s（被挑战）", pChallengerName, pChallengedName);
+	GS()->SendChat(ClientID, CHAT_ALL, -1, aBuf);
+	str_format(aBuf, sizeof(aBuf), "模式：%s | 人数：%d vs %d（目标 %d/%d 人）",
+		M.m_aMode[0] ? GuildWarModeDisplayName(M.m_aMode) : "未选择",
+		ChallengerCount, ChallengedCount, M.m_TeamSize, M.m_TeamSize);
+	GS()->SendChat(ClientID, CHAT_ALL, -1, aBuf);
+
+	if(M.m_aMode[0] != '\0')
+	{
+		char aMapBuf[128];
+		if(M.m_aMap[0])
+			str_copy(aMapBuf, M.m_aMap, sizeof(aMapBuf));
+		else
+			GuildWarDefaultArenaMap(Storage(), M.m_aMode, aMapBuf, sizeof(aMapBuf));
+		str_format(aBuf, sizeof(aBuf), "地图：%s%s", aMapBuf, M.m_aMap[0] ? "" : "（默认）");
+		GS()->SendChat(ClientID, CHAT_ALL, -1, aBuf);
+	}
+
+	if(M.m_Status == 3)
+	{
+		str_format(aBuf, sizeof(aBuf), "比分：%d : %d（目标 %d 分）", M.m_ScoreA, M.m_ScoreB, M.m_TargetScore);
+		GS()->SendChat(ClientID, CHAT_ALL, -1, aBuf);
+	}
+}
+
+bool CGuildManager::WarCancel(int ClientID)
+{
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP || pP->GetAccountId() <= 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		return false;
+	}
+
+	const int PlayerGuildID = pP->GetGuildID();
+	if(PlayerGuildID < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
+		return false;
+	}
+
+	SGuildData *pGuild = GetGuild(PlayerGuildID);
+	if(!IsWarOfficer(pGuild, ClientID))
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能取消比赛。");
+		return false;
+	}
+
+	const int MatchIdx = FindActiveMatchByGuild(PlayerGuildID);
+	if(MatchIdx < 0)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 你的公会没有进行中的比赛。");
+		return false;
+	}
+
+	if(m_aMatches[MatchIdx].m_Status >= 4)
+	{
+		GS()->SendChat(ClientID, CHAT_ALL, -1, "⚠ 比赛已经结束或已取消。");
+		return false;
+	}
+
+	CancelMatch(MatchIdx);
+
+	char aMsg[256];
+	str_format(aMsg, sizeof(aMsg), "❌ 比赛已被 %s 取消。", GS()->Server()->ClientName(ClientID));
+	BroadcastToGuild(FindGuildIndexByID(m_aMatches[MatchIdx].m_ChallengerGuild), aMsg);
+	BroadcastToGuild(FindGuildIndexByID(m_aMatches[MatchIdx].m_ChallengedGuild), aMsg);
+	GS()->SendChat(ClientID, CHAT_ALL, -1, "✅ 比赛已取消。");
 	return true;
 }
 
@@ -2153,7 +3272,8 @@ void CGuildManager::ConGuildMatchChallenge(IConsole::IResult *pResult, void *pUs
 			"═ 约战命令 ─────────────────────╕\n"
 			"/guild_war_challenge <公会名> - 发起挑战\n"
 			"/guild_war_accept            - 接受挑战\n"
-			"/guild_war_setmode <fng|idm|tdm> - 选模式（被挑战方）\n"
+			"/guild_war_setmode <fng|ctf|tdm|itdm> - 选模式（被挑战方）\n"
+			"/guild_war_setmap <路径>         - 选地图（会长/副会长）\n"
 			"/guild_war_join              - 加入比赛\n"
 			"/guild_war_leave             - 离开比赛\n"
 			"/guild_war_start             - 开始比赛\n"
@@ -2163,89 +3283,7 @@ void CGuildManager::ConGuildMatchChallenge(IConsole::IResult *pResult, void *pUs
 		return;
 	}
 
-	CGuildManager *pMgr = pGame->Core()->GuildManager();
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(!pP || pP->GetAccountId() <= 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
-		return;
-	}
-
-	int PlayerGuildID = pP->GetGuildID();
-	if(PlayerGuildID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
-		return;
-	}
-
-	SGuildData *pGuild = pMgr->GetGuild(PlayerGuildID);
-	if(!pGuild)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 公会数据异常。");
-		return;
-	}
-
-	EGuildRank rank = pGuild->GetRank(pCtx->m_ClientID);
-	if(rank != GUILDRANK_LEADER && rank != GUILDRANK_CO_LEADER)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能发起约战。");
-		return;
-	}
-
-	const char *pTargetName = pResult->GetString(0);
-	int TargetGuildID = pMgr->FindGuildByName(pTargetName);
-	if(TargetGuildID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 找不到该公会。");
-		return;
-	}
-
-	if(TargetGuildID == PlayerGuildID)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 不能向自己的公会发起约战。");
-		return;
-	}
-
-	if(pMgr->FindActiveMatchByGuild(PlayerGuildID) >= 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你的公会已有进行中的比赛。");
-		return;
-	}
-
-	if(pMgr->FindActiveMatchByGuild(TargetGuildID) >= 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 目标公会已有进行中的比赛。");
-		return;
-	}
-
-	// Create match in memory
-	SMatchState M;
-	M.m_MatchID = 0; // will be assigned on DB save
-	M.m_ChallengerGuild = PlayerGuildID;
-	M.m_ChallengedGuild = TargetGuildID;
-	M.m_Status = 0; // pending
-	M.m_aMode[0] = '\0';
-	M.m_TeamSize = 3;
-	M.m_TargetScore = 30;
-	M.m_StartTick = 0;
-	M.m_ScoreA = 0;
-	M.m_ScoreB = 0;
-	M.m_ArenaWorldID = -1;
-	pMgr->m_aMatches.add(M);
-	const int MatchIdx = pMgr->m_aMatches.size() - 1;
-
-	pMgr->SaveMatchToDB(MatchIdx);
-
-	const SGuildData *pTargetGuild = pMgr->GetGuild(TargetGuildID);
-	const char *pTargetName2 = pTargetGuild ? pTargetGuild->m_aName : "?";
-
-	char aMsg[256];
-	str_format(aMsg, sizeof(aMsg),
-		"⚔️ 公会「%s」向「%s」发起约战！被挑战方请使用 /guild_war_accept 接受。",
-		pGuild->m_aName, pTargetName2);
-	pGame->SendChat(-1, CHAT_ALL, -1, aMsg);
-
-	pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "✅ 约战已发起，等待对方接受。");
+	pGame->Core()->GuildManager()->WarChallenge(pCtx->m_ClientID, pResult->GetString(0));
 }
 
 void CGuildManager::ConGuildMatchAccept(IConsole::IResult *pResult, void *pUser)
@@ -2255,69 +3293,7 @@ void CGuildManager::ConGuildMatchAccept(IConsole::IResult *pResult, void *pUser)
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
 	if(!pGame || !pGame->Core() || !pGame->Core()->GuildManager())
 		return;
-
-	CGuildManager *pMgr = pGame->Core()->GuildManager();
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(!pP || pP->GetAccountId() <= 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
-		return;
-	}
-
-	int PlayerGuildID = pP->GetGuildID();
-	if(PlayerGuildID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
-		return;
-	}
-
-	SGuildData *pGuild = pMgr->GetGuild(PlayerGuildID);
-	if(!pGuild)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 公会数据异常。");
-		return;
-	}
-
-	EGuildRank rank = pGuild->GetRank(pCtx->m_ClientID);
-	if(rank != GUILDRANK_LEADER && rank != GUILDRANK_CO_LEADER)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能接受约战。");
-		return;
-	}
-
-	// Find pending match where this guild is the challenged
-	int MatchIdx = -1;
-	for(int mi = 0; mi < pMgr->m_aMatches.size(); mi++)
-	{
-		if(pMgr->m_aMatches[mi].m_Status == 0 && pMgr->m_aMatches[mi].m_ChallengedGuild == PlayerGuildID)
-		{
-			MatchIdx = mi;
-			break;
-		}
-	}
-
-	if(MatchIdx < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 没有待接受的约战。");
-		return;
-	}
-
-	pMgr->m_aMatches[MatchIdx].m_Status = 1; // accepted, choosing mode
-
-	const SGuildData *pChallenger = pMgr->GetGuild(pMgr->m_aMatches[MatchIdx].m_ChallengerGuild);
-	const char *pChallengerName = pChallenger ? pChallenger->m_aName : "?";
-
-	char aMsg[256];
-	str_format(aMsg, sizeof(aMsg),
-		"✅ 约战已接受！被挑战方请使用 /guild_war_setmode <fng|idm|tdm> 选择模式。");
-	pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, aMsg);
-
-	str_format(aMsg, sizeof(aMsg),
-		"⚔️ 公会「%s」接受了「%s」的约战！正在选择模式...",
-		pGuild->m_aName, pChallengerName);
-	pMgr->BroadcastToGuild(pMgr->FindGuildIndexByID(pMgr->m_aMatches[MatchIdx].m_ChallengerGuild), aMsg);
-
-	pMgr->SaveMatchToDB(MatchIdx);
+	pGame->Core()->GuildManager()->WarAccept(pCtx->m_ClientID);
 }
 
 void CGuildManager::ConGuildMatchSetMode(IConsole::IResult *pResult, void *pUser)
@@ -2326,66 +3302,21 @@ void CGuildManager::ConGuildMatchSetMode(IConsole::IResult *pResult, void *pUser
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
 	if(!pGame || !pGame->Core() || !pGame->Core()->GuildManager())
 		return;
+	pGame->Core()->GuildManager()->WarSetMode(pCtx->m_ClientID, pResult->GetString(0));
+}
 
-	CGuildManager *pMgr = pGame->Core()->GuildManager();
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(!pP || pP->GetAccountId() <= 0)
+void CGuildManager::ConGuildMatchSetMap(IConsole::IResult *pResult, void *pUser)
+{
+	CCommandManager::SCommandContext *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	if(!pGame || !pGame->Core() || !pGame->Core()->GuildManager())
+		return;
+	if(pResult->NumArguments() == 0)
 	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
+		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "用法：/guild_war_setmap <地图路径>，例如 def/TDef-Deeply");
 		return;
 	}
-
-	int PlayerGuildID = pP->GetGuildID();
-	if(PlayerGuildID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
-		return;
-	}
-
-	SGuildData *pGuild = pMgr->GetGuild(PlayerGuildID);
-	EGuildRank rank = pGuild ? pGuild->GetRank(pCtx->m_ClientID) : GUILDRANK_APPLICANT;
-	if(rank != GUILDRANK_LEADER && rank != GUILDRANK_CO_LEADER)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能设置模式。");
-		return;
-	}
-
-	// Find match where this guild is challenged and status=1
-	int MatchIdx = -1;
-	for(int mi = 0; mi < pMgr->m_aMatches.size(); mi++)
-	{
-		if(pMgr->m_aMatches[mi].m_Status == 1 && pMgr->m_aMatches[mi].m_ChallengedGuild == PlayerGuildID)
-		{
-			MatchIdx = mi;
-			break;
-		}
-	}
-
-	if(MatchIdx < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 没有等待选择模式的比赛。");
-		return;
-	}
-
-	const char *pMode = pResult->GetString(0);
-	if(str_comp_nocase(pMode, "fng") != 0 && str_comp_nocase(pMode, "idm") != 0 && str_comp_nocase(pMode, "tdm") != 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 无效模式。可用模式：fng, idm, tdm");
-		return;
-	}
-
-	str_copy(pMgr->m_aMatches[MatchIdx].m_aMode, pMode, sizeof(pMgr->m_aMatches[MatchIdx].m_aMode));
-	pMgr->m_aMatches[MatchIdx].m_Status = 2; // ready
-
-	char aMsg[256];
-	str_format(aMsg, sizeof(aMsg),
-		"✅ 比赛模式已设为 %s，请双方使用 /guild_war_join 加入比赛队伍，然后使用 /guild_war_start 开始。",
-		pMode);
-	pMgr->BroadcastToMatch(MatchIdx, aMsg);
-	pMgr->BroadcastToGuild(pMgr->FindGuildIndexByID(pMgr->m_aMatches[MatchIdx].m_ChallengerGuild), aMsg);
-	pMgr->BroadcastToGuild(pMgr->FindGuildIndexByID(pMgr->m_aMatches[MatchIdx].m_ChallengedGuild), aMsg);
-
-	pMgr->SaveMatchToDB(MatchIdx);
+	pGame->Core()->GuildManager()->WarSetMap(pCtx->m_ClientID, pResult->GetString(0));
 }
 
 void CGuildManager::ConGuildMatchJoin(IConsole::IResult *pResult, void *pUser)
@@ -2395,102 +3326,7 @@ void CGuildManager::ConGuildMatchJoin(IConsole::IResult *pResult, void *pUser)
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
 	if(!pGame || !pGame->Core() || !pGame->Core()->GuildManager())
 		return;
-
-	CGuildManager *pMgr = pGame->Core()->GuildManager();
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(!pP || pP->GetAccountId() <= 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
-		return;
-	}
-
-	int PlayerGuildID = pP->GetGuildID();
-	if(PlayerGuildID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
-		return;
-	}
-
-	// Find match where this guild is participating and status=2 (ready)
-	int MatchIdx = -1;
-	for(int mi = 0; mi < pMgr->m_aMatches.size(); mi++)
-	{
-		const SMatchState &M = pMgr->m_aMatches[mi];
-		if(M.m_Status == 2 && (M.m_ChallengerGuild == PlayerGuildID || M.m_ChallengedGuild == PlayerGuildID))
-		{
-			MatchIdx = mi;
-			break;
-		}
-	}
-
-	if(MatchIdx < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 没有等待加入的比赛（请先接受约战并设置模式）。");
-		return;
-	}
-
-	// Check if already joined
-	for(int pi = 0; pi < pMgr->m_aMatches[MatchIdx].m_aParticipants.size(); pi++)
-	{
-		if(pMgr->m_aMatches[MatchIdx].m_aParticipants[pi].m_ClientID == pCtx->m_ClientID)
-		{
-			pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你已在比赛队伍中。");
-			return;
-		}
-	}
-
-	// Check max team size not exceeded
-	int ChallengerCount = 0, ChallengedCount = 0;
-	for(int pi = 0; pi < pMgr->m_aMatches[MatchIdx].m_aParticipants.size(); pi++)
-	{
-		int CID = pMgr->m_aMatches[MatchIdx].m_aParticipants[pi].m_ClientID;
-		if(CID < 0) continue;
-		int GID = pGame->m_apPlayers[CID] ? pGame->m_apPlayers[CID]->GetGuildID() : -1;
-		if(GID == pMgr->m_aMatches[MatchIdx].m_ChallengerGuild)
-			ChallengerCount++;
-		else if(GID == pMgr->m_aMatches[MatchIdx].m_ChallengedGuild)
-			ChallengedCount++;
-	}
-
-	int MaxSize = pMgr->m_aMatches[MatchIdx].m_TeamSize;
-	if(PlayerGuildID == pMgr->m_aMatches[MatchIdx].m_ChallengerGuild && ChallengerCount >= MaxSize)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 挑战方队伍已满。");
-		return;
-	}
-	if(PlayerGuildID == pMgr->m_aMatches[MatchIdx].m_ChallengedGuild && ChallengedCount >= MaxSize)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 被挑战方队伍已满。");
-		return;
-	}
-
-	// Save original position
-	SMatchParticipant P;
-	P.m_ClientID = pCtx->m_ClientID;
-	P.m_OriginalWorld = pGame->Server()->GetClientWorldID(pCtx->m_ClientID);
-	CCharacter *pChar = pP->GetCharacter();
-	if(pChar)
-		P.m_OriginalPos = pChar->GetCore()->m_Pos;
-	else
-		P.m_OriginalPos = vec2(0.0f, 0.0f);
-	P.m_StartTeam = -1;
-
-	pMgr->m_aMatches[MatchIdx].m_aParticipants.add(P);
-	pP->m_MatchTeam = (PlayerGuildID == pMgr->m_aMatches[MatchIdx].m_ChallengerGuild) ? -1 : 1;
-	pP->m_OriginalWorld = P.m_OriginalWorld;
-
-	char aMsg[256];
-	str_format(aMsg, sizeof(aMsg),
-		"✅ %s 已加入比赛队伍（%s方）。当前人数：挑战方 %d/%d，被挑战方 %d/%d",
-		pGame->Server()->ClientName(pCtx->m_ClientID),
-		(PlayerGuildID == pMgr->m_aMatches[MatchIdx].m_ChallengerGuild) ? "挑战" : "被挑战",
-		(PlayerGuildID == pMgr->m_aMatches[MatchIdx].m_ChallengerGuild) ? ChallengerCount + 1 : ChallengerCount,
-		MaxSize,
-		(PlayerGuildID == pMgr->m_aMatches[MatchIdx].m_ChallengedGuild) ? ChallengedCount + 1 : ChallengedCount,
-		MaxSize);
-	pMgr->BroadcastToMatch(MatchIdx, aMsg);
-	pMgr->BroadcastToGuild(pMgr->FindGuildIndexByID(pMgr->m_aMatches[MatchIdx].m_ChallengerGuild), aMsg);
-	pMgr->BroadcastToGuild(pMgr->FindGuildIndexByID(pMgr->m_aMatches[MatchIdx].m_ChallengedGuild), aMsg);
+	pGame->Core()->GuildManager()->WarJoin(pCtx->m_ClientID);
 }
 
 void CGuildManager::ConGuildMatchLeave(IConsole::IResult *pResult, void *pUser)
@@ -2500,41 +3336,7 @@ void CGuildManager::ConGuildMatchLeave(IConsole::IResult *pResult, void *pUser)
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
 	if(!pGame || !pGame->Core() || !pGame->Core()->GuildManager())
 		return;
-
-	CGuildManager *pMgr = pGame->Core()->GuildManager();
-	int MatchIdx = pMgr->FindMatchByPlayer(pCtx->m_ClientID);
-	if(MatchIdx < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你未加入任何比赛。");
-		return;
-	}
-
-	if(pMgr->m_aMatches[MatchIdx].m_Status >= 3)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 比赛已经开始，无法离开。");
-		return;
-	}
-
-	for(int pi = 0; pi < pMgr->m_aMatches[MatchIdx].m_aParticipants.size(); pi++)
-	{
-		if(pMgr->m_aMatches[MatchIdx].m_aParticipants[pi].m_ClientID == pCtx->m_ClientID)
-		{
-			pMgr->m_aMatches[MatchIdx].m_aParticipants.remove_index(pi);
-			break;
-		}
-	}
-
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(pP)
-	{
-		pP->m_MatchTeam = 0;
-		pP->m_OriginalWorld = 0;
-	}
-
-	char aMsg[256];
-	str_format(aMsg, sizeof(aMsg), "🚪 %s 离开了比赛队伍。", pGame->Server()->ClientName(pCtx->m_ClientID));
-	pMgr->BroadcastToMatch(MatchIdx, aMsg);
-	pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "✅ 已离开比赛队伍。");
+	pGame->Core()->GuildManager()->WarLeave(pCtx->m_ClientID);
 }
 
 void CGuildManager::ConGuildMatchStart(IConsole::IResult *pResult, void *pUser)
@@ -2544,130 +3346,7 @@ void CGuildManager::ConGuildMatchStart(IConsole::IResult *pResult, void *pUser)
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
 	if(!pGame || !pGame->Core() || !pGame->Core()->GuildManager())
 		return;
-
-	CGuildManager *pMgr = pGame->Core()->GuildManager();
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(!pP || pP->GetAccountId() <= 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
-		return;
-	}
-
-	int PlayerGuildID = pP->GetGuildID();
-	if(PlayerGuildID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
-		return;
-	}
-
-	SGuildData *pGuild = pMgr->GetGuild(PlayerGuildID);
-	EGuildRank rank = pGuild ? pGuild->GetRank(pCtx->m_ClientID) : GUILDRANK_APPLICANT;
-	if(rank != GUILDRANK_LEADER && rank != GUILDRANK_CO_LEADER)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能开始比赛。");
-		return;
-	}
-
-	// Find match where this guild is participating and status=2 (ready)
-	int MatchIdx = -1;
-	for(int mi = 0; mi < pMgr->m_aMatches.size(); mi++)
-	{
-		const SMatchState &M = pMgr->m_aMatches[mi];
-		if(M.m_Status == 2 && (M.m_ChallengerGuild == PlayerGuildID || M.m_ChallengedGuild == PlayerGuildID))
-		{
-			MatchIdx = mi;
-			break;
-		}
-	}
-
-	if(MatchIdx < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 没有准备就绪的比赛。请先完成模式设置。");
-		return;
-	}
-
-	SMatchState &M = pMgr->m_aMatches[MatchIdx];
-
-	// Count participants per guild
-	int ChallengerCount = 0, ChallengedCount = 0;
-	for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
-	{
-		int CID = M.m_aParticipants[pi].m_ClientID;
-		if(CID < 0) continue;
-		int GID = pGame->m_apPlayers[CID] ? pGame->m_apPlayers[CID]->GetGuildID() : -1;
-		if(GID == M.m_ChallengerGuild)
-			ChallengerCount++;
-		else if(GID == M.m_ChallengedGuild)
-			ChallengedCount++;
-	}
-
-	if(ChallengerCount < M.m_TeamSize || ChallengedCount < M.m_TeamSize)
-	{
-		char aMsg[256];
-		str_format(aMsg, sizeof(aMsg),
-			"⚠ 双方人数不足！需要至少 %d 人（当前：挑战方 %d，被挑战方 %d）",
-			M.m_TeamSize, ChallengerCount, ChallengedCount);
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, aMsg);
-		return;
-	}
-
-	// Create dynamic arena world for this match
-	int ArenaWorldID = pGame->Core()->WorldManager()->CreateArenaWorld(
-		"Guild Arena", "pvp", "TDef-Deeply");
-	if(ArenaWorldID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 无法创建竞技场。");
-		return;
-	}
-	M.m_ArenaWorldID = ArenaWorldID;
-
-	// Start the match
-	M.m_Status = 3;
-	M.m_StartTick = pGame->Server()->Tick();
-	M.m_ScoreA = 0;
-	M.m_ScoreB = 0;
-
-	// Clear all player scores
-	for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
-	{
-		int CID = M.m_aParticipants[pi].m_ClientID;
-		CPlayer *pPlayer = pGame->m_apPlayers[CID];
-		if(!pPlayer) continue;
-		pPlayer->m_Score = 0;
-	}
-
-	char aMsg[256];
-	str_format(aMsg, sizeof(aMsg),
-		"🎮 比赛开始！%s vs %s — 模式：%s，目标 %d 分！",
-		pMgr->GetGuild(M.m_ChallengerGuild)->m_aName,
-		pMgr->GetGuild(M.m_ChallengedGuild)->m_aName,
-		M.m_aMode, M.m_TargetScore);
-	pMgr->BroadcastToMatch(MatchIdx, aMsg);
-	pGame->SendChat(-1, CHAT_ALL, -1, aMsg);
-
-	// Teleport participants to arena world
-	for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
-	{
-		const SMatchParticipant &P = M.m_aParticipants[pi];
-		int CID = P.m_ClientID;
-		CPlayer *pPlayer = pGame->m_apPlayers[CID];
-		if(!pPlayer) continue;
-
-		// Determine team: challenger=red, challenged=blue
-		int PlayerGID = pPlayer->GetGuildID();
-		int MatchTeam = (PlayerGID == M.m_ChallengerGuild) ? TEAM_RED : TEAM_BLUE;
-		pPlayer->SetTeam(MatchTeam);
-
-		// Teleport to dynamic arena world
-		vec2 CenterPos(0.0f, 0.0f);
-		if(pGame->Core() && pGame->Core()->WorldManager())
-			pGame->Core()->WorldManager()->ExecuteWithSpawn(CID, ArenaWorldID, &CenterPos);
-
-		// Apply mode-specific weapon rules
-		ApplyMatchModeRules(pPlayer, M.m_aMode);
-	}
-
-	pMgr->SaveMatchToDB(MatchIdx);
+	pGame->Core()->GuildManager()->WarStart(pCtx->m_ClientID);
 }
 
 void CGuildManager::ConGuildMatchStatus(IConsole::IResult *pResult, void *pUser)
@@ -2677,61 +3356,7 @@ void CGuildManager::ConGuildMatchStatus(IConsole::IResult *pResult, void *pUser)
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
 	if(!pGame || !pGame->Core() || !pGame->Core()->GuildManager())
 		return;
-
-	CGuildManager *pMgr = pGame->Core()->GuildManager();
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(!pP || pP->GetAccountId() <= 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
-		return;
-	}
-
-	int PlayerGuildID = pP->GetGuildID();
-	if(PlayerGuildID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
-		return;
-	}
-
-	int MatchIdx = pMgr->FindActiveMatchByGuild(PlayerGuildID);
-	if(MatchIdx < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "✅ 你的公会当前没有进行中的比赛。");
-		return;
-	}
-
-	const SMatchState &M = pMgr->m_aMatches[MatchIdx];
-	const char *pStatusStr[] = {"待接受", "选模式中", "准备中", "进行中", "已结束", "已取消"};
-	const char *pChallengerName = pMgr->GetGuild(M.m_ChallengerGuild) ? pMgr->GetGuild(M.m_ChallengerGuild)->m_aName : "?";
-	const char *pChallengedName = pMgr->GetGuild(M.m_ChallengedGuild) ? pMgr->GetGuild(M.m_ChallengedGuild)->m_aName : "?";
-
-	int ChallengerCount = 0, ChallengedCount = 0;
-	for(int pi = 0; pi < M.m_aParticipants.size(); pi++)
-	{
-		int CID = M.m_aParticipants[pi].m_ClientID;
-		if(CID < 0) continue;
-		int GID = pGame->m_apPlayers[CID] ? pGame->m_apPlayers[CID]->GetGuildID() : -1;
-		if(GID == M.m_ChallengerGuild) ChallengerCount++;
-		else if(GID == M.m_ChallengedGuild) ChallengedCount++;
-	}
-
-	char aBuf[256];
-	str_format(aBuf, sizeof(aBuf), "═══════ 比赛信息 ═══════");
-	pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, aBuf);
-	str_format(aBuf, sizeof(aBuf), "状态：%s", pStatusStr[M.m_Status > 5 ? 5 : M.m_Status]);
-	pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, aBuf);
-	str_format(aBuf, sizeof(aBuf), "%s（挑战） vs %s（被挑战）", pChallengerName, pChallengedName);
-	pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, aBuf);
-	str_format(aBuf, sizeof(aBuf), "模式：%s | 人数：%d vs %d（目标 %d/%d 人）",
-		M.m_aMode[0] ? M.m_aMode : "未选择",
-		ChallengerCount, ChallengedCount, M.m_TeamSize, M.m_TeamSize);
-	pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, aBuf);
-
-	if(M.m_Status == 3)
-	{
-		str_format(aBuf, sizeof(aBuf), "比分：%d : %d（目标 %d 分）", M.m_ScoreA, M.m_ScoreB, M.m_TargetScore);
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, aBuf);
-	}
+	pGame->Core()->GuildManager()->WarStatus(pCtx->m_ClientID);
 }
 
 void CGuildManager::ConGuildMatchCancel(IConsole::IResult *pResult, void *pUser)
@@ -2741,79 +3366,5 @@ void CGuildManager::ConGuildMatchCancel(IConsole::IResult *pResult, void *pUser)
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
 	if(!pGame || !pGame->Core() || !pGame->Core()->GuildManager())
 		return;
-
-	CGuildManager *pMgr = pGame->Core()->GuildManager();
-	CPlayer *pP = pGame->m_apPlayers[pCtx->m_ClientID];
-	if(!pP || pP->GetAccountId() <= 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 请先登录。");
-		return;
-	}
-
-	int PlayerGuildID = pP->GetGuildID();
-	if(PlayerGuildID < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你不在公会中。");
-		return;
-	}
-
-	SGuildData *pGuild = pMgr->GetGuild(PlayerGuildID);
-	EGuildRank rank = pGuild ? pGuild->GetRank(pCtx->m_ClientID) : GUILDRANK_APPLICANT;
-	if(rank != GUILDRANK_LEADER && rank != GUILDRANK_CO_LEADER)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 只有会长和副会长才能取消比赛。");
-		return;
-	}
-
-	int MatchIdx = pMgr->FindActiveMatchByGuild(PlayerGuildID);
-	if(MatchIdx < 0)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 你的公会没有进行中的比赛。");
-		return;
-	}
-
-	if(pMgr->m_aMatches[MatchIdx].m_Status >= 4)
-	{
-		pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "⚠ 比赛已经结束或已取消。");
-		return;
-	}
-
-	pMgr->CancelMatch(MatchIdx);
-
-	char aMsg[256];
-	str_format(aMsg, sizeof(aMsg), "❌ 比赛已被 %s 取消。", pGame->Server()->ClientName(pCtx->m_ClientID));
-	pMgr->BroadcastToGuild(pMgr->FindGuildIndexByID(pMgr->m_aMatches[MatchIdx].m_ChallengerGuild), aMsg);
-	pMgr->BroadcastToGuild(pMgr->FindGuildIndexByID(pMgr->m_aMatches[MatchIdx].m_ChallengedGuild), aMsg);
-	pGame->SendChat(pCtx->m_ClientID, CHAT_ALL, -1, "✅ 比赛已取消。");
+	pGame->Core()->GuildManager()->WarCancel(pCtx->m_ClientID);
 }
-
-
-
-// ─── Mode Enforcement Helpers ────────────────────────────────────────
-
-static void ApplyMatchModeRules(CPlayer *pPlayer, const char *pMode)
-{
-	if(!pPlayer)
-		return;
-	CCharacter *pChar = pPlayer->GetCharacter();
-	if(!pChar)
-		return;
-
-	if(str_comp(pMode, "fng") == 0)
-	{
-		// FNG: Only fists/hammer allowed
-		for(int w = 1; w < NUM_WEAPONS; w++)
-			pChar->RemoveWeapon(w);
-		pChar->SetWeapon(WEAPON_HAMMER);
-	}
-	else if(str_comp(pMode, "idm") == 0)
-	{
-		// iDM: Give all weapons with full ammo
-		const int MAX_AMMO = 999;
-		for(int w = 0; w < NUM_WEAPONS; w++)
-			pChar->GiveWeapon(w, MAX_AMMO);
-		pChar->SetWeapon(WEAPON_GUN);
-	}
-	// TDM: no special weapon rules
-}
-

@@ -94,7 +94,7 @@ void CKs::Tick()
 			}
 
 			pChr->m_InMining = true;
-			GameServer()->m_World.CreateSound(m_Pos, SOUND_HAMMER_FIRE);
+			GameServer()->m_World.CreateSound(m_Pos, SOUND_SFX_MINER);
 			Picking(Dmg, pPlayer);
 		}
 	}

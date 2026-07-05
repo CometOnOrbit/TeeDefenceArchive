@@ -9,6 +9,15 @@
 class CEntity;
 class CCharacter;
 
+struct SLaserDotSegment
+{
+	vec2 m_From;
+	vec2 m_To;
+	int m_LifeSpan;
+	int m_SnapId;
+	int m_StartTick;
+};
+
 /*
 	Class: Game World
 		Tracks all entities in the game. Propagates tick and
@@ -17,6 +26,8 @@ class CCharacter;
 class CGameWorld
 {
 public:
+	static constexpr int SPATIAL_CELL_SIZE = 128;
+
 	enum
 	{
 		ENTTYPE_PROJECTILE = 0,
@@ -31,6 +42,9 @@ public:
 		ENTTYPE_PLASMA,
 		ENTTYPE_SPIDERBOSS,
 		ENTTYPE_SPIDERLEG,
+		ENTTYPE_AIRCRAFT,
+		ENTTYPE_RPG_CK,
+		ENTTYPE_RPG_FISHING,
 		NUM_ENTTYPES,
 
 		ENTFLAG_HITABLE = 1,
@@ -44,6 +58,7 @@ private:
 
 	array<CEntity *> m_alpEntityLists[NUM_ENTTYPES];
 	array<CEntity *> m_lpFlagEntityList;
+	array<SLaserDotSegment> m_aLaserDots;
 
 	class CGameContext *m_pGameServer;
 	class CConfig *m_pConfig;
@@ -52,6 +67,36 @@ private:
 	bool m_aBotsActive[MAX_CLIENTS];
 	int m_aMarkedBotsActive[MAX_CLIENTS];
 	int m_NumMarkedBotsActive;
+
+	struct SSpatialCell
+	{
+		array<CEntity *> m_aEnts;
+	};
+
+	struct SBotSpatialCell
+	{
+		array<int> m_aClientIds;
+	};
+
+	int m_SpatialCellsX = 0;
+	int m_SpatialCellsY = 0;
+	array<SSpatialCell> m_aSpatialCharacter;
+	array<SSpatialCell> m_aSpatialRpgCk;
+	array<SBotSpatialCell> m_aBotSpatial;
+	int m_SpatialCharacterRebuildTick = -1;
+	vec2 m_aLastMapViewPos[MAX_HUMAN_CLIENTS];
+	int m_aLastMapUpdateTick[MAX_HUMAN_CLIENTS];
+
+	void EnsureSpatialDimensions();
+	int SpatialCellAt(vec2 Pos) const;
+	void SpatialClear(array<SSpatialCell> &Grid);
+	void SpatialAddEntity(CEntity *pEnt, array<SSpatialCell> &Grid);
+	void SpatialRemoveEntity(CEntity *pEnt, array<SSpatialCell> &Grid);
+	void RebuildCharacterSpatial();
+	int FindEntitiesInGrid(const array<SSpatialCell> &Grid, vec2 Pos, float Radius, array<CEntity *> &lpEnts) const;
+	CEntity *ClosestEntityInGrid(const array<SSpatialCell> &Grid, vec2 Pos, float Radius, CEntity *pNotThis) const;
+	void BuildBotSpatialIndex();
+	void CollectBotsNearView(vec2 ViewPos, float Radius, array<int> &apBotIds) const;
 
 public:
 	class CGameContext *GameServer() { return m_pGameServer; }
@@ -198,6 +243,10 @@ public:
 	void CreatePlayerSpawn(vec2 Pos);
 	void CreateDeath(vec2 Pos, int Who);
 	void CreateSound(vec2 Pos, int Sound, int64 Mask = -1);
+	void CreatePlayerSound(int ClientID, int Sound);
+	void CreateLaserDot(vec2 From, vec2 To, int LifeSpan);
+	void TickLaserDots();
+	void SnapLaserDots(int SnappingClient);
 };
 
 #endif

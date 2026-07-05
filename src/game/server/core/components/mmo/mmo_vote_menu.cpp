@@ -11,14 +11,25 @@
 #include <game/server/core/components/vote/vote_wrapper.h>
 #include <game/server/global_state.h>
 #include <game/server/core/components/economy/shop_data.h>
+#include <game/server/core/components/npcs/npc_service.h>
 #include <game/server/core/components/guilds/guild_manager.h>
 #include <game/server/core/components/guilds/guild_data.h>
+#include <game/server/core/components/guilds/guild_match_mode.h>
+#include <game/server/core/components/guilds/guild_arena_maps.h>
+#include <game/server/core/components/mmo/mmo_world_boss.h>
 #include <game/server/account.h>
 #include <game/server/sql_pool.h>
 #include <game/server/sql_query.h>
-#include <game/server/entities/pet.h>
+#include <game/server/entities/vehicle/aircraft.h>
+#include <game/server/entities/vehicle/vehicle.h>
+#include <game/server/entities/vehicle/vehicle_util.h>
 #include <mysql.h>
+#include <game/server/gameworld.h>
+#include <game/server/interaction_sound.h>
+#include <generated/server_data.h>
+#include <game/commands.h>
 #include <set>
+#include <vector>
 
 static const char *LocMMOItemName(CGameContext *pGS, int ClientID, const CMMOItemDescription *pDef)
 {
@@ -105,6 +116,117 @@ static int CountMMOItemsByGroup(CPlayer *pP, ItemGroup Group, ItemType TypeFilte
 	return Count;
 }
 
+// ─── Vote UI helpers ─────────────────────────────────────────────────
+
+static int VoteTodayYYYYMMDD()
+{
+	const time_t Now = time(nullptr);
+	const struct tm *pTm = localtime(&Now);
+	if(!pTm)
+		return 0;
+	return (1900 + pTm->tm_year) * 10000 + (pTm->tm_mon + 1) * 100 + pTm->tm_mday;
+}
+
+static void VoteFormatDateYYYYMMDD(int Date, char *pBuf, int BufSize)
+{
+	if(!pBuf || BufSize <= 0)
+		return;
+	if(Date <= 0)
+	{
+		str_copy(pBuf, "—", BufSize);
+		return;
+	}
+	str_format(pBuf, BufSize, "%04d-%02d-%02d", Date / 10000, (Date / 100) % 100, Date % 100);
+}
+
+static void VoteAppendWallet(CVoteWrapper &V, CPlayer *pP)
+{
+	if(!pP)
+		return;
+	char aLine[VOTE_DESC_LENGTH];
+	str_format(aLine, sizeof(aLine), "💰 金币 %d", pP->GetStat(AttributeIdentifier::Gold));
+	V.Info(aLine);
+}
+
+static void VoteAppendLevelLine(CVoteWrapper &V, CPlayer *pP)
+{
+	if(!pP)
+		return;
+	char aLine[VOTE_DESC_LENGTH];
+	str_format(aLine, sizeof(aLine), "Lv.%d  经验 %d",
+		pP->GetStat(AttributeIdentifier::Level),
+		pP->GetStat(AttributeIdentifier::Experience));
+	V.Info(aLine);
+}
+
+static void VoteAppendBossStatus(CVoteWrapper &V, CGameContext *pGS, int ClientID)
+{
+	if(!pGS || !pGS->Core())
+		return;
+	CWorldBossManager *pWB = pGS->Core()->GetWorldBossManager();
+	if(!pWB)
+	{
+		V.Info("世界 Boss 系统未启用");
+		return;
+	}
+	char aLine[VOTE_DESC_LENGTH];
+	const char *pName = pWB->GetBossDisplayName(ClientID);
+	if(pWB->IsBossAlive())
+	{
+		const int HpPct = pWB->GetBossMaxHP() > 0 ? pWB->GetBossHP() * 100 / pWB->GetBossMaxHP() : 0;
+		str_format(aLine, sizeof(aLine), "🐉 %s 存活  HP %d/%d (%d%%)",
+			pName, pWB->GetBossHP(), pWB->GetBossMaxHP(), HpPct);
+	}
+	else
+	{
+		const int Sec = pGS->Server() ? pWB->GetNextSpawnInTicks() / maximum(1, pGS->Server()->TickSpeed()) : 0;
+		if(Sec > 0)
+			str_format(aLine, sizeof(aLine), "🐉 %s 未出现  约 %d 秒后刷新", pName, Sec);
+		else
+			str_format(aLine, sizeof(aLine), "🐉 %s 即将降临…", pName);
+	}
+	V.Info(aLine);
+}
+
+static int VoteYesterdayYYYYMMDD()
+{
+	const time_t Now = time(nullptr) - 86400;
+	const struct tm *pTm = localtime(&Now);
+	if(!pTm)
+		return 0;
+	return (1900 + pTm->tm_year) * 10000 + (pTm->tm_mon + 1) * 100 + pTm->tm_mday;
+}
+
+static void VoteAppendGuildWarStatus(CVoteWrapper &V, CGameContext *pGS, int ClientID)
+{
+	CGuildManager *pMgr = pGS && pGS->Core() ? pGS->Core()->GuildManager() : nullptr;
+	if(!pMgr)
+		return;
+	char aMode[16];
+	char aMap[128];
+	int Status = -1;
+	if(!pMgr->GetActiveWarMatchInfo(ClientID, aMode, sizeof(aMode), aMap, sizeof(aMap), &Status))
+	{
+		V.Info("当前无进行中的公会战");
+		return;
+	}
+	static const char *apStatus[] = {"待接受", "选模式中", "准备中", "进行中", "已结束", "已取消"};
+	char aLine[VOTE_DESC_LENGTH];
+	const char *pSt = (Status >= 0 && Status < 6) ? apStatus[Status] : "?";
+	str_format(aLine, sizeof(aLine), "状态：%s", pSt);
+	V.Info(aLine);
+	if(aMode[0])
+	{
+		str_format(aLine, sizeof(aLine), "模式：%s", GuildWarModeDisplayName(aMode));
+		V.Info(aLine);
+	}
+	if(aMap[0])
+	{
+		str_format(aLine, sizeof(aLine), "地图：%s", aMap);
+		V.Info(aLine);
+	}
+}
+
 static bool ItemMatchesInventoryFilter(const CItem &Item, CPlayer *pP)
 {
 	if(!pP || pP->m_InventoryFilterGroup < 0)
@@ -122,7 +244,7 @@ static bool ItemMatchesInventoryFilter(const CItem &Item, CPlayer *pP)
 static void AppendInventoryFilterTabs(CVoteWrapper &V, CGameContext *pGS, int ClientID, CPlayer *pP)
 {
 	static const ItemGroup s_aGroups[] = {
-		ItemGroup::Usable, ItemGroup::Resource, ItemGroup::Equipment,
+		ItemGroup::Usable, ItemGroup::Material, ItemGroup::Equipment,
 		ItemGroup::Potion, ItemGroup::Quest, ItemGroup::Other,
 	};
 	static const char *s_apIcons[] = {"✌", "⚒", "⚰", "⚱", "☁", "☃"};
@@ -312,6 +434,7 @@ bool CMMOManager::EquipWeapon(CPlayer *pPlayer, int ItemSlotIdx, int LoadoutSlot
 	else
 		str_format(aBuf, sizeof(aBuf), "已装备：%s", LocMMOItemName(GS(), pPlayer->GetCID(), pDef));
 	GS()->SendChatTo(pPlayer->GetCID(), aBuf);
+	PlayInteractionSound(GS()->m_World, pPlayer, SOUND_SFX_ITEM_EQUIP);
 	return true;
 }
 
@@ -324,7 +447,7 @@ bool CMMOManager::UnequipWeapon(CPlayer *pPlayer)
 		ItemType::EquipGun, ItemType::EquipShotgun, ItemType::EquipGrenade, ItemType::EquipLaser,
 		ItemType::EquipHelmetTank, ItemType::EquipHelmetDPS, ItemType::EquipHelmetHealer,
 		ItemType::EquipArmorTank, ItemType::EquipArmorDPS, ItemType::EquipArmorHealer,
-		ItemType::EquipGloves, ItemType::EquipPickaxe, ItemType::EquipRake, ItemType::EquipFishrod,
+		ItemType::EquipGloves, ItemType::EquipEidolon, ItemType::EquipPickaxe, ItemType::EquipRake, ItemType::EquipFishrod,
 	};
 
 	bool Any = false;
@@ -484,407 +607,547 @@ void CMMOManager::ShowMMOItemDetail(int ClientID, int ItemIdx)
 	pVote->ClearVotes(ClientID);
 }
 
-bool CMMOManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)
+static bool TryBindBlacksmithEnchant(CGameContext *pGS, CPlayer *pP, SPlayerVote *pVote, int ClientID)
 {
-	if(!pPlayer || !pCmd)
+	if(!pGS || !pP || !pVote)
 		return false;
-
-	const int ClientID = pPlayer->GetCID();
-
-	if(str_comp(pCmd, "ah_list") == 0)
+	if(!IsPlayerNearServiceNpc(pGS, pP, "blacksmith"))
 	{
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_AUCTION_LIST, VOTE_PAGE_MMO_AUCTION);
-		return true;
+		NotifyNpcServiceDenied(pGS, ClientID);
+		return false;
 	}
-	if(str_comp(pCmd, "ah_sell") == 0)
-	{
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_AUCTION_SELL, VOTE_PAGE_MMO_AUCTION);
-		return true;
-	}
-	if(str_comp(pCmd, "ah_sellpick") == 0)
-	{
-		const int Slot = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
-		if(Slot < 0 || (size_t)Slot >= pPlayer->m_MMOInventory.size())
+	BindNpcService(pVote, "blacksmith");
+	return true;
+}
+
+void CMMOManager::RegisterEconomyVoteCommands(CCommandManager *pManager)
+{
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "checkin", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		if(!pP || pP->GetAccountId() <= 0)
 		{
-			GS()->SendChatTo(ClientID, "背包格无效。");
-			return true;
+			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
+			return;
 		}
-		SPlayerVote *pSVote = GetVoteMenu() ? GetVoteMenu()->GetPlayerVote(ClientID) : nullptr;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pMMO->ConCheckin(pG->Server()->ClientName(pCtx->m_ClientID), pP);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_ACTIVITIES, PAGE_MENU);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "ah_list", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_AUCTION_LIST, VOTE_PAGE_MMO_AUCTION);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "ah_sell", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_AUCTION_SELL, VOTE_PAGE_MMO_AUCTION);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "ah_sellpick", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const int Slot = pR->GetInteger(0);
+		if(!pP || Slot < 0 || (size_t)Slot >= pP->m_MMOInventory.size())
+		{
+			pG->SendChatTo(pCtx->m_ClientID, "背包格无效。");
+			return;
+		}
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
 		if(pSVote)
 		{
 			pSVote->m_Select[SPlayerVote::ITEM] = Slot;
 			pSVote->m_Page = VOTE_PAGE_MMO_AUCTION_SELL_PRICE;
-			GetVoteMenu()->ClearVotes(ClientID);
+			pVote->ClearVotes(pCtx->m_ClientID);
 		}
-		return true;
-	}
-	if(str_comp(pCmd, "ah_sellconfirm") == 0)
-	{
-		SPlayerVote *pSVote = GetVoteMenu() ? GetVoteMenu()->GetPlayerVote(ClientID) : nullptr;
-		const int Slot = pSVote ? pSVote->m_Select[SPlayerVote::ITEM] : -1;
-		int Price = ReasonNumber;
-		if(Price <= 0)
-			Price = VoteArgInt(pArgs, pReason, 0);
-		ConAuctionSell(ClientID, Slot, Price);
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_AUCTION, VOTE_PAGE_MMO_ECONOMY);
-		return true;
-	}
-	if(str_comp(pCmd, "ah_buy") == 0)
-	{
-		const int ListingID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		if(ListingID > 0)
-			ConAuctionBuy(ClientID, ListingID);
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_AUCTION_LIST, VOTE_PAGE_MMO_AUCTION);
-		return true;
-	}
-	if(str_comp(pCmd, "ah_cancelpick") == 0)
-	{
-		const int ListingID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		if(ListingID > 0)
-			ConAuctionCancel(ClientID, ListingID);
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_AUCTION_LIST, VOTE_PAGE_MMO_AUCTION);
-		return true;
-	}
+	}, pGame);
 
-	if(str_comp(pCmd, "shop") == 0)
-	{
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_SHOP_LIST, VOTE_PAGE_MMO_SHOP);
-		return true;
-	}
-	if(str_comp(pCmd, "shopnpc") == 0)
-	{
-		if(!pArgs || !pArgs[0])
-			return true;
-		SPlayerVote *pSVote = GetVoteMenu() ? GetVoteMenu()->GetPlayerVote(ClientID) : nullptr;
-		if(pSVote)
+	VOTE_CMD(pManager, "ah_sellconfirm", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
+		const int Slot = pSVote ? pSVote->m_Select[SPlayerVote::ITEM] : -1;
+		int Price = 0;
+		if(pCtx->m_pArgs && pCtx->m_pArgs[0])
+			Price = str_toint(pCtx->m_pArgs);
+		pMMO->ConAuctionSell(pCtx->m_ClientID, Slot, Price);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_AUCTION, VOTE_PAGE_MMO_ECONOMY);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "ah_buy", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const int ListingID = pR->GetInteger(0);
+		if(ListingID > 0)
+			pMMO->ConAuctionBuy(pCtx->m_ClientID, ListingID);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_AUCTION_LIST, VOTE_PAGE_MMO_AUCTION);
+	}, pGame);
+
+	VOTE_CMD(pManager, "ah_cancelpick", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const int ListingID = pR->GetInteger(0);
+		if(ListingID > 0)
+			pMMO->ConAuctionCancel(pCtx->m_ClientID, ListingID);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_AUCTION_LIST, VOTE_PAGE_MMO_AUCTION);
+	}, pGame);
+
+	VOTE_CMD(pManager, "shopnpc", "s", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		const char *pNpc = pR->GetString(0);
+		if(!pNpc || !pNpc[0])
+			return;
+		CPlayer *pBuyer = pG->m_apPlayers[pCtx->m_ClientID];
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
+		if(!pSVote || !pBuyer)
+			return;
+		if(!FindShopByNpcID(pNpc))
 		{
-			str_copy(pSVote->m_aExtraText, pArgs, sizeof(pSVote->m_aExtraText));
-			pSVote->m_Page = VOTE_PAGE_MMO_SHOP_ITEMS;
-			GetVoteMenu()->ClearVotes(ClientID);
+			pG->SendChatTo(pCtx->m_ClientID, "未找到该商店。");
+			return;
 		}
-		return true;
-	}
-	if(str_comp(pCmd, "shopbuy") == 0)
-	{
+		if(!IsPlayerNearServiceNpc(pG, pBuyer, pNpc))
+		{
+			NotifyNpcServiceDenied(pG, pCtx->m_ClientID);
+			return;
+		}
+		BindNpcService(pSVote, pNpc);
+		str_copy(pSVote->m_aExtraText, pNpc, sizeof(pSVote->m_aExtraText));
+		pSVote->m_Page = VOTE_PAGE_MMO_SHOP_ITEMS;
+		pVote->ClearVotes(pCtx->m_ClientID);
+	}, pGame);
+
+	VOTE_CMD(pManager, "shopbuy", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pBuyer = pG->m_apPlayers[pCtx->m_ClientID];
+		const char *pArgs = pCtx->m_pArgs;
 		char aNpc[32];
 		int ItemID = 0;
-		if(pArgs && pArgs[0])
+		const char *pSpace = pArgs ? str_find(pArgs, " ") : nullptr;
+		if(pSpace)
 		{
-			const char *pSpace = str_find(pArgs, " ");
-			if(pSpace)
-			{
-				const int NpcLen = minimum((int)(pSpace - pArgs), (int)sizeof(aNpc) - 1);
-				str_copy(aNpc, pArgs, NpcLen + 1);
-				ItemID = str_toint(pSpace + 1);
-			}
-			else
-			{
-				SPlayerVote *pSVote = GetVoteMenu() ? GetVoteMenu()->GetPlayerVote(ClientID) : nullptr;
-				if(pSVote && pSVote->m_aExtraText[0])
-				{
-					str_copy(aNpc, pSVote->m_aExtraText, sizeof(aNpc));
-					ItemID = str_toint(pArgs);
-				}
-				else
-					return true;
-			}
+			const int NpcLen = minimum((int)(pSpace - pArgs), (int)sizeof(aNpc) - 1);
+			str_copy(aNpc, pArgs, NpcLen + 1);
+			ItemID = str_toint(pSpace + 1);
+		}
+		else if(pArgs && pArgs[0])
+		{
+			CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+			SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
+			if(!pSVote || !pSVote->m_aExtraText[0])
+				return;
+			str_copy(aNpc, pSVote->m_aExtraText, sizeof(aNpc));
+			ItemID = str_toint(pArgs);
 		}
 		else
-			return true;
-		ConShopBuy(ClientID, aNpc, ItemID);
-		if(GetVoteMenu())
+			return;
+		if(!pBuyer || !aNpc[0] || !IsPlayerNearServiceNpc(pG, pBuyer, aNpc))
 		{
-			SPlayerVote *pSVote = GetVoteMenu()->GetPlayerVote(ClientID);
+			NotifyNpcServiceDenied(pG, pCtx->m_ClientID);
+			return;
+		}
+		pMMO->ConShopBuy(pCtx->m_ClientID, aNpc, ItemID);
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		if(pVote)
+		{
+			SPlayerVote *pSVote = pVote->GetPlayerVote(pCtx->m_ClientID);
 			if(pSVote && pSVote->m_aExtraText[0])
 			{
 				pSVote->m_Page = VOTE_PAGE_MMO_SHOP_ITEMS;
-				GetVoteMenu()->ClearVotes(ClientID);
+				pVote->ClearVotes(pCtx->m_ClientID);
 			}
 		}
-		return true;
-	}
+		(void)pR;
+	}, pGame);
 
-	if(str_comp(pCmd, "enchant") == 0)
-	{
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_ENCHANT_SELECT, VOTE_PAGE_MMO_ENCHANT);
-		return true;
-	}
-	if(str_comp(pCmd, "enchantpick") == 0)
-	{
-		const int Slot = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
-		ConEnchant(ClientID, Slot);
-		return true;
-	}
+	VOTE_CMD(pManager, "enchant", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
+		if(!TryBindBlacksmithEnchant(pG, pP, pSVote, pCtx->m_ClientID))
+			return;
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_ENCHANT_SELECT, VOTE_PAGE_MMO_ENCHANT);
+		(void)pR;
+	}, pGame);
 
-	if(str_comp(pCmd, "fashion") == 0)
-	{
+	VOTE_CMD(pManager, "enchantpick", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
+		if(!EnsureNpcServiceAccess(pG, pP, pSVote))
+		{
+			NotifyNpcServiceDenied(pG, pCtx->m_ClientID);
+			return;
+		}
+		pMMO->ConEnchant(pCtx->m_ClientID, pR->GetInteger(0));
+	}, pGame);
+
+	VOTE_CMD(pManager, "recycle_pick", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
+		if(pSVote)
+		{
+			pSVote->m_Select[SPlayerVote::ITEM] = pR->GetInteger(0);
+			pSVote->m_Page = VOTE_PAGE_MMO_RECYCLE_CONFIRM;
+			pVote->ClearVotes(pCtx->m_ClientID);
+		}
+	}, pGame);
+
+	VOTE_CMD(pManager, "recycle_confirm", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		if(!pP)
+			return;
+		const int Slot = pR->GetInteger(0);
+		int Qty = pR->NumArguments() >= 2 ? pR->GetInteger(1) : 0;
+		const char *pReasonMsg = nullptr;
+		int Gold = 0;
+		if(pMMO->TrySellItem(pP, Slot, Qty, &Gold, &pReasonMsg))
+		{
+			char aBuf[160];
+			str_format(aBuf, sizeof(aBuf), LocVote(pG, pCtx->m_ClientID, "mmo.recycle.ok", "回收成功，获得 %d 金币（今日 %d/%d）"),
+				Gold, pP->m_DailySellGold, MMO_SELL_DAILY_GOLD_CAP);
+			pG->SendChatTo(pCtx->m_ClientID, aBuf);
+		}
+		else if(pReasonMsg)
+			pG->SendChatTo(pCtx->m_ClientID, pReasonMsg);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_RECYCLE, VOTE_PAGE_MMO_ECONOMY);
+	}, pGame);
+}
+
+void CMMOManager::RegisterSocialVoteCommands(CCommandManager *pManager)
+{
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "friend_list", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_FRIENDS_LIST, VOTE_PAGE_MMO_FRIENDS);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "friend_add", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG)
+			return;
+		const char *pName = pCtx->m_pArgs;
+		if(pName && pName[0])
+			CGlobalState::FriendRequestSend(pG, pCtx->m_ClientID, pName);
+		else
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "friend_accept", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG)
+			return;
+		const char *pName = pCtx->m_pArgs;
+		if(pName && pName[0])
+			CGlobalState::FriendAccept(pG, pCtx->m_ClientID, pName);
+		else
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "friend_decline", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG)
+			return;
+		const char *pName = pCtx->m_pArgs;
+		if(pName && pName[0])
+			CGlobalState::FriendDecline(pG, pCtx->m_ClientID, pName);
+		else
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "friend_remove", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG)
+			return;
+		const char *pName = pCtx->m_pArgs;
+		if(pName && pName[0])
+			CGlobalState::FriendRemove(pG, pCtx->m_ClientID, pName);
+		else
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 栏填写玩家名。");
+		(void)pR;
+	}, pGame);
+}
+
+void CMMOManager::RegisterLifestyleVoteCommands(CCommandManager *pManager)
+{
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "fashion", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const char *pArgs = pCtx->m_pArgs;
 		if(pArgs && str_comp_nocase(pArgs, "clear") == 0)
 		{
-			if(pPlayer->m_FashionItemID == 0)
-				GS()->SendChatTo(ClientID, "当前没有装备时装。");
+			if(!pP || pP->m_FashionItemID == 0)
+				pG->SendChatTo(pCtx->m_ClientID, "当前没有装备时装。");
 			else
 			{
-				pPlayer->m_FashionItemID = 0;
-				pPlayer->m_MMODirty = true;
-				GS()->SendChatTo(ClientID, "已清除时装，恢复默认外观。");
+				pP->m_FashionItemID = 0;
+				pP->m_MMODirty = true;
+				pG->SendChatTo(pCtx->m_ClientID, "已清除时装，恢复默认外观。");
 			}
-			return true;
+			return;
 		}
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_FASHION_SELECT, VOTE_PAGE_MMO_LIFESTYLE);
-		return true;
-	}
-	if(str_comp(pCmd, "fashionpick") == 0)
-	{
-		const int Slot = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
-		EquipFashion(pPlayer, Slot);
-		return true;
-	}
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_FASHION_SELECT, VOTE_PAGE_MMO_LIFESTYLE);
+		(void)pR;
+	}, pGame);
 
-	if(str_comp(pCmd, "friend_list") == 0)
-	{
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_FRIENDS_LIST, VOTE_PAGE_MMO_FRIENDS);
-		return true;
-	}
-	if(str_comp(pCmd, "friend_add") == 0)
-	{
-		const char *pName = VoteArgText(pArgs, pReason);
-		if(pName)
-			CGlobalState::FriendAdd(GS(), ClientID, pName);
-		else
-			GS()->SendChatTo(ClientID, "请在 Reason 栏填写玩家名。");
-		return true;
-	}
-	if(str_comp(pCmd, "friend_remove") == 0)
-	{
-		const char *pName = VoteArgText(pArgs, pReason);
-		if(pName)
-			CGlobalState::FriendRemove(GS(), ClientID, pName);
-		else
-			GS()->SendChatTo(ClientID, "请在 Reason 栏填写玩家名。");
-		return true;
-	}
+	VOTE_CMD(pManager, "fashionpick", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		if(pP)
+			pG->Core()->GetMMOManager()->EquipFashion(pP, pR->GetInteger(0));
+	}, pGame);
 
-	if(str_comp(pCmd, "rank") == 0)
-	{
-		if(pArgs && str_comp_nocase(pArgs, "gold") == 0)
-			OpenVotePage(ClientID, VOTE_PAGE_MMO_RANKING_GOLD, VOTE_PAGE_MMO_RANKING);
-		else
-			OpenVotePage(ClientID, VOTE_PAGE_MMO_RANKING_LEVEL, VOTE_PAGE_MMO_RANKING);
-		return true;
-	}
+	VOTE_CMD(pManager, "mount", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pMMO->ToggleVehicle(pCtx->m_ClientID);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_MOUNT, VOTE_PAGE_MMO_LIFESTYLE);
+		(void)pR;
+	}, pGame);
 
-	if(str_comp(pCmd, "guild_browse") == 0)
-	{
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_GUILD_BROWSE, VOTE_PAGE_MMO_GUILD);
-		return true;
-	}
-	if(str_comp(pCmd, "guild_detail") == 0)
-	{
-		const int GuildID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		if(GuildID <= 0)
-			return true;
-		SPlayerVote *pSVote = GetVoteMenu() ? GetVoteMenu()->GetPlayerVote(ClientID) : nullptr;
-		if(pSVote)
+	VOTE_CMD(pManager, "vehicle", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pMMO->ToggleVehicle(pCtx->m_ClientID);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_MOUNT, VOTE_PAGE_MMO_LIFESTYLE);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "vehiclename", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const char *pNewName = pCtx->m_pArgs;
+		if(!pP || pP->GetAccountId() <= 0)
 		{
-			pSVote->m_Select[SPlayerVote::ITEMLIST] = GuildID;
-			OpenVotePage(ClientID, VOTE_PAGE_MMO_GUILD_DETAIL, VOTE_PAGE_MMO_GUILD_BROWSE);
+			pG->SendChatTo(pCtx->m_ClientID, "请先登录。");
+			return;
 		}
-		return true;
-	}
-	if(str_comp(pCmd, "guild_apply") == 0)
-	{
-		const int GuildID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		CGuildManager *pGuildMgr = Core() ? Core()->GuildManager() : nullptr;
-		if(pGuildMgr && GuildID > 0)
-			pGuildMgr->RequestJoinGuild(ClientID, GuildID);
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_GUILD_DETAIL, VOTE_PAGE_MMO_GUILD_BROWSE);
-		return true;
-	}
-	if(str_comp(pCmd, "guild_create") == 0)
-	{
-		const char *pText = VoteArgText(pArgs, pReason);
-		CGuildManager *pGuildMgr = Core() ? Core()->GuildManager() : nullptr;
-		if(!pText || !pText[0])
+		if(pP->m_VehicleType <= 0)
 		{
-			GS()->SendChatTo(ClientID, "请在 Reason 栏填写公会名称（可选：名称 标签）。");
-			return true;
+			pG->SendChatTo(pCtx->m_ClientID, "🚁 你没有载具，无法改名。");
+			return;
 		}
-		if(pGuildMgr)
+		if(!pNewName || !pNewName[0])
 		{
-			char aName[MAX_NAME_LENGTH];
-			char aTag[8];
-			aName[0] = 0;
-			aTag[0] = 0;
-			const char *pSpace = str_find(pText, " ");
-			if(pSpace)
-			{
-				str_copy(aName, pText, minimum((int)(pSpace - pText) + 1, (int)sizeof(aName)));
-				str_copy(aTag, str_skip_whitespaces_const(pSpace + 1), sizeof(aTag));
-			}
-			else
-				str_copy(aName, pText, sizeof(aName));
-			pGuildMgr->CreateGuild(ClientID, aName, aTag[0] ? aTag : nullptr);
+			pG->SendChatTo(pCtx->m_ClientID, "请在 Reason 中填写新名字。");
+			return;
 		}
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_GUILD, VOTE_PAGE_MMO_PVP);
-		return true;
-	}
-	if(str_comp(pCmd, "guild_members_page") == 0)
-	{
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_GUILD_MEMBERS, VOTE_PAGE_MMO_GUILD);
-		return true;
-	}
-	if(str_comp(pCmd, "guild_requests") == 0)
-	{
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_GUILD_REQUESTS, VOTE_PAGE_MMO_GUILD);
-		return true;
-	}
-	if(str_comp(pCmd, "guild_req_accept") == 0)
-	{
-		const int AccountID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		CGuildManager *pGuildMgr = Core() ? Core()->GuildManager() : nullptr;
-		if(pGuildMgr && AccountID > 0)
-			pGuildMgr->AcceptJoinRequest(ClientID, AccountID);
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_GUILD_REQUESTS, VOTE_PAGE_MMO_GUILD);
-		return true;
-	}
-	if(str_comp(pCmd, "guild_req_deny") == 0)
-	{
-		const int AccountID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		CGuildManager *pGuildMgr = Core() ? Core()->GuildManager() : nullptr;
-		if(pGuildMgr && AccountID > 0)
-			pGuildMgr->DenyJoinRequest(ClientID, AccountID);
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_GUILD_REQUESTS, VOTE_PAGE_MMO_GUILD);
-		return true;
-	}
+		str_copy(pP->m_aVehicleName, pNewName, sizeof(pP->m_aVehicleName));
+		pMMO->SaveVehicleData(pP);
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "🚁 载具已更名为: %s", pP->m_aVehicleName);
+		pG->SendChatTo(pCtx->m_ClientID, aBuf);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_MOUNT, VOTE_PAGE_MMO_LIFESTYLE);
+		(void)pR;
+	}, pGame);
 
-	if(str_comp(pCmd, "mount") == 0)
-	{
-		ToggleMount(ClientID);
-		return true;
-	}
-	if(str_comp(pCmd, "pet") == 0)
-	{
-		TogglePet(ClientID);
-		return true;
-	}
+	VOTE_CMD(pManager, "vehicle_activate", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const int Slot = pR->GetInteger(0);
+		if(pP && Slot >= 0 && (size_t)Slot < pP->m_MMOInventory.size())
+			pMMO->TryGrantVehicleFromItem(pP, pP->m_MMOInventory[Slot].GetID(), Slot);
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_MOUNT, VOTE_PAGE_MMO_LIFESTYLE);
+	}, pGame);
 
-	if(str_comp(pCmd, "stats") == 0)
-	{
-		OpenVotePage(ClientID, PAGE_ATTRIBUTES);
-		return true;
-	}
+	VOTE_CMD(pManager, "house_buy", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->VoteHouseBuy(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
 
-	if(str_comp(pCmd, "mmounequipid") == 0)
-	{
-		SPlayerVote *pSVote = GetVoteMenu() ? GetVoteMenu()->GetPlayerVote(ClientID) : nullptr;
+	VOTE_CMD(pManager, "house_tp", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->VoteHouseTp(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "marry", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->VoteMarry(pCtx->m_ClientID, pCtx->m_pArgs);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "marry_accept", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->VoteMarryAccept(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "divorce", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(pG && pG->Core() && pG->Core()->GetMMOManager())
+			pG->Core()->GetMMOManager()->VoteDivorce(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+}
+
+void CMMOManager::RegisterInventoryVoteCommands(CCommandManager *pManager)
+{
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "use", "i", CMMOManager::ConUse, pGame);
+
+	VOTE_CMD(pManager, "mmounequipid", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const int ItemID = pR->GetInteger(0);
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
 		const int SlotIdx = pSVote ? pSVote->m_Select[SPlayerVote::ITEM] : -1;
-		const int ItemID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		if(UnequipItemById(pPlayer, ItemID))
+		if(pMMO->UnequipItemById(pP, ItemID))
 		{
-			if(SlotIdx >= 0 && (size_t)SlotIdx < pPlayer->m_MMOInventory.size())
-				ShowMMOItemDetail(ClientID, SlotIdx);
+			if(SlotIdx >= 0 && pP && (size_t)SlotIdx < pP->m_MMOInventory.size())
+				pMMO->ShowMMOItemDetail(pCtx->m_ClientID, SlotIdx);
 			else
-				ShowMMOEquip(ClientID);
+				pMMO->ShowMMOEquip(pCtx->m_ClientID);
 		}
-		return true;
-	}
+	}, pGame);
 
-	if(str_comp(pCmd, "wloadslot") == 0)
-	{
-		const char *pRest = pArgs ? str_find(pArgs, " ") : nullptr;
-		const int ItemID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		const int LoadoutSlot = pRest ? str_toint(pRest + 1) : -1;
-		SPlayerVote *pSVote = GetVoteMenu() ? GetVoteMenu()->GetPlayerVote(ClientID) : nullptr;
+	VOTE_CMD(pManager, "wloadslot", "ii", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const int ItemID = pR->GetInteger(0);
+		const int LoadoutSlot = pR->GetInteger(1);
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
 		const int SlotIdx = pSVote ? pSVote->m_Select[SPlayerVote::ITEM] : -1;
-		if(AssignWeaponLoadoutSlot(pPlayer, ItemID, LoadoutSlot))
+		if(pMMO->AssignWeaponLoadoutSlot(pP, ItemID, LoadoutSlot))
 		{
-			if(SlotIdx >= 0 && (size_t)SlotIdx < pPlayer->m_MMOInventory.size())
-				ShowMMOItemDetail(ClientID, SlotIdx);
+			if(SlotIdx >= 0 && pP && (size_t)SlotIdx < pP->m_MMOInventory.size())
+				pMMO->ShowMMOItemDetail(pCtx->m_ClientID, SlotIdx);
 			else
-				ShowMMOEquip(ClientID);
+				pMMO->ShowMMOEquip(pCtx->m_ClientID);
 		}
-		return true;
-	}
+	}, pGame);
 
-	if(str_comp(pCmd, "group_create") == 0)
-	{
-		GroupCreate(ClientID);
-		RefreshGroupVotePage(ClientID);
-		return true;
-	}
-	if(str_comp(pCmd, "group_leave") == 0)
-	{
-		GroupLeave(ClientID);
-		RefreshGroupVotePage(ClientID);
-		return true;
-	}
-	if(str_comp(pCmd, "group_disband") == 0)
-	{
-		GroupDisband(ClientID);
-		RefreshGroupVotePage(ClientID);
-		return true;
-	}
-	if(str_comp(pCmd, "group_kick_menu") == 0)
-	{
-		SPlayerVote *pSVote = GetVoteMenu()->GetPlayerVote(ClientID);
-		str_copy(pSVote->m_aExtraText, "kick", sizeof(pSVote->m_aExtraText));
-		pSVote->m_Page = VOTE_PAGE_MMO_GROUP;
-		GetVoteMenu()->ClearVotes(ClientID);
-		return true;
-	}
-	if(str_comp(pCmd, "group_kick") == 0)
-	{
-		const int TargetCID = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
-		if(TargetCID >= 0)
-			GroupKick(ClientID, TargetCID);
-		SPlayerVote *pSVote = GetVoteMenu()->GetPlayerVote(ClientID);
-		if(pSVote)
-			pSVote->m_aExtraText[0] = 0;
-		RefreshGroupVotePage(ClientID);
-		return true;
-	}
-
-	if(str_comp(pCmd, "mail_read") == 0)
-	{
-		const int MailID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		SPlayerVote *pSVote = GetVoteMenu()->GetPlayerVote(ClientID);
-		pSVote->m_Select[SPlayerVote::ITEM] = MailID;
-		pSVote->m_Page = VOTE_PAGE_MMO_MAIL_READ;
-		GetVoteMenu()->ClearVotes(ClientID);
-		return true;
-	}
-	if(str_comp(pCmd, "mail_claim") == 0)
-	{
-		const int MailID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		if(MailID > 0)
-			ClaimMailAttachments(pPlayer, MailID);
-		SPlayerVote *pSVote = GetVoteMenu()->GetPlayerVote(ClientID);
-		pSVote->m_Select[SPlayerVote::ITEM] = MailID;
-		pSVote->m_Page = VOTE_PAGE_MMO_MAILBOX;
-		GetVoteMenu()->ClearVotes(ClientID);
-		return true;
-	}
-	if(str_comp(pCmd, "mail_delete") == 0)
-	{
-		const int MailID = pArgs && pArgs[0] ? str_toint(pArgs) : 0;
-		if(MailID > 0)
-			DeleteMail(MailID);
-		SPlayerVote *pSVote = GetVoteMenu()->GetPlayerVote(ClientID);
-		pSVote->m_Page = VOTE_PAGE_MMO_MAILBOX;
-		GetVoteMenu()->ClearVotes(ClientID);
-		return true;
-	}
-	if(str_comp(pCmd, "mail_delread") == 0)
-	{
-		DeleteReadMails(pPlayer->GetAccountId());
-		SPlayerVote *pSVote = GetVoteMenu()->GetPlayerVote(ClientID);
-		pSVote->m_Page = VOTE_PAGE_MMO_MAILBOX;
-		GetVoteMenu()->ClearVotes(ClientID);
-		return true;
-	}
-
-	if(str_comp(pCmd, "inv_filter") == 0)
-	{
+	VOTE_CMD(pManager, "inv_filter", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		if(!pP)
+			return;
+		const char *pArgs = pCtx->m_pArgs;
 		const int Group = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
 		int Type = -1;
 		if(pArgs)
@@ -893,75 +1156,259 @@ bool CMMOManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const 
 			if(pSpace)
 				Type = str_toint(pSpace + 1);
 		}
-		pPlayer->m_InventoryFilterGroup = Group;
-		pPlayer->m_InventoryFilterType = Type;
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_BACKPACK);
-		return true;
-	}
-	if(str_comp(pCmd, "mmodrop") == 0)
-	{
-		const int Slot = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
-		int Qty = ReasonNumber;
-		if(Qty <= 0)
-			Qty = VoteArgInt(pArgs && str_find(pArgs, " ") ? str_find(pArgs, " ") + 1 : nullptr, pReason, 0);
+		pP->m_InventoryFilterGroup = Group;
+		pP->m_InventoryFilterType = Type;
+		pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_BACKPACK);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "mmodrop", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const int Slot = pR->GetInteger(0);
+		const char *pRest = pCtx->m_pArgs ? str_find(pCtx->m_pArgs, " ") : nullptr;
+		int Qty = VoteArgInt(pRest ? pRest + 1 : nullptr, nullptr, 0);
 		const char *pReasonMsg = nullptr;
-		if(DropItemAtSlot(pPlayer, Slot, Qty, &pReasonMsg))
+		if(pMMO->DropItemAtSlot(pP, Slot, Qty, &pReasonMsg))
 		{
 			if(Slot >= 0)
-				ShowMMOItemDetail(ClientID, Slot);
+				pMMO->ShowMMOItemDetail(pCtx->m_ClientID, Slot);
 			else
-				ShowMMOInventory(ClientID);
+				pMMO->ShowMMOInventory(pCtx->m_ClientID);
 		}
 		else if(pReasonMsg)
-			GS()->SendChatTo(ClientID, pReasonMsg);
-		return true;
-	}
-	if(str_comp(pCmd, "mmosplit") == 0)
-	{
-		const int Slot = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
-		int SplitCount = ReasonNumber;
-		if(SplitCount <= 0)
-			SplitCount = VoteArgInt(pArgs && str_find(pArgs, " ") ? str_find(pArgs, " ") + 1 : nullptr, pReason, 0);
-		const char *pReasonMsg = nullptr;
-		if(SplitItemAtSlot(pPlayer, Slot, SplitCount, &pReasonMsg))
-			ShowMMOItemDetail(ClientID, Slot);
-		else if(pReasonMsg)
-			GS()->SendChatTo(ClientID, pReasonMsg);
-		return true;
-	}
-	if(str_comp(pCmd, "recycle_pick") == 0)
-	{
-		const int Slot = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
-		SPlayerVote *pSVote = GetVoteMenu() ? GetVoteMenu()->GetPlayerVote(ClientID) : nullptr;
-		if(pSVote)
-		{
-			pSVote->m_Select[SPlayerVote::ITEM] = Slot;
-			pSVote->m_Page = VOTE_PAGE_MMO_RECYCLE_CONFIRM;
-			GetVoteMenu()->ClearVotes(ClientID);
-		}
-		return true;
-	}
-	if(str_comp(pCmd, "recycle_confirm") == 0)
-	{
-		const int Slot = pArgs && pArgs[0] ? str_toint(pArgs) : -1;
-		int Qty = ReasonNumber;
-		if(Qty <= 0)
-			Qty = 0;
-		const char *pReasonMsg = nullptr;
-		int Gold = 0;
-		if(TrySellItem(pPlayer, Slot, Qty, &Gold, &pReasonMsg))
-		{
-			char aBuf[160];
-			str_format(aBuf, sizeof(aBuf), LocVote(GS(), ClientID, "mmo.recycle.ok", "回收成功，获得 %d 金币（今日 %d/%d）"),
-				Gold, pPlayer->m_DailySellGold, MMO_SELL_DAILY_GOLD_CAP);
-			GS()->SendChatTo(ClientID, aBuf);
-		}
-		else if(pReasonMsg)
-			GS()->SendChatTo(ClientID, pReasonMsg);
-		OpenVotePage(ClientID, VOTE_PAGE_MMO_RECYCLE, VOTE_PAGE_MMO_ECONOMY);
-		return true;
-	}
+			pG->SendChatTo(pCtx->m_ClientID, pReasonMsg);
+	}, pGame);
 
+	VOTE_CMD(pManager, "mmosplit", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const int Slot = pR->GetInteger(0);
+		const char *pRest = pCtx->m_pArgs ? str_find(pCtx->m_pArgs, " ") : nullptr;
+		int SplitCount = VoteArgInt(pRest ? pRest + 1 : nullptr, nullptr, 0);
+		const char *pReasonMsg = nullptr;
+		if(pMMO->SplitItemAtSlot(pP, Slot, SplitCount, &pReasonMsg))
+			pMMO->ShowMMOItemDetail(pCtx->m_ClientID, Slot);
+		else if(pReasonMsg)
+			pG->SendChatTo(pCtx->m_ClientID, pReasonMsg);
+	}, pGame);
+}
+
+void CMMOManager::RegisterGroupVoteCommands(CCommandManager *pManager)
+{
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "group_create", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pMMO->GroupCreate(pCtx->m_ClientID);
+		pMMO->RefreshGroupVotePage(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "group_leave", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pMMO->GroupLeave(pCtx->m_ClientID);
+		pMMO->RefreshGroupVotePage(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "group_disband", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		pMMO->GroupDisband(pCtx->m_ClientID);
+		pMMO->RefreshGroupVotePage(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "group_kick_menu", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CVoteMenuManager *pVote = pG->Core()->GetMMOManager()->GetVoteMenu();
+		if(!pVote)
+			return;
+		SPlayerVote *pSVote = pVote->GetPlayerVote(pCtx->m_ClientID);
+		str_copy(pSVote->m_aExtraText, "kick", sizeof(pSVote->m_aExtraText));
+		pSVote->m_Page = VOTE_PAGE_MMO_GROUP;
+		pVote->ClearVotes(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "group_kick", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const int TargetCID = pR->GetInteger(0);
+		if(TargetCID >= 0)
+			pMMO->GroupKick(pCtx->m_ClientID, TargetCID);
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		SPlayerVote *pSVote = pVote ? pVote->GetPlayerVote(pCtx->m_ClientID) : nullptr;
+		if(pSVote)
+			pSVote->m_aExtraText[0] = 0;
+		pMMO->RefreshGroupVotePage(pCtx->m_ClientID);
+	}, pGame);
+}
+
+void CMMOManager::RegisterMailVoteCommands(CCommandManager *pManager)
+{
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "mail_read", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CVoteMenuManager *pVote = pG->Core()->GetMMOManager()->GetVoteMenu();
+		if(!pVote)
+			return;
+		const int MailID = pR->GetInteger(0);
+		SPlayerVote *pSVote = pVote->GetPlayerVote(pCtx->m_ClientID);
+		pSVote->m_Select[SPlayerVote::ITEM] = MailID;
+		pSVote->m_Page = VOTE_PAGE_MMO_MAIL_READ;
+		pVote->ClearVotes(pCtx->m_ClientID);
+	}, pGame);
+
+	VOTE_CMD(pManager, "mail_claim", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const int MailID = pR->GetInteger(0);
+		if(MailID > 0)
+			pMMO->ClaimMailAttachments(pP, MailID);
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		if(!pVote)
+			return;
+		SPlayerVote *pSVote = pVote->GetPlayerVote(pCtx->m_ClientID);
+		pSVote->m_Select[SPlayerVote::ITEM] = MailID;
+		pSVote->m_Page = VOTE_PAGE_MMO_MAILBOX;
+		pVote->ClearVotes(pCtx->m_ClientID);
+	}, pGame);
+
+	VOTE_CMD(pManager, "mail_claimall", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		const int Claimed = pMMO->ClaimAllMailAttachments(pP);
+		char aMsg[128];
+		if(Claimed > 0)
+			str_format(aMsg, sizeof(aMsg), "✅ 一键领取完成，共 %d 封邮件附件。", Claimed);
+		else
+			str_copy(aMsg, "没有可领取的邮件附件。", sizeof(aMsg));
+		pG->SendChatTo(pCtx->m_ClientID, aMsg);
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		if(!pVote)
+			return;
+		SPlayerVote *pSVote = pVote->GetPlayerVote(pCtx->m_ClientID);
+		pSVote->m_Page = VOTE_PAGE_MMO_MAILBOX;
+		pVote->ClearVotes(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "mail_delete", "i", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const int MailID = pR->GetInteger(0);
+		if(MailID > 0)
+			pMMO->DeleteMail(MailID);
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		if(!pVote)
+			return;
+		SPlayerVote *pSVote = pVote->GetPlayerVote(pCtx->m_ClientID);
+		pSVote->m_Page = VOTE_PAGE_MMO_MAILBOX;
+		pVote->ClearVotes(pCtx->m_ClientID);
+	}, pGame);
+
+	VOTE_CMD(pManager, "mail_delread", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		if(pP)
+			pMMO->DeleteReadMails(pP->GetAccountId());
+		CVoteMenuManager *pVote = pMMO->GetVoteMenu();
+		if(!pVote)
+			return;
+		SPlayerVote *pSVote = pVote->GetPlayerVote(pCtx->m_ClientID);
+		pSVote->m_Page = VOTE_PAGE_MMO_MAILBOX;
+		pVote->ClearVotes(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+}
+
+void CMMOManager::RegisterActivityVoteCommands(CCommandManager *pManager)
+{
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "rank", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		CMMOManager *pMMO = pG->Core()->GetMMOManager();
+		const char *pType = pCtx->m_pArgs;
+		if(pType && str_comp_nocase(pType, "gold") == 0)
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_RANKING_GOLD, VOTE_PAGE_MMO_RANKING);
+		else
+			pMMO->OpenVotePage(pCtx->m_ClientID, VOTE_PAGE_MMO_RANKING_LEVEL, VOTE_PAGE_MMO_RANKING);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "stats", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetMMOManager())
+			return;
+		pG->Core()->GetMMOManager()->OpenVotePage(pCtx->m_ClientID, PAGE_ATTRIBUTES);
+		(void)pR;
+	}, pGame);
+}
+
+bool CMMOManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)
+{
+	(void)pPlayer;
+	(void)pCmd;
+	(void)pArgs;
+	(void)ReasonNumber;
+	(void)pReason;
 	return false;
 }
 
@@ -969,99 +1416,268 @@ bool CMMOManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const 
 
 static void RenderMMOSocialHub(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, PAGE_MENU, "社交菜单")
-		.Info("好友、队伍、邮箱与聊天")
-		.GoToPage(VOTE_PAGE_MMO_FRIENDS, "好友")
-		.GoToPage(VOTE_PAGE_MMO_GROUP, "队伍")
-		.GoToPage(VOTE_PAGE_MMO_MAILBOX, "邮箱")
-		.GoToPage(VOTE_PAGE_MMO_CHAT, "聊天说明")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, PAGE_MENU, "社交菜单");
+	char aLine[VOTE_DESC_LENGTH];
+
+	if(pP && pP->GetAccountId() > 0)
+	{
+		CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+		const int Friends = (int)pP->m_aFriends.size();
+		const int Pending = CGlobalState::CountIncomingFriendRequests(pGS, pP->GetAccountId());
+		const int MailTotal = pMMO ? pMMO->GetMailCount(pP->GetAccountId()) : 0;
+		const int MailUnread = pMMO ? pMMO->GetUnreadMailCount(pP->GetAccountId()) : 0;
+		const int GroupIdx = CGlobalState::GetPlayerGroupID(pGS->Server(), ClientID);
+
+		str_format(aLine, sizeof(aLine), "好友 %d 人%s", Friends,
+			Pending > 0 ? "  ·  有新申请" : "");
+		V.Info(aLine);
+		str_format(aLine, sizeof(aLine), "邮箱 %d 封（%d 未读）", MailTotal, MailUnread);
+		V.Info(aLine);
+		if(GroupIdx >= 0)
+			V.Info("已在队伍中");
+		else
+			V.Info("未加入队伍");
+	}
+
+	V.GoToPage(VOTE_PAGE_MMO_FRIENDS, "好友");
+	V.GoToPage(VOTE_PAGE_MMO_GROUP, "队伍");
+	V.GoToPage(VOTE_PAGE_MMO_MAILBOX, "邮箱");
+	V.GoToPage(VOTE_PAGE_MMO_CHAT, "聊天与交易");
+	V.Footer();
 }
 
 static void RenderMMOActivitiesHub(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, PAGE_MENU, "活动菜单")
-		.Info("签到、任务与排行榜")
-		.Option("ccv_checkin", "每日签到")
-		.GoToPage(PAGE_QUESTS, "任务列表")
-		.GoToPage(VOTE_PAGE_MMO_RANKING, "排行榜")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, PAGE_MENU, "活动菜单");
+	char aLine[VOTE_DESC_LENGTH];
+
+	if(pP && pP->GetAccountId() > 0)
+	{
+		VoteAppendLevelLine(V, pP);
+		const int Today = VoteTodayYYYYMMDD();
+		if(pP->m_LastCheckinDate == Today)
+		{
+			str_format(aLine, sizeof(aLine), "今日已签到  连续 %d 天", pP->m_CheckinStreak);
+			V.Info(aLine);
+		}
+		else
+		{
+			int StreakPreview = 1;
+			if(pP->m_LastCheckinDate == VoteYesterdayYYYYMMDD())
+				StreakPreview = pP->m_CheckinStreak + 1;
+			str_format(aLine, sizeof(aLine), "今日未签到  预计 %d 金币（连续 %d 天）",
+				StreakPreview * 10, StreakPreview);
+			V.Info(aLine);
+			if(StreakPreview % 7 == 0)
+				V.Info("连续 7 天额外稀有奖励");
+			V.Option("ccv_checkin", "立即签到");
+		}
+	}
+	else
+	{
+		V.Option("ccv_checkin", "每日签到");
+	}
+
+	V.Info("请找任务大师（用锤子对话）查看与接取任务");
+	V.GoToPage(VOTE_PAGE_MMO_RANKING, "排行榜");
+	V.Footer();
 }
 
 static void RenderMMOEconomyHub(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, PAGE_MENU, LocVote(pGS, ClientID, "mmo.economy.title", "经济菜单"))
-		.Info(LocVote(pGS, ClientID, "mmo.economy.desc", "商店、回收、拍卖与装备强化"))
-		.GoToPage(VOTE_PAGE_MMO_SHOP, LocVote(pGS, ClientID, "mmo.economy.shop", "商店"))
-		.GoToPage(VOTE_PAGE_MMO_RECYCLE, LocVote(pGS, ClientID, "mmo.economy.recycle", "物品回收"))
-		.GoToPage(VOTE_PAGE_MMO_AUCTION, LocVote(pGS, ClientID, "mmo.economy.auction", "拍卖行"))
-		.GoToPage(VOTE_PAGE_MMO_ENCHANT, LocVote(pGS, ClientID, "mmo.economy.enchant", "装备强化"))
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, PAGE_MENU,
+		LocVote(pGS, ClientID, "mmo.economy.title", "经济菜单"));
+	if(pP)
+		VoteAppendWallet(V, pP);
+	V.Info(LocVote(pGS, ClientID, "mmo.economy.desc", "回收、拍卖、商店与装备强化"));
+	V.GoToPage(VOTE_PAGE_MMO_SHOP, LocVote(pGS, ClientID, "mmo.economy.shop", "商店（附近商人）"));
+	V.GoToPage(VOTE_PAGE_MMO_RECYCLE, LocVote(pGS, ClientID, "mmo.economy.recycle", "物品回收"));
+	V.GoToPage(VOTE_PAGE_MMO_AUCTION, LocVote(pGS, ClientID, "mmo.economy.auction", "拍卖行"));
+	if(pP && IsPlayerNearServiceNpc(pGS, pP, "blacksmith"))
+	{
+		SPlayerVote *pSVote = pVote->GetPlayerVote(ClientID);
+		if(pSVote)
+			BindNpcService(pSVote, "blacksmith");
+		V.GoToPage(VOTE_PAGE_MMO_ENCHANT, LocVote(pGS, ClientID, "mmo.economy.enchant", "装备强化"));
+	}
+	else
+		V.Info(LocVote(pGS, ClientID, "mmo.economy.enchant.npc", "装备强化请靠近铁匠"));
+	V.Footer();
 }
 
 static void RenderMMOLifestyleHub(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, PAGE_MENU, "生活菜单")
-		.Info("坐骑、宠物、时装、房屋与婚姻")
-		.GoToPage(VOTE_PAGE_MMO_MOUNT, "坐骑")
-		.GoToPage(VOTE_PAGE_MMO_PET, "宠物")
-		.GoToPage(VOTE_PAGE_MMO_FASHION_SELECT, "时装")
-		.GoToPage(VOTE_PAGE_MMO_HOUSE, "房屋")
-		.GoToPage(VOTE_PAGE_MMO_MARRIAGE, "婚姻")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, PAGE_MENU, "生活菜单");
+	char aLine[VOTE_DESC_LENGTH];
+
+	if(pP && pP->GetAccountId() > 0)
+	{
+		if(pP->m_VehicleType > 0)
+		{
+			str_format(aLine, sizeof(aLine), "载具：%s %s",
+				pP->m_aVehicleName[0] ? pP->m_aVehicleName : "未命名",
+				pP->m_pDeployedVehicle ? "（已部署）" : "（未部署）");
+			V.Info(aLine);
+		}
+		else
+			V.Info("载具：无");
+		if(pP->m_FashionItemID > 0)
+		{
+			const CMMOItemDescription *pDef = CMMOItemDescription::Get(pP->m_FashionItemID);
+			str_format(aLine, sizeof(aLine), "时装：%s", LocMMOItemName(pGS, ClientID, pDef));
+			V.Info(aLine);
+		}
+		else
+			V.Info("时装：未装备");
+		str_format(aLine, sizeof(aLine), "房屋：%s Lv.%d",
+			pP->m_HasHouse ? "已拥有" : "未购买", pP->m_HouseLevel);
+		V.Info(aLine);
+		if(pP->m_SpouseAccountID > 0)
+		{
+			char aSpouse[64];
+			CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+			if(pMMO && pMMO->LookupAccountName(pP->m_SpouseAccountID, aSpouse, sizeof(aSpouse)))
+			{
+				char aDate[16];
+				VoteFormatDateYYYYMMDD(pP->m_MarriageDate, aDate, sizeof(aDate));
+				str_format(aLine, sizeof(aLine), "婚姻：与 %s（%s）", aSpouse, aDate);
+				V.Info(aLine);
+			}
+			else
+				V.Info("婚姻：已婚");
+		}
+		else
+			V.Info("婚姻：单身");
+	}
+
+	V.GoToPage(VOTE_PAGE_MMO_MOUNT, "载具");
+	V.GoToPage(VOTE_PAGE_MMO_FASHION_SELECT, "时装");
+	V.GoToPage(VOTE_PAGE_MMO_HOUSE, "房屋");
+	V.GoToPage(VOTE_PAGE_MMO_MARRIAGE, "婚姻");
+	V.Footer();
 }
 
 static void RenderMMOPvpHub(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, PAGE_MENU, "PvP 菜单")
-		.Info("公会、公会战与世界 Boss")
-		.GoToPage(VOTE_PAGE_MMO_GUILD, "公会")
-		.GoToPage(VOTE_PAGE_MMO_GUILD_WAR, "公会战")
-		.GoToPage(VOTE_PAGE_MMO_BOSS, "世界 Boss")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, PAGE_MENU, "PvP 菜单");
+	char aLine[VOTE_DESC_LENGTH];
+
+	if(pP && pP->GetGuildID() >= 0)
+	{
+		CGuildManager *pGM = pGS->Core() ? pGS->Core()->GuildManager() : nullptr;
+		SGuildData *pG = pGM ? pGM->GetPlayerGuild(ClientID) : nullptr;
+		if(pG)
+			str_format(aLine, sizeof(aLine), "公会：%s Lv.%d", pG->m_aName, pG->m_Level);
+		else
+			str_copy(aLine, "公会：已加入", sizeof(aLine));
+		V.Info(aLine);
+	}
+	else
+		V.Info("公会：未加入");
+
+	VoteAppendBossStatus(V, pGS, ClientID);
+
+	V.GoToPage(VOTE_PAGE_MMO_GUILD, "公会");
+	V.GoToPage(VOTE_PAGE_MMO_ARENA, "竞技场");
+	V.GoToPage(VOTE_PAGE_MMO_GUILD_WAR, "公会战");
+	V.GoToPage(VOTE_PAGE_MMO_BOSS, "世界 Boss");
+	V.Footer();
 }
 
 // ─── Feature pages ───────────────────────────────────────────────────
 
 static void RenderMMOFriendsPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_SOCIAL, "好友")
-		.GoToPage(VOTE_PAGE_MMO_FRIENDS_LIST, "查看好友列表")
-		.Info("添加好友：选下方选项，在 Reason 填写玩家名")
-		.Option("ccv_friend_add", "添加好友")
-		.Info("删除好友：选下方选项，在 Reason 填写玩家名")
-		.Option("ccv_friend_remove", "删除好友")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	const int Pending = (pP && pP->GetAccountId() > 0)
+		? CGlobalState::CountIncomingFriendRequests(pGS, pP->GetAccountId()) : 0;
+
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_SOCIAL, "好友");
+	char aLine[VOTE_DESC_LENGTH];
+	if(Pending > 0)
+	{
+		str_format(aLine, sizeof(aLine), "待处理好友申请：%d", Pending);
+		V.Info(aLine);
+	}
+	V.GoToPage(VOTE_PAGE_MMO_FRIENDS_LIST, "我的好友");
+	if(Pending > 0)
+		V.GoToPage(VOTE_PAGE_MMO_FRIEND_REQUESTS, "好友申请");
+	V.Info("添加好友：选下方选项，在 Reason 填写玩家名");
+	V.Option("ccv_friend_add", "发送好友申请");
+	V.Footer();
 }
 
 static void RenderMMORankingPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ACTIVITIES, "排行榜")
-		.GoToPage(VOTE_PAGE_MMO_RANKING_LEVEL, "等级排行榜")
-		.GoToPage(VOTE_PAGE_MMO_RANKING_GOLD, "财富排行榜")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ACTIVITIES, "排行榜");
+	if(pP && pP->GetAccountId() > 0)
+	{
+		char aLine[VOTE_DESC_LENGTH];
+		const int Level = pP->GetStat(AttributeIdentifier::Level);
+		const int Gold = pP->GetStat(AttributeIdentifier::Gold);
+		str_format(aLine, sizeof(aLine), "你的等级 Lv.%d  金币 %d", Level, Gold);
+		V.Info(aLine);
+		if(pMMO)
+		{
+			const int Exp = pP->GetStat(AttributeIdentifier::Experience);
+			const int LevelRank = pMMO->GetPlayerLevelRank(pP->GetAccountId(), Level, Exp);
+			const int GoldRank = pMMO->GetPlayerGoldRank(pP->GetAccountId(), Gold);
+			if(LevelRank > 0)
+			{
+				str_format(aLine, sizeof(aLine), "等级名次：第 %d 名", LevelRank);
+				V.Info(aLine);
+			}
+			if(GoldRank > 0)
+			{
+				str_format(aLine, sizeof(aLine), "财富名次：第 %d 名", GoldRank);
+				V.Info(aLine);
+			}
+		}
+	}
+	V.GoToPage(VOTE_PAGE_MMO_RANKING_LEVEL, "等级排行榜 Top 20");
+	V.GoToPage(VOTE_PAGE_MMO_RANKING_GOLD, "财富排行榜 Top 20");
+	V.Footer();
 }
 
 static void RenderMMOAuctionPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ECONOMY, "拍卖行")
-		.GoToPage(VOTE_PAGE_MMO_AUCTION_LIST, "浏览拍卖行")
-		.GoToPage(VOTE_PAGE_MMO_AUCTION_SELL, "上架物品")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ECONOMY, "拍卖行");
+	if(pP)
+		VoteAppendWallet(V, pP);
+	V.Info("浏览挂单或上架背包物品");
+	V.GoToPage(VOTE_PAGE_MMO_AUCTION_LIST, "浏览拍卖行");
+	V.GoToPage(VOTE_PAGE_MMO_AUCTION_SELL, "上架物品");
+	V.Footer();
 }
 
 static void RenderMMOShopPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ECONOMY, "商店")
-		.GoToPage(VOTE_PAGE_MMO_SHOP_LIST, "浏览商店")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ECONOMY, "商店");
+	if(pP)
+		VoteAppendWallet(V, pP);
+	V.Info(LocVote(pGS, ClientID, "mmo.shop.desc", "冒险者装备 / 杂货 / 治疗补给"));
+	V.GoToPage(VOTE_PAGE_MMO_SHOP_LIST, LocVote(pGS, ClientID, "mmo.shop.pick", "选择商店"));
+	V.Footer();
 }
 
 static void RenderMMOEnchantPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ECONOMY, "装备强化")
-		.GoToPage(VOTE_PAGE_MMO_ENCHANT_SELECT, "选择要强化的武器")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ECONOMY, "装备强化");
+	if(pP)
+		VoteAppendWallet(V, pP);
+	V.Info("选择背包中的武器进行强化");
+	V.GoToPage(VOTE_PAGE_MMO_ENCHANT_SELECT, "选择要强化的武器");
+	V.Footer();
 }
 
 static void RenderMMOGuildPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
@@ -1074,6 +1690,15 @@ static void RenderMMOGuildPage(int ClientID, CVoteMenuManager *pVote, CGameConte
 
 	if(!InGuild)
 	{
+		CGuildManager *pGuildMgrPending = pGuildMgr;
+		if(pGuildMgrPending && pGuildMgrPending->HasPendingInvite(ClientID))
+		{
+			char aLine[VOTE_DESC_LENGTH];
+			str_format(aLine, sizeof(aLine), "收到公会邀请（来自 %s）", pGuildMgrPending->GetPendingInviterName(ClientID));
+			V.Info(aLine);
+			V.Option("ccv_guild_accept", "接受邀请");
+			V.Option("ccv_guild_decline", "拒绝邀请");
+		}
 		V.Info("创建公会需 500 金币");
 		V.Info("创建：选下方选项，在 Reason 填写「名称」或「名称 标签」");
 		V.Option("ccv_guild_create", "创建公会");
@@ -1090,7 +1715,7 @@ static void RenderMMOGuildPage(int ClientID, CVoteMenuManager *pVote, CGameConte
 			V.Info(aLine);
 		}
 		V.Option("ccv_guild_info", "公会信息（聊天）");
-		V.Option("ccv_guild_members_page", "查看成员");
+		V.GoToPage(VOTE_PAGE_MMO_GUILD_MEMBERS, "查看成员");
 		if(pG)
 		{
 			EGuildRank Rank = pG->GetRank(ClientID);
@@ -1100,7 +1725,15 @@ static void RenderMMOGuildPage(int ClientID, CVoteMenuManager *pVote, CGameConte
 				str_format(aLine, sizeof(aLine), "待审批申请：%d", pG->m_JoinRequests.size());
 				V.Info(aLine);
 				V.Option("ccv_guild_requests", "审批加入申请");
+				V.Info("邀请成员：选下方选项，Reason 填玩家名");
+				V.Option("ccv_guild_invite", "邀请成员");
+				V.Info("捐赠金币：选下方选项，Reason 填金额");
+				V.Option("ccv_guild_donate", "捐赠金币");
+				V.Info("设置公告：选下方选项，Reason 填公告内容");
+				V.Option("ccv_guild_motd", "设置公告");
 			}
+			if(Rank == GUILDRANK_LEADER)
+				V.Option("ccv_guild_disband", "解散公会");
 		}
 		V.Option("ccv_guild_leave", "退出公会");
 	}
@@ -1110,64 +1743,215 @@ static void RenderMMOGuildPage(int ClientID, CVoteMenuManager *pVote, CGameConte
 
 static void RenderMMOGuildWarPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_PVP, "公会战")
-		.Info("发起约战：选下方选项，在 Reason 填写目标公会名")
-		.Option("ccv_guild_war_challenge", "发起约战")
-		.Option("ccv_guild_war_accept", "接受约战")
-		.Option("ccv_guild_war_status", "比赛状态")
-		.Option("ccv_guild_war_join", "加入队伍")
-		.Option("ccv_guild_war_leave", "离开队伍")
-		.Footer();
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_PVP, "公会战");
+	VoteAppendGuildWarStatus(V, pGS, ClientID);
+	V.Info("流程：约战 → 接受 → 选模式/地图 → 加入 → 开始");
+	V.GoToPage(VOTE_PAGE_MMO_GUILD_WAR_MODE, "选择比赛模式（被挑战方）");
+	V.GoToPage(VOTE_PAGE_MMO_GUILD_WAR_MAP, "选择比赛地图");
+	V.Option("ccv_guild_war_challenge", "发起约战（Reason 填公会名）");
+	V.Option("ccv_guild_war_accept", "接受约战");
+	V.Option("ccv_guild_war_status", "查看比赛状态");
+	V.Option("ccv_guild_war_join", "加入队伍");
+	V.Option("ccv_guild_war_leave", "离开队伍");
+	V.Option("ccv_guild_war_start", "开始比赛（会长/副会长）");
+	V.Option("ccv_guild_war_cancel", "取消比赛");
+	V.Footer();
+}
+
+static void RenderMMOGuildWarModePage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
+{
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_GUILD_WAR, "选择模式");
+	V.Info("被挑战方会长/副会长在「选模式中」阶段可选");
+
+	for(int i = 0; i < NUM_GUILDWAR_MODES; i++)
+	{
+		if(i == GUILDWAR_MODE_IDM)
+			continue; // legacy alias, hide from menu
+		const SGuildWarModeDef *pDef = GetGuildWarModeDef((EGuildWarMode)i);
+		if(!pDef)
+			continue;
+		char aCmd[VOTE_CMD_LENGTH];
+		char aLine[VOTE_DESC_LENGTH];
+		str_format(aCmd, sizeof(aCmd), "ccv_guild_war_setmode %s", pDef->m_pId);
+		str_format(aLine, sizeof(aLine), "%s — %s（目标 %d 分）", pDef->m_pDisplayName, pDef->m_pDescription, pDef->m_DefaultTargetScore);
+		V.Option(aCmd, aLine);
+	}
+
+	V.GoToPage(VOTE_PAGE_MMO_GUILD_WAR_MAP, "选择比赛地图");
+	V.Footer();
+}
+
+static void RenderMMOGuildWarMapPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
+{
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_GUILD_WAR, "选择地图");
+	char aMode[16];
+	char aSelectedMap[128];
+	int Status = -1;
+
+	CGuildManager *pGuildMgr = pGS && pGS->Core() ? pGS->Core()->GuildManager() : nullptr;
+	if(!pGuildMgr || !pGuildMgr->GetActiveWarMatchInfo(ClientID, aMode, sizeof(aMode), aSelectedMap, sizeof(aSelectedMap), &Status))
+	{
+		V.Info("你不在进行中的公会战中");
+		V.Footer();
+		return;
+	}
+
+	if(Status < 2 || aMode[0] == '\0')
+	{
+		V.Info("请先完成模式选择（被挑战方）");
+		V.GoToPage(VOTE_PAGE_MMO_GUILD_WAR_MODE, "选择比赛模式");
+		V.Footer();
+		return;
+	}
+
+	if(Status >= 3)
+	{
+		V.Info("比赛已开始，无法更换地图");
+		V.Footer();
+		return;
+	}
+
+	char aLine[VOTE_DESC_LENGTH];
+	str_format(aLine, sizeof(aLine), "模式：%s", GuildWarModeDisplayName(aMode));
+	V.Info(aLine);
+	if(aSelectedMap[0])
+	{
+		str_format(aLine, sizeof(aLine), "当前：%s", aSelectedMap);
+		V.Info(aLine);
+	}
+
+	std::vector<std::string> Maps;
+	ListArenaMapsForMode(pGS->Storage(), aMode, Maps);
+	if(Maps.empty())
+	{
+		V.Info("没有可用地图");
+		str_format(aLine, sizeof(aLine), "模式 %s：需 maps/vanilla（TDM）/ maps/fng（FNG）/ ctf 前缀（CTF）", GuildWarModeDisplayName(aMode));
+		V.Info(aLine);
+		V.Info("若已放地图仍为空，请从含 maps/ 的目录启动服务器");
+		V.Footer();
+		return;
+	}
+
+	char aCmd[VOTE_CMD_LENGTH];
+	const int MaxShow = 20;
+	for(int i = 0; i < (int)Maps.size() && i < MaxShow; i++)
+	{
+		str_format(aCmd, sizeof(aCmd), "ccv_guild_war_setmap %s", Maps[i].c_str());
+		V.Option(aCmd, Maps[i].c_str());
+	}
+	if((int)Maps.size() > MaxShow)
+		V.Info("仅显示前 20 张地图");
+
+	V.Footer();
 }
 
 static void RenderMMOBossPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_PVP, "世界 Boss")
-		.Info("查看当前 Boss 状态")
-		.Option("ccv_boss", "Boss 信息")
-		.Footer();
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_PVP, "世界 Boss");
+	VoteAppendBossStatus(V, pGS, ClientID);
+	V.Info("参与击杀可获得金币与稀有掉落");
+	V.Option("ccv_boss", "刷新详细状态");
+	CWorldBossManager *pWB = pGS->Core() ? pGS->Core()->GetWorldBossManager() : nullptr;
+	if(pWB && pWB->IsBossAlive())
+		V.Option("ccv_boss_tp", "传送到 Boss 附近");
+	V.Footer();
+}
+
+static void RenderMMOVehiclePage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
+{
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_LIFESTYLE, "载具");
+	char aLine[VOTE_DESC_LENGTH];
+	if(!pP || pP->m_VehicleType <= 0)
+	{
+		V.Info("你还没有载具");
+		V.Info("使用载具物品（史莱姆/幼龙飞行器）可激活");
+		V.Footer();
+		return;
+	}
+	str_format(aLine, sizeof(aLine), "名字：%s", pP->m_aVehicleName[0] ? pP->m_aVehicleName : "未命名");
+	V.Info(aLine);
+	const bool Deployed = pP->m_pDeployedVehicle != nullptr;
+	const bool Riding = pP->GetCharacter() && pP->GetCharacter()->m_OnVehicle;
+	str_format(aLine, sizeof(aLine), "类型：%s  状态：%s",
+		pP->m_VehicleType == 1 ? "飞行器" : "未知",
+		Riding ? "驾驶中" : (Deployed ? "已部署" : "未部署"));
+	V.Info(aLine);
+	V.Option("ccv_vehicle", Deployed ? "收回载具" : "部署载具");
+	V.Info("改名：选下方，Reason 填新名字");
+	V.Option("ccv_vehiclename", "给载具改名");
+	V.Footer();
 }
 
 static void RenderMMOMountPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_LIFESTYLE, "坐骑")
-		.Info("召唤或收起你的坐骑")
-		.Option("ccv_mount", "召唤/收起坐骑")
-		.Footer();
-}
-
-static void RenderMMOPetPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
-{
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_LIFESTYLE, "宠物")
-		.Option("ccv_pet", "召唤/收起宠物")
-		.Info("改名：选下方选项，在 Reason 填写新名字")
-		.Option("ccv_petname", "给宠物改名")
-		.Footer();
+	RenderMMOVehiclePage(ClientID, pVote, pGS);
 }
 
 static void RenderMMOHousePage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_LIFESTYLE, "房屋")
-		.Option("ccv_house_buy", "购买房屋")
-		.Option("ccv_house_tp", "传送回家")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_LIFESTYLE, "房屋");
+	char aLine[VOTE_DESC_LENGTH];
+	if(pP && pP->m_HasHouse)
+	{
+		str_format(aLine, sizeof(aLine), "已拥有房屋  Lv.%d", pP->m_HouseLevel);
+		V.Info(aLine);
+		V.Option("ccv_house_tp", "传送回家");
+	}
+	else
+	{
+		V.Info("尚未购买房屋");
+		V.Option("ccv_house_buy", "购买房屋");
+	}
+	V.Footer();
 }
 
 static void RenderMMOMarriagePage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_LIFESTYLE, "婚姻")
-		.Info("求婚：选下方选项，在 Reason 填写玩家名")
-		.Option("ccv_marry", "求婚")
-		.Option("ccv_divorce", "离婚")
-		.Footer();
+	CPlayer *pP = pGS->m_apPlayers[ClientID];
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_LIFESTYLE, "婚姻");
+	char aLine[VOTE_DESC_LENGTH];
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+
+	if(pP && pP->m_SpouseAccountID > 0)
+	{
+		char aSpouse[64];
+		char aDate[16];
+		VoteFormatDateYYYYMMDD(pP->m_MarriageDate, aDate, sizeof(aDate));
+		if(pMMO && pMMO->LookupAccountName(pP->m_SpouseAccountID, aSpouse, sizeof(aSpouse)))
+			str_format(aLine, sizeof(aLine), "配偶：%s（%s）", aSpouse, aDate);
+		else
+			str_format(aLine, sizeof(aLine), "已婚（%s）", aDate);
+		V.Info(aLine);
+		V.Option("ccv_divorce", "申请离婚");
+	}
+	else
+	{
+		V.Info("当前单身");
+		char aProposer[MAX_NAME_LENGTH];
+		if(pMMO && pMMO->GetIncomingMarriageProposerName(ClientID, aProposer, sizeof(aProposer)))
+		{
+			str_format(aLine, sizeof(aLine), "💍 %s 向你求婚", aProposer);
+			V.Info(aLine);
+			V.Option("ccv_marry_accept", "接受求婚");
+		}
+		V.Info("求婚：选下方，Reason 填对方玩家名");
+		V.Option("ccv_marry", "向玩家求婚");
+	}
+	V.Footer();
 }
 
 static void RenderMMOChatPage(int ClientID, CVoteMenuManager *pVote, CGameContext *pGS)
 {
-	MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_SOCIAL, "聊天")
-		.Info("/w <玩家名> <消息> — 私聊")
-		.Info("/world <消息> — 世界频道")
-		.Footer();
+	(void)pGS;
+	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_SOCIAL, "聊天与交易");
+	V.Info("私聊：/w <玩家名> <消息>");
+	V.Info("世界：/world <消息>  或  /wc <消息>");
+	V.Info("队伍：/group <消息>（队内频道）");
+	V.Info("交易：/trade <玩家名> 发起交易");
+	V.Info("好友：投票菜单 → 社交 → 好友");
+	V.Footer();
 }
 
 bool CMMOManager::OnVoteMenuPage(int ClientID, int Page)
@@ -1240,14 +2024,17 @@ bool CMMOManager::OnVoteMenuPage(int ClientID, int Page)
 	case VOTE_PAGE_MMO_GUILD_WAR:
 		RenderMMOGuildWarPage(ClientID, pVote, GS());
 		return true;
+	case VOTE_PAGE_MMO_GUILD_WAR_MODE:
+		RenderMMOGuildWarModePage(ClientID, pVote, GS());
+		return true;
+	case VOTE_PAGE_MMO_GUILD_WAR_MAP:
+		RenderMMOGuildWarMapPage(ClientID, pVote, GS());
+		return true;
 	case VOTE_PAGE_MMO_BOSS:
 		RenderMMOBossPage(ClientID, pVote, GS());
 		return true;
 	case VOTE_PAGE_MMO_MOUNT:
 		RenderMMOMountPage(ClientID, pVote, GS());
-		return true;
-	case VOTE_PAGE_MMO_PET:
-		RenderMMOPetPage(ClientID, pVote, GS());
 		return true;
 	case VOTE_PAGE_MMO_HOUSE:
 		RenderMMOHousePage(ClientID, pVote, GS());
@@ -1281,6 +2068,9 @@ bool CMMOManager::OnVoteMenuPage(int ClientID, int Page)
 		return true;
 	case VOTE_PAGE_MMO_FRIENDS_LIST:
 		RenderFriendsListVotes(ClientID, pVote, pP, pSVote);
+		return true;
+	case VOTE_PAGE_MMO_FRIEND_REQUESTS:
+		RenderFriendRequestsVotes(ClientID, pVote, pP, pSVote);
 		return true;
 	case VOTE_PAGE_MMO_RANKING_LEVEL:
 		RenderRankingLevelVotes(ClientID, pVote, pP, pSVote);
@@ -1641,6 +2431,12 @@ void CMMOManager::RenderMMOItemVotes(int ClientID, CVoteMenuManager *pVote, CPla
 		V.Option(aCmd, LocVote(pGS, ClientID, "mmo.item.use", "使用"));
 	}
 
+	if((Item.GetID() == 194 || Item.GetID() == 195) && pP->m_VehicleType <= 0)
+	{
+		str_format(aCmd, sizeof(aCmd), "ccv_vehicle_activate %d", SlotIdx);
+		V.Option(aCmd, "激活载具");
+	}
+
 	if(pDef->GetGroup() == ItemGroup::Potion)
 	{
 		str_format(aCmd, sizeof(aCmd), "ccv_mmoequip %d", SlotIdx);
@@ -1694,7 +2490,7 @@ void CMMOManager::RenderMMOEquipVotes(int ClientID, CVoteMenuManager *pVote, CPl
 	static const ItemType s_aShowTypes[] = {
 		ItemType::EquipHelmetTank, ItemType::EquipHelmetDPS, ItemType::EquipHelmetHealer,
 		ItemType::EquipArmorTank, ItemType::EquipArmorDPS, ItemType::EquipArmorHealer,
-		ItemType::EquipGloves,
+		ItemType::EquipGloves, ItemType::EquipEidolon,
 	};
 
 	V.GroupLine();
@@ -1834,6 +2630,8 @@ void CMMOManager::RenderAuctionListVotes(int ClientID, CVoteMenuManager *pVote, 
 
 	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_AUCTION, "拍卖行列表");
 	char aLine[VOTE_DESC_LENGTH];
+	VoteAppendWallet(V, pP);
+	V.Info("点击购买；[我的] 可取消自己的挂单");
 
 	CSqlConnectionPool *pPool = GS()->Accounts() ? GS()->Accounts()->GetSqlPool() : nullptr;
 	if(!pPool || !pPool->IsInitialized() || pP->GetAccountId() <= 0)
@@ -1922,6 +2720,8 @@ void CMMOManager::RenderAuctionSellVotes(int ClientID, CVoteMenuManager *pVote, 
 
 	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_AUCTION, "上架物品");
 	char aLine[VOTE_DESC_LENGTH];
+	VoteAppendWallet(V, pP);
+	V.Info("选择物品后在下一页填写价格");
 
 	if(pP->m_MMOInventory.IsEmpty())
 	{
@@ -1996,6 +2796,7 @@ void CMMOManager::RenderRecycleVotes(int ClientID, CVoteMenuManager *pVote, CPla
 	ResetDailySellIfNeeded(pP);
 	CVoteWrapper V = MMOPage(ClientID, pGS, pVote, VOTE_PAGE_MMO_ECONOMY, LocVote(pGS, ClientID, "mmo.recycle.title", "物品回收"));
 	char aLine[VOTE_DESC_LENGTH];
+	VoteAppendWallet(V, pP);
 
 	str_format(aLine, sizeof(aLine), LocVote(pGS, ClientID, "mmo.recycle.rate", "回收价约为原价 25%%，另扣 %d%% 手续费"),
 		MMO_SELL_TAX_PERCENT);
@@ -2103,21 +2904,33 @@ void CMMOManager::RenderRecycleConfirmVotes(int ClientID, CVoteMenuManager *pVot
 
 void CMMOManager::RenderShopListVotes(int ClientID, CVoteMenuManager *pVote, CPlayer *pP, SPlayerVote *pSVote)
 {
-	(void)pP;
 	(void)pSVote;
 	if(!pVote)
 		return;
 
-	static const char *s_apShops[] = {"quest_master", "shopkeeper", "healer"};
-	static const char *s_apShopNames[] = {"冒险者装备", "杂货店", "治疗补给"};
+	static const char *s_apShops[] = {"quest_master", "shopkeeper", "healer", "blacksmith", "tea_house"};
+	static const char *s_apShopNames[] = {"冒险者装备", "杂货店", "治疗补给", "铁匠材料", "茶馆特供"};
+	static const char *s_apShopDesc[] = {"武器与防具", "消耗品与材料", "药水与恢复", "矿石与强化", "食物与装饰"};
 
-	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_SHOP, "商店列表");
+	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_SHOP, "附近商人");
+	if(pP)
+		VoteAppendWallet(V, pP);
 	char aCmd[48];
-	for(int i = 0; i < 3; i++)
+	char aLine[VOTE_DESC_LENGTH];
+	int Shown = 0;
+	for(int i = 0; i < (int)(sizeof(s_apShops) / sizeof(s_apShops[0])); i++)
 	{
+		if(!FindShopByNpcID(s_apShops[i]))
+			continue;
+		if(pP && !IsPlayerNearServiceNpc(GS(), pP, s_apShops[i]))
+			continue;
 		str_format(aCmd, sizeof(aCmd), "ccv_shopnpc %s", s_apShops[i]);
-		V.Option(aCmd, s_apShopNames[i]);
+		str_format(aLine, sizeof(aLine), "%s — %s", s_apShopNames[i], s_apShopDesc[i]);
+		V.Option(aCmd, aLine);
+		Shown++;
 	}
+	if(Shown == 0)
+		V.Info("附近没有可交易的商人，请走到商人旁边。");
 	V.Footer();
 }
 
@@ -2164,6 +2977,9 @@ void CMMOManager::RenderEnchantSelectVotes(int ClientID, CVoteMenuManager *pVote
 	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_ENCHANT, "装备强化");
 	char aLine[VOTE_DESC_LENGTH];
 	char aCmd[32];
+
+	VoteAppendWallet(V, pP);
+	V.Info("仅可强化背包中的武器");
 
 	bool Any = false;
 	for(size_t i = 0; i < pP->m_MMOInventory.size() && i < 20; i++)
@@ -2246,51 +3062,112 @@ void CMMOManager::RenderFriendsListVotes(int ClientID, CVoteMenuManager *pVote, 
 	if(!pVote || !pP)
 		return;
 
-	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_FRIENDS, "好友列表");
+	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_FRIENDS, "我的好友");
 	char aLine[VOTE_DESC_LENGTH];
+	char aCmd[VOTE_CMD_LENGTH];
 
-	if(pP->m_aFriends.empty())
+	std::vector<SFriendListEntry> Friends;
+	if(!LoadFriendListDetails(pP, Friends) || Friends.empty())
 	{
 		V.Info("好友列表为空");
+		V.Info("返回上级可发送好友申请");
 		V.Footer();
 		return;
 	}
 
-	str_format(aLine, sizeof(aLine), "共 %d 位好友", (int)pP->m_aFriends.size());
+	str_format(aLine, sizeof(aLine), "共 %d 位好友", (int)Friends.size());
 	V.Info(aLine);
 
-	for(size_t i = 0; i < pP->m_aFriends.size() && i < 20; i++)
+	const int MaxShow = 15;
+	for(int i = 0; i < (int)Friends.size() && i < MaxShow; i++)
 	{
-		const int64 FriendAID = pP->m_aFriends[i];
-		const char *pName = "离线";
-		for(int c = 0; c < MAX_CLIENTS; c++)
+		const SFriendListEntry &F = Friends[i];
+		char aStatus[64];
+		if(F.m_Online)
+			str_copy(aStatus, "在线", sizeof(aStatus));
+		else if(F.m_LastOnlineAt > 0)
 		{
-			CPlayer *pF = GS()->m_apPlayers[c];
-			if(pF && pF->GetAccountId() == FriendAID)
-			{
-				pName = GS()->Server()->ClientName(c);
-				break;
-			}
+			const time_t Now = time(nullptr);
+			const int Diff = (int)(Now - F.m_LastOnlineAt);
+			if(Diff < 60)
+				str_copy(aStatus, "离线 · 刚刚", sizeof(aStatus));
+			else if(Diff < 3600)
+				str_format(aStatus, sizeof(aStatus), "离线 · %d 分钟前", Diff / 60);
+			else if(Diff < 86400)
+				str_format(aStatus, sizeof(aStatus), "离线 · %d 小时前", Diff / 3600);
+			else
+				str_format(aStatus, sizeof(aStatus), "离线 · %d 天前", Diff / 86400);
 		}
-		str_format(aLine, sizeof(aLine), "%d. %s", (int)i + 1, pName);
-		V.Info(aLine);
+		else
+			str_copy(aStatus, "离线 · 未知", sizeof(aStatus));
+
+		str_format(aLine, sizeof(aLine), "%s  [%s]", F.m_aName, aStatus);
+		str_format(aCmd, sizeof(aCmd), "ccv_friend_remove %s", F.m_aName);
+		V.Option(aCmd, aLine);
 	}
 
-	if((int)pP->m_aFriends.size() > 20)
-		V.Info("仅显示前 20 位");
+	if((int)Friends.size() > MaxShow)
+		V.Info("仅显示前 15 位，其余请用 /friend_list");
+
+	V.Footer();
+}
+
+void CMMOManager::RenderFriendRequestsVotes(int ClientID, CVoteMenuManager *pVote, CPlayer *pP, SPlayerVote *pSVote)
+{
+	(void)pSVote;
+	if(!pVote || !pP || pP->GetAccountId() <= 0)
+		return;
+
+	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_FRIENDS, "好友申请");
+	char aLine[VOTE_DESC_LENGTH];
+	char aCmd[VOTE_CMD_LENGTH];
+
+	std::vector<SFriendRequestEntry> Requests;
+	if(!LoadIncomingFriendRequests(pP->GetAccountId(), Requests) || Requests.empty())
+	{
+		V.Info("暂无待处理的好友申请");
+		V.Footer();
+		return;
+	}
+
+	str_format(aLine, sizeof(aLine), "共 %d 条申请", (int)Requests.size());
+	V.Info(aLine);
+
+	for(size_t i = 0; i < Requests.size() && i < 15; i++)
+	{
+		const SFriendRequestEntry &R = Requests[i];
+		str_format(aLine, sizeof(aLine), "接受：%s", R.m_aName);
+		str_format(aCmd, sizeof(aCmd), "ccv_friend_accept %s", R.m_aName);
+		V.Option(aCmd, aLine);
+		str_format(aLine, sizeof(aLine), "拒绝：%s", R.m_aName);
+		str_format(aCmd, sizeof(aCmd), "ccv_friend_decline %s", R.m_aName);
+		V.Option(aCmd, aLine);
+	}
 
 	V.Footer();
 }
 
 void CMMOManager::RenderRankingLevelVotes(int ClientID, CVoteMenuManager *pVote, CPlayer *pP, SPlayerVote *pSVote)
 {
-	(void)pP;
 	(void)pSVote;
 	if(!pVote)
 		return;
 
 	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_RANKING, "等级排行榜");
 	char aLine[VOTE_DESC_LENGTH];
+
+	if(pP && pP->GetAccountId() > 0)
+	{
+		const int Level = pP->GetStat(AttributeIdentifier::Level);
+		const int Exp = pP->GetStat(AttributeIdentifier::Experience);
+		const int MyRank = GetPlayerLevelRank(pP->GetAccountId(), Level, Exp);
+		if(MyRank > 0)
+		{
+			str_format(aLine, sizeof(aLine), "你的名次：第 %d 名（Lv.%d  经验 %d）", MyRank, Level, Exp);
+			V.Info(aLine);
+			V.GroupLine();
+		}
+	}
 
 	CSqlConnectionPool *pPool = GS()->Accounts() ? GS()->Accounts()->GetSqlPool() : nullptr;
 	if(!pPool || !pPool->IsInitialized())
@@ -2352,13 +3229,24 @@ void CMMOManager::RenderRankingLevelVotes(int ClientID, CVoteMenuManager *pVote,
 
 void CMMOManager::RenderRankingGoldVotes(int ClientID, CVoteMenuManager *pVote, CPlayer *pP, SPlayerVote *pSVote)
 {
-	(void)pP;
 	(void)pSVote;
 	if(!pVote)
 		return;
 
 	CVoteWrapper V = MMOPage(ClientID, GS(), pVote, VOTE_PAGE_MMO_RANKING, "财富排行榜");
 	char aLine[VOTE_DESC_LENGTH];
+
+	if(pP && pP->GetAccountId() > 0)
+	{
+		const int Gold = pP->GetStat(AttributeIdentifier::Gold);
+		const int MyRank = GetPlayerGoldRank(pP->GetAccountId(), Gold);
+		if(MyRank > 0)
+		{
+			str_format(aLine, sizeof(aLine), "你的名次：第 %d 名（%d 金币）", MyRank, Gold);
+			V.Info(aLine);
+			V.GroupLine();
+		}
+	}
 
 	CSqlConnectionPool *pPool = GS()->Accounts() ? GS()->Accounts()->GetSqlPool() : nullptr;
 	if(!pPool || !pPool->IsInitialized())
@@ -2629,6 +3517,12 @@ void CMMOManager::ConShopBuy(int ClientID, const char *pNpcID, int ItemID)
 		return;
 	}
 
+	if(!pNpcID || !pNpcID[0] || !IsPlayerNearServiceNpc(pGame, pP, pNpcID))
+	{
+		NotifyNpcServiceDenied(pGame, ClientID);
+		return;
+	}
+
 	const SShopEntry *pShop = FindShopByNpcID(pNpcID);
 	if(!pShop)
 	{
@@ -2671,9 +3565,11 @@ void CMMOManager::ConShopBuy(int ClientID, const char *pNpcID, int ItemID)
 	str_format(aBuf, sizeof(aBuf), "购买了 %s，花费 %d 金币！(剩余: %d)",
 		pShopItem->m_pName, pShopItem->m_Price, pP->GetStat(AttributeIdentifier::Gold));
 	pGame->SendChatTo(ClientID, aBuf);
+	if(CPlayer *pBuyer = pGame->m_apPlayers[ClientID])
+		PlayInteractionSound(pGame->m_World, pBuyer, SOUND_SFX_TRADE);
 }
 
-void CMMOManager::ToggleMount(int ClientID)
+void CMMOManager::DeployVehicle(int ClientID)
 {
 	CGameContext *pGame = GS();
 	CPlayer *pP = pGame->m_apPlayers[ClientID];
@@ -2682,62 +3578,127 @@ void CMMOManager::ToggleMount(int ClientID)
 		pGame->SendChatTo(ClientID, "请先登录。");
 		return;
 	}
-	if(!pP->GetCharacter())
+	if(pP->m_VehicleType <= 0)
 	{
-		pGame->SendChatTo(ClientID, "你没有角色。");
+		pGame->SendChatTo(ClientID, "🚁 你没有载具。");
+		return;
+	}
+	if(pP->m_pDeployedVehicle)
+	{
+		pGame->SendChatTo(ClientID, "🚁 载具已部署。使用收回载具。");
+		return;
+	}
+	CCharacter *pChr = pP->GetCharacter();
+	if(!pChr)
+	{
+		pGame->SendChatTo(ClientID, "🚁 你没有角色。");
 		return;
 	}
 
-	pP->m_IsMounted = !pP->m_IsMounted;
-	CCharacter *pChr = pP->GetCharacter();
-	if(pP->m_IsMounted)
+	vec2 SpawnPos = pChr->GetPos() + vec2(48.f, -16.f);
+	if(VehicleSpotBlocked(&pGame->m_World, SpawnPos))
 	{
-		pGame->SendChatTo(ClientID, "🐎 你骑上了坐骑！移动速度 +50%");
-		if(pChr)
-			pChr->SetEmote(EMOTE_HAPPY, pGame->Server()->Tick() + 999999);
+		pGame->SendChatTo(ClientID, "🚁 此处无法部署载具。");
+		return;
 	}
+
+	CVehicle *pVehicle = nullptr;
+	if(pP->m_VehicleType == 1)
+		pVehicle = new CAircraft(&pGame->m_World, SpawnPos, pP->GetTeam());
 	else
 	{
-		pGame->SendChatTo(ClientID, "你从坐骑上下来了。");
-		if(pChr)
-			pChr->SetEmote(EMOTE_NORMAL, -1);
+		pGame->SendChatTo(ClientID, "🚁 未知载具类型。");
+		return;
 	}
+
+	pVehicle->BoardDriver(pChr);
+	pP->m_pDeployedVehicle = pVehicle;
+	pGame->SendChatTo(ClientID, "🚁 载具已部署！方向键移动，钩索上下，跳跃下车。");
 }
 
-void CMMOManager::TogglePet(int ClientID)
+void CMMOManager::RecallVehicle(int ClientID)
 {
 	CGameContext *pGame = GS();
 	CPlayer *pP = pGame->m_apPlayers[ClientID];
-	if(!pP || pP->GetAccountId() <= 0)
-	{
-		pGame->SendChatTo(ClientID, "请先登录。");
+	if(!pP)
 		return;
+
+	if(CCharacter *pChr = pP->GetCharacter())
+	{
+		if(pChr->m_OnVehicle)
+		{
+			if(CVehicle *pVehicle = VehicleFindByOccupant(&pGame->m_World, ClientID))
+				pVehicle->HandleOccupantDismount(ClientID);
+		}
 	}
 
-	if(pP->m_pPet)
+	if(pP->m_pDeployedVehicle)
 	{
-		pP->m_pPet->MarkForDestroy();
-		pP->m_pPet = nullptr;
-		pGame->SendChatTo(ClientID, "🐾 宠物已收起。");
+		pP->m_pDeployedVehicle->Reset();
+		pP->m_pDeployedVehicle = nullptr;
+		pGame->SendChatTo(ClientID, "🚁 载具已收回。");
+	}
+	else
+		pGame->SendChatTo(ClientID, "🚁 没有已部署的载具。");
+}
+
+void CMMOManager::ToggleVehicle(int ClientID)
+{
+	CPlayer *pP = GS()->m_apPlayers[ClientID];
+	if(!pP)
 		return;
+	if(pP->m_pDeployedVehicle)
+		RecallVehicle(ClientID);
+	else
+		DeployVehicle(ClientID);
+}
+
+bool CMMOManager::TryGrantVehicleFromItem(CPlayer *pPlayer, int ItemID, int BagSlot)
+{
+	if(!pPlayer || pPlayer->GetAccountId() <= 0)
+		return false;
+
+	int VehicleType = 0;
+	if(ItemID == 194 || ItemID == 195)
+		VehicleType = 1;
+	if(VehicleType <= 0)
+		return false;
+
+	const int ClientID = pPlayer->GetCID();
+	if(pPlayer->m_VehicleType > 0)
+	{
+		GS()->SendChatTo(ClientID, "🚁 你已拥有载具。");
+		return false;
 	}
 
-	if(pP->m_PetID <= 0)
+	if(BagSlot >= 0)
 	{
-		pGame->SendChatTo(ClientID, "🐾 你没有宠物。");
-		return;
-	}
-	if(!pP->GetCharacter())
-	{
-		pGame->SendChatTo(ClientID, "🐾 你没有角色。");
-		return;
+		if((size_t)BagSlot >= pPlayer->m_MMOInventory.size() ||
+			pPlayer->m_MMOInventory[BagSlot].GetID() != ItemID)
+		{
+			GS()->SendChatTo(ClientID, "背包格无效。");
+			return false;
+		}
+		if(!pPlayer->m_MMOInventory.RemoveAt(BagSlot, 1))
+		{
+			GS()->SendChatTo(ClientID, "激活失败。");
+			return false;
+		}
+		pPlayer->m_MMODirty = true;
+		SaveInventory(pPlayer);
 	}
 
-	CPet *pPet = new CPet(pGame, ClientID, pP->m_PetID);
-	if(pP->m_aPetName[0])
-		pPet->SetName(pP->m_aPetName);
-	pP->m_pPet = pPet;
-	pGame->SendChatTo(ClientID, "🐾 宠物已召唤！");
+	pPlayer->m_VehicleType = VehicleType;
+	const CMMOItemDescription *pDef = CMMOItemDescription::Get(ItemID);
+	if(pDef && !pPlayer->m_aVehicleName[0])
+		str_copy(pPlayer->m_aVehicleName, GS()->Loc(ClientID, pDef->GetNameKey(), pDef->GetName()), sizeof(pPlayer->m_aVehicleName));
+	SaveVehicleData(pPlayer);
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "🚁 已获得载具：%s", pPlayer->m_aVehicleName[0] ? pPlayer->m_aVehicleName : "飞行器");
+	GS()->SendChatTo(ClientID, aBuf);
+	PlayInteractionSound(GS()->m_World, pPlayer, SOUND_SFX_ITEM_EQUIP);
+	return true;
 }
 
 bool CMMOManager::EquipFashion(CPlayer *pPlayer, int BagSlot)

@@ -6,6 +6,8 @@
 #include <base/math.h>
 #include <base/system.h>
 
+#include <vector>
+
 #include <engine/console.h>
 #include <engine/shared/protocol.h>
 #include <generated/protocol.h>
@@ -55,7 +57,12 @@ public:
 	bool Get(int Index, float *pValue) const;
 	bool Get(const char *pName, float *pValue) const;
 	const char *GetName(int Index) const { return ms_apNames[Index]; }
+	static const char *Name(int Index) { return ms_apNames[Index]; }
 	int PossibleTunings(const char *pStr, IConsole::FPossibleCallback pfnCallback = IConsole::EmptyPossibleCommandCallback, void *pUser = 0);
+
+	std::vector<std::pair<int, float>> GetDiff(CTuningParams *pOther) const;
+	std::vector<std::pair<int, float>> GetDiff() const;
+	void ApplyDiff(const CTuningParams *pSource);
 };
 
 inline void StrToInts(int *pInts, int Num, const char *pStr)

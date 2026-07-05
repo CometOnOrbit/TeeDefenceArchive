@@ -113,7 +113,7 @@ public:
 	void OnInitWorld(const char *pWhereLocalWorld) override;
 
 	// ─── MMO Bot (Mob) System ──────────────────────────────────────────
-	int  SpawnMob(int DefID, vec2 Pos);
+	int  SpawnMob(int DefID, vec2 Pos, int PreferredSlot = -1);
 	void TickMMOBot(CPlayer *pPlayer);
 	void ConMMOSpawn(const char *pMobName, CPlayer *pPlayer);
 	void OnPlayerLogin(CPlayer *pPlayer) override;
@@ -129,6 +129,28 @@ public:
 	// ─── Friend System ────────────────────────────────────────────────
 	bool LoadFriends(CPlayer *pPlayer);
 	bool SaveFriends(CPlayer *pPlayer);
+	bool LookupAccountName(int64 UserID, char *pBuf, int BufSize);
+	bool InsertFriendRequest(int64 FromID, int64 ToID);
+	bool DeleteFriendRequest(int64 FromID, int64 ToID);
+	bool HasFriendRequest(int64 FromID, int64 ToID);
+	int CountIncomingFriendRequests(int64 ToAccountID);
+	void UpdateLastOnlineAt(int64 UserID);
+	struct SFriendListEntry
+	{
+		int64 m_AccountID;
+		char m_aName[64];
+		bool m_Online;
+		time_t m_LastOnlineAt;
+	};
+	bool LoadFriendListDetails(CPlayer *pPlayer, std::vector<SFriendListEntry> &Out);
+	struct SFriendRequestEntry
+	{
+		int64 m_FromAccountID;
+		char m_aName[64];
+	};
+	bool LoadIncomingFriendRequests(int64 ToAccountID, std::vector<SFriendRequestEntry> &Out);
+	bool AddFriendPair(int64 UserA, int64 UserB);
+	bool RemoveFriendPair(int64 UserA, int64 UserB);
 
 	// ─── Daily Checkin ────────────────────────────────────────────────
 	bool LoadCheckinData(CPlayer *pPlayer);
@@ -179,7 +201,8 @@ public:
 	void ShowMailboxVotes(int ClientID, class CVoteMenuManager *pVote, CPlayer *pP, SPlayerVote *pSVote);
 	void ShowMailReadVotes(int ClientID, class CVoteMenuManager *pVote, CPlayer *pP, SPlayerVote *pSVote, int MailID);
 	bool SendMail(const char *pSender, int64 TargetAID, const char *pTitle, const char *pDesc, const std::vector<std::pair<int,int>> &vItems);
-	bool ClaimMailAttachments(CPlayer *pPlayer, int MailID);
+	bool ClaimMailAttachments(CPlayer *pPlayer, int MailID, bool Silent = false);
+	int ClaimAllMailAttachments(CPlayer *pPlayer);
 	void DeleteMail(int MailID);
 	void DeleteReadMails(int64 AccountID);
 
@@ -250,6 +273,7 @@ public:
 	void RenderEnchantSelectVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
 	void RenderFashionSelectVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
 	void RenderFriendsListVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
+	void RenderFriendRequestsVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
 	void RenderRankingLevelVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
 	void RenderRankingGoldVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
 	void RenderGuildBrowseVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
@@ -259,8 +283,10 @@ public:
 	void RenderRecycleVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
 	void RenderRecycleConfirmVotes(int ClientID, class CVoteMenuManager *pV, class CPlayer *pP, class SPlayerVote *pSVote);
 	void ConShopBuy(int ClientID, const char *pNpcID, int ItemID);
-	void ToggleMount(int ClientID);
-	void TogglePet(int ClientID);
+	void DeployVehicle(int ClientID);
+	void RecallVehicle(int ClientID);
+	void ToggleVehicle(int ClientID);
+	bool TryGrantVehicleFromItem(CPlayer *pPlayer, int ItemID, int BagSlot = -1);
 	bool EquipFashion(CPlayer *pPlayer, int BagSlot);
 
 	CVoteMenuManager *GetVoteMenu() const;
@@ -271,10 +297,19 @@ public:
 	void RegisterPartyCommands(CCommandManager *pManager);
 	void RegisterMMOCommands(CCommandManager *pManager);
 	void RegisterMMOVoteCommands(CCommandManager *pManager);
+	void RegisterEconomyVoteCommands(CCommandManager *pManager);
+	void RegisterSocialVoteCommands(CCommandManager *pManager);
+	void RegisterLifestyleVoteCommands(CCommandManager *pManager);
+	void RegisterInventoryVoteCommands(CCommandManager *pManager);
+	void RegisterGroupVoteCommands(CCommandManager *pManager);
+	void RegisterMailVoteCommands(CCommandManager *pManager);
+	void RegisterActivityVoteCommands(CCommandManager *pManager);
 	void RegisterRankingCommands();
 
-	// ─── Mount System ───────────────────────────────────────────────────
-	void RegisterMountCommands();
+	// ─── Vehicle System ──────────────────────────────────────────────
+	bool LoadVehicleData(CPlayer *pPlayer);
+	bool SaveVehicleData(CPlayer *pPlayer);
+	void RegisterVehicleCommands();
 
 	// ─── Auto Pathfinding Commands ────────────────────────────────────
 	void RegisterAutoPathCommands();
@@ -282,20 +317,21 @@ public:
 	// ─── Fashion Commands ─────────────────────────────────────────
 	void RegisterFashionCommands();
 
-	// ─── Pet System ──────────────────────────────────────────────────
-	bool LoadPetData(CPlayer *pPlayer);
-	bool SavePetData(CPlayer *pPlayer);
-	void RegisterPetCommands();
-
 	// ─── Housing System ────────────────────────────────────────────────
 	bool LoadHouseData(CPlayer *pPlayer);
 	bool SaveHouseData(CPlayer *pPlayer);
 	void RegisterHouseCommands();
+	void VoteHouseBuy(int ClientID);
+	void VoteHouseTp(int ClientID);
 
 	// ─── Marriage System ──────────────────────────────────────────────
 	bool LoadMarriageData(CPlayer *pPlayer);
 	bool SaveMarriageData(CPlayer *pPlayer);
 	void RegisterMarriageCommands();
+	void VoteMarry(int ClientID, const char *pTargetName);
+	void VoteMarryAccept(int ClientID);
+	bool GetIncomingMarriageProposerName(int ClientID, char *pBuf, int BufSize);
+	void VoteDivorce(int ClientID);
 
 	// ─── Auction System ────────────────────────────────────────────────
 	void ConAuctionList(int ClientID);
@@ -305,6 +341,8 @@ public:
 	void RegisterAuctionCommands();
 
 	// ─── Ranking System ────────────────────────────────────────────────
+	int GetPlayerLevelRank(int64 AccountID, int Level, int Experience);
+	int GetPlayerGoldRank(int64 AccountID, int Gold);
 	void ConRanking(int ClientID, const char *pType);
 
 	// Callbacks (static, for command registration)

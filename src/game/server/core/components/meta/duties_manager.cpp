@@ -305,8 +305,8 @@ void CDutiesManager::RegisterVoteCommands(CCommandManager *pMgr)
 {
 	if(!pMgr || !GS())
 		return;
-	pMgr->AddCommand("menuduties", "", "", ComVoteDutyPage, GS());
-	pMgr->AddCommand("dutyclaim", "", "i", ComVoteDutyClaim, GS());
+	pMgr->AddVoteCommand("menuduties", "", "", ComVoteDutyPage, GS());
+	pMgr->AddVoteCommand("dutyclaim", "", "i", ComVoteDutyClaim, GS());
 }
 
 bool CDutiesManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)

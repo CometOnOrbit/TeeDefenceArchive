@@ -78,10 +78,12 @@ static inline MMOItemGroup MMOItemGroupFromName(const char *pName)
 	if(str_comp_nocase(pName, "quest") == 0) return ItemGroup::Quest;
 	if(str_comp_nocase(pName, "currency") == 0) return ItemGroup::Currency;
 	if(str_comp_nocase(pName, "usable") == 0) return ItemGroup::Usable;
-	if(str_comp_nocase(pName, "resource") == 0) return ItemGroup::Resource;
+	if(str_comp_nocase(pName, "material") == 0) return ItemGroup::Material;
+	if(str_comp_nocase(pName, "resource") == 0) return ItemGroup::Material; // backward-compatible alias
 	if(str_comp_nocase(pName, "other") == 0) return ItemGroup::Other;
 	if(str_comp_nocase(pName, "settings") == 0) return ItemGroup::Settings;
 	if(str_comp_nocase(pName, "equipment") == 0) return ItemGroup::Equipment;
+	if(str_comp_nocase(pName, "armor") == 0) return ItemGroup::Equipment; // backward-compatible alias
 	if(str_comp_nocase(pName, "decoration") == 0) return ItemGroup::Decoration;
 	if(str_comp_nocase(pName, "potion") == 0) return ItemGroup::Potion;
 	return ItemGroup::Unknown;
@@ -116,6 +118,35 @@ static inline MMOItemType MMOItemTypeFromName(const char *pName)
 	if(str_comp_nocase(pName, "resourcemineable") == 0) return ItemType::ResourceMineable;
 	if(str_comp_nocase(pName, "resourcefishes") == 0) return ItemType::ResourceFishes;
 	return ItemType::Unknown;
+}
+
+static inline bool MMOIsEquipmentItemType(ItemType Type)
+{
+	switch(Type)
+	{
+	case ItemType::EquipGun:
+	case ItemType::EquipHammer:
+	case ItemType::EquipShotgun:
+	case ItemType::EquipGrenade:
+	case ItemType::EquipLaser:
+	case ItemType::EquipPickaxe:
+	case ItemType::EquipRake:
+	case ItemType::EquipFishrod:
+	case ItemType::EquipGloves:
+	case ItemType::EquipHelmetTank:
+	case ItemType::EquipHelmetDPS:
+	case ItemType::EquipHelmetHealer:
+	case ItemType::EquipArmorTank:
+	case ItemType::EquipArmorDPS:
+	case ItemType::EquipArmorHealer:
+	case ItemType::EquipEidolon:
+	case ItemType::EquipTitle:
+	case ItemType::EquipPotionHeal:
+	case ItemType::EquipPotionMana:
+		return true;
+	default:
+		return false;
+	}
 }
 
 // ─── MMOItemType → WEAPON_* mapping ──────────────────────────────────
@@ -175,7 +206,6 @@ static inline int MobBehaviorFlagsFromName(const char *pName)
 }
 
 // ─── Drop Entry ──────────────────────────────────────────────────────
-// ─── Drop Entry ──────────────────────────────────────────────────────
 struct SMMODropEntry
 {
 	int m_ItemID = -1;
@@ -183,6 +213,64 @@ struct SMMODropEntry
 	int m_MinCount = 1;
 	int m_MaxCount = 1;
 };
+
+// ─── Mob combat profile (JSON-driven) ───────────────────────────────
+enum EMobArchetype
+{
+	MOB_ARCHETYPE_DEFAULT = 0,
+	MOB_ARCHETYPE_MELEE,
+	MOB_ARCHETYPE_RANGED,
+	MOB_ARCHETYPE_CASTER,
+	MOB_ARCHETYPE_TANK,
+};
+
+enum EMobAbilityTrigger
+{
+	MOB_ABILITY_IN_RANGE = 0,
+	MOB_ABILITY_ON_AGGRO,
+	MOB_ABILITY_ON_LOW_HP,
+	MOB_ABILITY_PERIODIC,
+};
+
+struct SMMOMobWeaponEntry
+{
+	int m_WeaponId = 0;
+	int m_Ammo = -1;
+	bool m_Primary = false;
+};
+
+struct SMMOMobAbilityDef
+{
+	char m_aKey[32] = {0};
+	EMobAbilityTrigger m_Trigger = MOB_ABILITY_IN_RANGE;
+	float m_Range = 400.f;
+	int m_CooldownTicks = 500;
+	int m_CastTicks = 0;
+	float m_ScaleAttack = 1.f;
+	float m_ThresholdPct = 0.f;
+};
+
+static inline EMobArchetype MobArchetypeFromName(const char *pName)
+{
+	if(!pName || !pName[0])
+		return MOB_ARCHETYPE_DEFAULT;
+	if(str_comp_nocase(pName, "melee") == 0) return MOB_ARCHETYPE_MELEE;
+	if(str_comp_nocase(pName, "ranged") == 0) return MOB_ARCHETYPE_RANGED;
+	if(str_comp_nocase(pName, "caster") == 0) return MOB_ARCHETYPE_CASTER;
+	if(str_comp_nocase(pName, "tank") == 0) return MOB_ARCHETYPE_TANK;
+	return MOB_ARCHETYPE_DEFAULT;
+}
+
+static inline EMobAbilityTrigger MobAbilityTriggerFromName(const char *pName)
+{
+	if(!pName || !pName[0])
+		return MOB_ABILITY_IN_RANGE;
+	if(str_comp_nocase(pName, "in_range") == 0) return MOB_ABILITY_IN_RANGE;
+	if(str_comp_nocase(pName, "on_aggro") == 0) return MOB_ABILITY_ON_AGGRO;
+	if(str_comp_nocase(pName, "on_low_hp") == 0) return MOB_ABILITY_ON_LOW_HP;
+	if(str_comp_nocase(pName, "periodic") == 0) return MOB_ABILITY_PERIODIC;
+	return MOB_ABILITY_IN_RANGE;
+}
 
 // ─── MMO Mob Runtime Data ────────────────────────────────────────────
 // Attached to CPlayer as m_pMMOBotData for bot/dummy players.
@@ -236,10 +324,17 @@ struct SMMOMobDef
 	int m_BehaviorFlags = 0; // bitmask
 	bool m_IsBoss = false;
 	std::vector<SMMODropEntry> m_vDrops;
+	EMobArchetype m_Archetype = MOB_ARCHETYPE_DEFAULT;
+	float m_PreferredRange = 0.f;
+	int m_WeaponItemId = -1;
+	std::vector<SMMOMobWeaponEntry> m_vWeapons;
+	std::vector<SMMOMobAbilityDef> m_vAbilities;
 
-		static inline const SMMOMobDef *Get(int ID) { return CDataCenter::FindMobDef(ID); }
+	static inline const SMMOMobDef *Get(int ID) { return CDataCenter::FindMobDef(ID); }
 
 	bool IsValid() const { return m_ID >= 0; }
+	bool HasCombatProfile() const { return !m_vWeapons.empty() || m_Archetype != MOB_ARCHETYPE_DEFAULT || m_WeaponItemId > 0 || !m_vAbilities.empty(); }
+	float GetPreferredCombatRange() const;
 };
 
 

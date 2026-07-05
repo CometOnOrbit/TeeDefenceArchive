@@ -115,10 +115,16 @@ void CItemHelper::ConsumeFormulaPass(const json_value &Entry)
 		const json_value *pVal = Form.u.object.values[i].value;
 		if(!pVal || pVal->type != json_integer)
 			continue;
-		int MatId = FindItemByName(pKey);
+		int MatId = -1;
+		if(pKey[0] >= '0' && pKey[0] <= '9')
+		{
+			MatId = str_toint(pKey);
+			if(!CheckItemValid(MatId))
+				MatId = -1;
+		}
 		if(MatId < 0)
 		{
-			dbg_msg("items", "formula for id=%d: unknown material name '%s'", ID, pKey);
+			dbg_msg("items", "formula for id=%d: material key '%s' must be a TD item id (integer string)", ID, pKey);
 			continue;
 		}
 		m_aFormula[ID][MatId] = (int)pVal->u.integer;

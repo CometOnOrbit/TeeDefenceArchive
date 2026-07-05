@@ -1,15 +1,287 @@
 #include "mmo_world_boss.h"
 #include "mmo_manager.h"
+#include <game/server/data_center.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
 #include <game/server/entities/character.h>
 #include <game/commands.h>
-#include <game/server/entities/character_bot_ai.h>
+#include <game/server/core/components/vote/vote_menu_types.h>
 #include <game/server/core/tworld_controller.h>
+#include <game/server/core/attribute_types.h>
 #include <engine/shared/config.h>
+#include <engine/shared/jsonparser.h>
 #include <base/math.h>
+#include <algorithm>
+#include <cstdarg>
+#include <cstdio>
 
-// ─── CWorldBossManager ────────────────────────────────────────────────
+namespace
+{
+static std::vector<SWorldBossSpawnDef> gs_aWorldBossSpawns;
+
+static void ParseItemRewards(const json_value &Arr, std::vector<SWorldBossItemReward> &vOut)
+{
+	if(Arr.type != json_array)
+		return;
+	for(unsigned i = 0; i < Arr.u.array.length; i++)
+	{
+		const json_value &Item = Arr[(int)i];
+		if(Item.type != json_object)
+			continue;
+		SWorldBossItemReward Reward;
+		if(Item["id"].type == json_integer)
+			Reward.m_ItemID = (int)Item["id"].u.integer;
+		if(Item["count"].type == json_integer)
+			Reward.m_Count = (int)Item["count"].u.integer;
+		if(Reward.m_ItemID > 0 && Reward.m_Count > 0)
+			vOut.push_back(Reward);
+	}
+}
+
+static int JsonInt(const json_value &Obj, const char *pKey, int Default)
+{
+	const json_value &Val = Obj[pKey];
+	if(Val.type == json_integer)
+		return (int)Val.u.integer;
+	return Default;
+}
+
+static void ParseBroadcastLine(const json_value &Obj, SWorldBossBroadcastLine &Line)
+{
+	if(Obj.type != json_object)
+		return;
+	if(Obj["key"].type == json_string)
+		str_copy(Line.m_aKey, Obj["key"].u.string.ptr, sizeof(Line.m_aKey));
+	if(Obj["fallback"].type == json_string)
+		str_copy(Line.m_aFallback, Obj["fallback"].u.string.ptr, sizeof(Line.m_aFallback));
+}
+
+static void ParseRewardTiers(const json_value &Rewards, SWorldBossSpawnDef &Spawn)
+{
+	if(Rewards.type != json_object)
+		return;
+
+	Spawn.m_LeaderboardLines = JsonInt(Rewards, "leaderboard_lines", Spawn.m_LeaderboardLines);
+
+	const json_value &Tiers = Rewards["tiers"];
+	if(Tiers.type == json_array && Tiers.u.array.length > 0)
+	{
+		Spawn.m_vRewardTiers.clear();
+		for(unsigned i = 0; i < Tiers.u.array.length; i++)
+		{
+			const json_value &T = Tiers[(int)i];
+			if(T.type != json_object)
+				continue;
+			SWorldBossRewardTier Tier;
+			Tier.m_RankMin = JsonInt(T, "rank_min", 1);
+			Tier.m_RankMax = JsonInt(T, "rank_max", Tier.m_RankMin);
+			Tier.m_Gold = JsonInt(T, "gold", 0);
+			Tier.m_Exp = JsonInt(T, "exp", 0);
+			Tier.m_Reputation = JsonInt(T, "reputation", 0);
+			if(T["label"].type == json_string)
+				str_copy(Tier.m_aLabel, T["label"].u.string.ptr, sizeof(Tier.m_aLabel));
+			ParseItemRewards(T["items"], Tier.m_vItems);
+			Spawn.m_vRewardTiers.push_back(Tier);
+		}
+	}
+
+	const json_value &KillBonus = Rewards["kill_bonus"];
+	if(KillBonus.type == json_object)
+	{
+		Spawn.m_KillBonus.m_Reputation = JsonInt(KillBonus, "reputation", 0);
+		Spawn.m_KillBonus.m_vItems.clear();
+		ParseItemRewards(KillBonus["items"], Spawn.m_KillBonus.m_vItems);
+	}
+}
+
+static void ApplyDefaultSpawn(SWorldBossSpawnDef &Spawn)
+{
+	Spawn = {};
+	str_copy(Spawn.m_aId, "default_world_boss", sizeof(Spawn.m_aId));
+	Spawn.m_Enabled = false;
+	Spawn.m_World = 0;
+	Spawn.m_MobID = 55;
+	Spawn.m_SpawnPos = vec2(960.f, 1408.f);
+	Spawn.m_Slot = 63;
+	Spawn.m_Schedule.m_InitialMinSec = 300;
+	Spawn.m_Schedule.m_InitialMaxSec = 900;
+	Spawn.m_Schedule.m_RespawnSec = 3600;
+	Spawn.m_LeaderboardLines = 5;
+
+	str_copy(Spawn.m_SpawnMsg.m_aKey, "world_boss.spawn", sizeof(Spawn.m_SpawnMsg.m_aKey));
+	str_copy(Spawn.m_SpawnMsg.m_aFallback, "%s 已降临！HP %d/%d", sizeof(Spawn.m_SpawnMsg.m_aFallback));
+	str_copy(Spawn.m_KillMsg.m_aKey, "world_boss.kill", sizeof(Spawn.m_KillMsg.m_aKey));
+	str_copy(Spawn.m_KillMsg.m_aFallback, "%s 已被击败！击杀者：%s", sizeof(Spawn.m_KillMsg.m_aFallback));
+	str_copy(Spawn.m_HpMsg.m_aKey, "world_boss.hp", sizeof(Spawn.m_HpMsg.m_aKey));
+	str_copy(Spawn.m_HpMsg.m_aFallback, "%s HP: %d/%d (%d%%)", sizeof(Spawn.m_HpMsg.m_aFallback));
+	str_copy(Spawn.m_StatusAliveMsg.m_aKey, "world_boss.status.alive", sizeof(Spawn.m_StatusAliveMsg.m_aKey));
+	str_copy(Spawn.m_StatusAliveMsg.m_aFallback, "%s 存活中 | HP: %d/%d (%d%%)", sizeof(Spawn.m_StatusAliveMsg.m_aFallback));
+	str_copy(Spawn.m_StatusWaitingMsg.m_aKey, "world_boss.status.waiting", sizeof(Spawn.m_StatusWaitingMsg.m_aKey));
+	str_copy(Spawn.m_StatusWaitingMsg.m_aFallback, "%s 已消失，约 %d 秒后刷新", sizeof(Spawn.m_StatusWaitingMsg.m_aFallback));
+	str_copy(Spawn.m_StatusSoonMsg.m_aKey, "world_boss.status.soon", sizeof(Spawn.m_StatusSoonMsg.m_aKey));
+	str_copy(Spawn.m_StatusSoonMsg.m_aFallback, "%s 即将降临…", sizeof(Spawn.m_StatusSoonMsg.m_aFallback));
+	str_copy(Spawn.m_ClanMsg.m_aKey, "world_boss.clan", sizeof(Spawn.m_ClanMsg.m_aKey));
+	str_copy(Spawn.m_ClanMsg.m_aFallback, "%s: %d/%d [%d%%]", sizeof(Spawn.m_ClanMsg.m_aFallback));
+
+	SWorldBossRewardTier Tier1;
+	Tier1.m_RankMin = 1;
+	Tier1.m_RankMax = 1;
+	Tier1.m_Gold = 5000;
+	Tier1.m_Exp = 2000;
+	Tier1.m_Reputation = 50;
+	str_copy(Tier1.m_aLabel, "🏆", sizeof(Tier1.m_aLabel));
+	Tier1.m_vItems.push_back({1, 1});
+	Spawn.m_vRewardTiers.push_back(Tier1);
+
+	SWorldBossRewardTier Tier2 = Tier1;
+	Tier2.m_RankMin = 2;
+	Tier2.m_RankMax = 2;
+	Tier2.m_Gold = 3000;
+	Tier2.m_Exp = 1000;
+	Tier2.m_Reputation = 30;
+	str_copy(Tier2.m_aLabel, "🥈", sizeof(Tier2.m_aLabel));
+	Spawn.m_vRewardTiers.push_back(Tier2);
+
+	SWorldBossRewardTier Tier3 = Tier2;
+	Tier3.m_RankMin = 3;
+	Tier3.m_RankMax = 3;
+	Tier3.m_Gold = 2000;
+	Tier3.m_Exp = 500;
+	Tier3.m_Reputation = 20;
+	str_copy(Tier3.m_aLabel, "🥉", sizeof(Tier3.m_aLabel));
+	Spawn.m_vRewardTiers.push_back(Tier3);
+
+	SWorldBossRewardTier Tier4;
+	Tier4.m_RankMin = 4;
+	Tier4.m_RankMax = 999;
+	Tier4.m_Gold = 500;
+	Tier4.m_Exp = 200;
+	Tier4.m_Reputation = 5;
+	str_copy(Tier4.m_aLabel, "💫", sizeof(Tier4.m_aLabel));
+	Spawn.m_vRewardTiers.push_back(Tier4);
+
+	Spawn.m_KillBonus.m_Reputation = 100;
+	Spawn.m_KillBonus.m_vItems.push_back({1, 2});
+}
+
+static bool ParseSpawnEntry(const json_value &El, SWorldBossSpawnDef &Spawn)
+{
+	if(El.type != json_object)
+		return false;
+
+	ApplyDefaultSpawn(Spawn);
+
+	if(El["id"].type == json_string)
+		str_copy(Spawn.m_aId, El["id"].u.string.ptr, sizeof(Spawn.m_aId));
+	if(El["enabled"].type == json_boolean)
+		Spawn.m_Enabled = El["enabled"].u.boolean != 0;
+	Spawn.m_World = JsonInt(El, "world", Spawn.m_World);
+	Spawn.m_MobID = JsonInt(El, "mob_id", Spawn.m_MobID);
+	Spawn.m_Slot = JsonInt(El, "slot", Spawn.m_Slot);
+
+	const json_value &SpawnPos = El["spawn"];
+	if(SpawnPos.type == json_object)
+	{
+		if(SpawnPos["x"].type == json_integer)
+			Spawn.m_SpawnPos.x = (float)SpawnPos["x"].u.integer;
+		if(SpawnPos["y"].type == json_integer)
+			Spawn.m_SpawnPos.y = (float)SpawnPos["y"].u.integer;
+	}
+
+	if(El["display_name"].type == json_string)
+		str_copy(Spawn.m_aDisplayName, El["display_name"].u.string.ptr, sizeof(Spawn.m_aDisplayName));
+	if(El["display_name_key"].type == json_string)
+		str_copy(Spawn.m_aDisplayNameKey, El["display_name_key"].u.string.ptr, sizeof(Spawn.m_aDisplayNameKey));
+
+	const json_value &Schedule = El["schedule"];
+	if(Schedule.type == json_object)
+	{
+		Spawn.m_Schedule.m_InitialMinSec = JsonInt(Schedule, "initial_min_sec", Spawn.m_Schedule.m_InitialMinSec);
+		Spawn.m_Schedule.m_InitialMaxSec = JsonInt(Schedule, "initial_max_sec", Spawn.m_Schedule.m_InitialMaxSec);
+		Spawn.m_Schedule.m_RespawnSec = JsonInt(Schedule, "respawn_sec", Spawn.m_Schedule.m_RespawnSec);
+		if(Schedule["first_spawn_min_sec"].type == json_integer)
+			Spawn.m_Schedule.m_InitialMinSec = (int)Schedule["first_spawn_min_sec"].u.integer;
+		if(Schedule["first_spawn_max_sec"].type == json_integer)
+			Spawn.m_Schedule.m_InitialMaxSec = (int)Schedule["first_spawn_max_sec"].u.integer;
+		if(Schedule["respawn_ticks"].type == json_integer)
+			Spawn.m_Schedule.m_RespawnSec = maximum(1, (int)Schedule["respawn_ticks"].u.integer / 10);
+	}
+
+	const json_value &Broadcast = El["broadcast"];
+	if(Broadcast.type == json_object)
+	{
+		ParseBroadcastLine(Broadcast["spawn"], Spawn.m_SpawnMsg);
+		ParseBroadcastLine(Broadcast["kill"], Spawn.m_KillMsg);
+		ParseBroadcastLine(Broadcast["hp"], Spawn.m_HpMsg);
+		ParseBroadcastLine(Broadcast["status_alive"], Spawn.m_StatusAliveMsg);
+		ParseBroadcastLine(Broadcast["status_waiting"], Spawn.m_StatusWaitingMsg);
+		ParseBroadcastLine(Broadcast["status_soon"], Spawn.m_StatusSoonMsg);
+		ParseBroadcastLine(Broadcast["clan"], Spawn.m_ClanMsg);
+	}
+
+	ParseRewardTiers(El["rewards"], Spawn);
+	return Spawn.m_World >= 0 && Spawn.m_MobID > 0;
+}
+
+static void LoadAllSpawns(IStorage *pStorage)
+{
+	gs_aWorldBossSpawns.clear();
+	if(!pStorage)
+		return;
+
+	CJsonParser Parser;
+	json_value *pRoot = Parser.ParseFile("server_content/mmo/world_boss.json", pStorage);
+	if(!pRoot)
+	{
+		dbg_msg("world_boss", "world_boss.json: %s", Parser.Error());
+		return;
+	}
+
+	const json_value &Spawns = (*pRoot)["spawns"];
+	if(Spawns.type == json_array)
+	{
+		for(unsigned i = 0; i < Spawns.u.array.length; i++)
+		{
+			SWorldBossSpawnDef Spawn;
+			if(!ParseSpawnEntry(Spawns[(int)i], Spawn))
+				continue;
+			gs_aWorldBossSpawns.push_back(Spawn);
+		}
+	}
+	else
+	{
+		SWorldBossSpawnDef Spawn;
+		ApplyDefaultSpawn(Spawn);
+		const json_value &Boss = (*pRoot)["boss"];
+		if(Boss.type == json_object)
+		{
+			Spawn.m_MobID = JsonInt(Boss, "mob_id", Spawn.m_MobID);
+			Spawn.m_World = JsonInt(Boss, "world", Spawn.m_World);
+			Spawn.m_Slot = JsonInt(Boss, "slot", Spawn.m_Slot);
+			if(Boss["x"].type == json_integer)
+				Spawn.m_SpawnPos.x = (float)Boss["x"].u.integer;
+			if(Boss["y"].type == json_integer)
+				Spawn.m_SpawnPos.y = (float)Boss["y"].u.integer;
+			Spawn.m_Schedule.m_InitialMinSec = JsonInt(Boss, "first_spawn_min_sec", Spawn.m_Schedule.m_InitialMinSec);
+			Spawn.m_Schedule.m_InitialMaxSec = JsonInt(Boss, "first_spawn_max_sec", Spawn.m_Schedule.m_InitialMaxSec);
+			if(Boss["respawn_sec"].type == json_integer)
+				Spawn.m_Schedule.m_RespawnSec = JsonInt(Boss, "respawn_sec", Spawn.m_Schedule.m_RespawnSec);
+			else if(Boss["respawn_ticks"].type == json_integer)
+				Spawn.m_Schedule.m_RespawnSec = maximum(1, JsonInt(Boss, "respawn_ticks", 3600) / 10);
+		}
+		ParseRewardTiers((*pRoot)["rewards"], Spawn);
+		Spawn.m_Enabled = true;
+		gs_aWorldBossSpawns.push_back(Spawn);
+	}
+
+	dbg_msg("world_boss", "Loaded %d world boss spawn definitions", (int)gs_aWorldBossSpawns.size());
+}
+}
+
+void CWorldBossManager::OnPreInit()
+{
+	LoadAllSpawns(Storage());
+}
 
 CWorldBossManager::CWorldBossManager()
 {
@@ -21,9 +293,21 @@ CWorldBossManager::~CWorldBossManager()
 		Core()->Events().Unregister(this);
 }
 
-void CWorldBossManager::OnPreInit()
+void CWorldBossManager::ResolveSpawnForWorld(int WorldID)
 {
-	// Nothing to pre-init
+	m_pSpawn = nullptr;
+	m_pMobDef = nullptr;
+	for(const SWorldBossSpawnDef &Spawn : gs_aWorldBossSpawns)
+	{
+		if(Spawn.m_World == WorldID && Spawn.m_Enabled)
+		{
+			m_pSpawn = &Spawn;
+			m_pMobDef = SMMOMobDef::Get(Spawn.m_MobID);
+			if(!m_pMobDef)
+				dbg_msg("world_boss", "world %d spawn '%s': unknown mob_id %d", WorldID, Spawn.m_aId, Spawn.m_MobID);
+			return;
+		}
+	}
 }
 
 void CWorldBossManager::OnInitWorld(const char *pWhereLocalWorld)
@@ -35,57 +319,113 @@ void CWorldBossManager::OnInitWorld(const char *pWhereLocalWorld)
 		m_WorldID = GS()->GetWorldID();
 	}
 
-	// Schedule first boss spawn at random offset (5-15 minutes after world init)
-	const int TicksUntilSpawn = Server()->TickSpeed() * (300 + random_int() % 600);
-	m_NextSpawnTick = Server()->Tick() + TicksUntilSpawn;
+	ResolveSpawnForWorld(m_WorldID);
+	if(!IsEnabled())
+	{
+		dbg_msg("world_boss", "world %d: no enabled world boss spawn configured", m_WorldID);
+		return;
+	}
 
-	// Find spawn position for the boss
-	FindBossSpawnPos();
-
-	dbg_msg("world_boss", "WorldBoss initialized in world %d, first spawn in %d ticks",
-		m_WorldID, TicksUntilSpawn);
+	ScheduleNextSpawn(true);
+	dbg_msg("world_boss", "world %d: spawn '%s' mob_id=%d at (%.0f,%.0f), next in %d ticks",
+		m_WorldID, m_pSpawn->m_aId, m_pSpawn->m_MobID,
+		m_pSpawn->m_SpawnPos.x, m_pSpawn->m_SpawnPos.y,
+		GetNextSpawnInTicks());
 }
 
 void CWorldBossManager::OnShutdown()
 {
 	if(Core())
 		Core()->Events().Unregister(this);
-
 	if(m_IsAlive)
 		DespawnBoss();
 }
 
+int CWorldBossManager::RespawnDelayTicks() const
+{
+	if(!Server() || !m_pSpawn)
+		return Server() ? Server()->TickSpeed() * 3600 : 36000;
+	return maximum(Server()->TickSpeed(), m_pSpawn->m_Schedule.m_RespawnSec * Server()->TickSpeed());
+}
+
+void CWorldBossManager::ScheduleNextSpawn(bool bInitial)
+{
+	if(!Server() || !m_pSpawn)
+		return;
+
+	if(bInitial)
+	{
+		const int MinSec = maximum(1, m_pSpawn->m_Schedule.m_InitialMinSec);
+		const int MaxSec = maximum(MinSec, m_pSpawn->m_Schedule.m_InitialMaxSec);
+		const int Sec = MinSec + random_int() % (MaxSec - MinSec + 1);
+		m_NextSpawnTick = Server()->Tick() + Sec * Server()->TickSpeed();
+	}
+	else
+	{
+		m_NextSpawnTick = Server()->Tick() + RespawnDelayTicks();
+	}
+}
+
+const char *CWorldBossManager::GetBossDisplayName(int ClientID) const
+{
+	if(!m_pSpawn)
+		return "World Boss";
+	if(m_pSpawn->m_aDisplayNameKey[0] && GS())
+		return GS()->Loc(ClientID, m_pSpawn->m_aDisplayNameKey, m_pSpawn->m_aDisplayName);
+	if(m_pSpawn->m_aDisplayName[0])
+		return m_pSpawn->m_aDisplayName;
+	if(m_pMobDef && m_pMobDef->m_aName[0])
+		return m_pMobDef->m_aName;
+	return "World Boss";
+}
+
+void CWorldBossManager::FormatBroadcast(int ClientID, char *pBuf, int BufSize, const SWorldBossBroadcastLine &Line, ...) const
+{
+	if(!pBuf || BufSize <= 0)
+		return;
+	pBuf[0] = 0;
+	if(!GS())
+		return;
+
+	char aFmt[256];
+	if(Line.m_aKey[0])
+		GS()->LocFormat(aFmt, sizeof(aFmt), ClientID, Line.m_aKey, Line.m_aFallback[0] ? Line.m_aFallback : "%s");
+	else
+		str_copy(aFmt, Line.m_aFallback[0] ? Line.m_aFallback : "%s", sizeof(aFmt));
+
+	va_list Args;
+	va_start(Args, Line);
+	vsnprintf(pBuf, BufSize, aFmt, Args);
+	va_end(Args);
+	pBuf[BufSize - 1] = 0;
+}
+
 void CWorldBossManager::OnTick()
 {
-	// Check if it's time to spawn the boss
+	if(!IsEnabled())
+		return;
+
 	if(!m_IsAlive && Server()->Tick() >= m_NextSpawnTick)
 	{
 		SpawnBoss();
 		return;
 	}
 
-	// Boss AI tick
 	if(m_IsAlive && m_BossClientID >= 0)
 	{
 		CPlayer *pBoss = GS()->m_apPlayers[m_BossClientID];
 		if(pBoss && pBoss->GetCharacter())
 		{
-			// Update boss HP from character state
 			m_BossHP = maximum(1, pBoss->GetCharacter()->GetHealth());
 			m_BossMaxHP = pBoss->GetCharacter()->GetMaxHealth();
-
-			TickBossAI(pBoss->GetCharacter());
-
-			// Periodically broadcast boss HP (every 100 ticks ≈ 10s)
 			if((Server()->Tick() % 100) == 0)
 				BroadcastBossStatus();
 		}
-		else if(pBoss && !pBoss->GetCharacter())
+		else
 		{
-			// Boss character was destroyed but we're still "alive" — respawn
-			dbg_msg("world_boss", "Boss character lost, despawning and scheduling respawn");
+			dbg_msg("world_boss", "Boss character lost, despawning");
 			DespawnBoss();
-			m_NextSpawnTick = Server()->Tick() + RESPAWN_INTERVAL;
+			ScheduleNextSpawn(false);
 		}
 	}
 }
@@ -93,38 +433,29 @@ void CWorldBossManager::OnTick()
 void CWorldBossManager::OnCharacterDeath(CPlayer *pVictim, CPlayer *pKiller, int Weapon)
 {
 	(void)Weapon;
-	if(!pVictim)
+	if(!pVictim || !pVictim->m_IsWorldBoss || !m_pSpawn)
 		return;
 
-	if(pVictim->m_IsWorldBoss)
-	{
-		dbg_msg("world_boss", "World Boss killed by CID=%d (Account=%lld)",
-			pKiller ? pKiller->GetCID() : -1,
-			pKiller ? pKiller->GetAccountId() : 0LL);
+	DistributeRewards(pKiller);
+	DespawnBoss();
+	ScheduleNextSpawn(false);
 
-		DistributeRewards(pKiller);
-		DespawnBoss();
-		m_NextSpawnTick = Server()->Tick() + RESPAWN_INTERVAL;
-
-		// Broadcast boss defeat
-		char aBuf[256];
-		str_format(aBuf, sizeof(aBuf),
-			"🐉 世界 Boss 已被击败！击杀者：%s",
-			pKiller ? Server()->ClientName(pKiller->GetCID()) : "未知");
-		GS()->BroadcastWorldMsg(m_WorldID, CGameContext::BROADCAST_PRIORITY_CRITICAL, 300, aBuf);
-	}
+	char aBuf[256];
+	FormatBroadcast(-1, aBuf, sizeof(aBuf), m_pSpawn->m_KillMsg,
+		GetBossDisplayName(-1),
+		pKiller ? Server()->ClientName(pKiller->GetCID()) : "未知");
+	GS()->BroadcastWorldMsg(m_WorldID, CGameContext::BROADCAST_PRIORITY_CRITICAL, 300, aBuf);
 }
 
 void CWorldBossManager::RecordDamage(int BossCID, int AttackerCID, int Damage)
 {
-	if(BossCID != m_BossClientID || !m_IsAlive)
+	if(BossCID != m_BossClientID || !m_IsAlive || Damage <= 0)
 		return;
 
 	CPlayer *pAttacker = GS()->m_apPlayers[AttackerCID];
 	if(!pAttacker || pAttacker->IsDummy())
 		return;
 
-	// Find existing entry or add new one
 	for(auto &Entry : m_aDamage)
 	{
 		if(Entry.ClientID == AttackerCID)
@@ -134,7 +465,6 @@ void CWorldBossManager::RecordDamage(int BossCID, int AttackerCID, int Damage)
 		}
 	}
 
-	// New entry
 	SPlayerDamage Entry;
 	Entry.ClientID = AttackerCID;
 	Entry.Damage = Damage;
@@ -149,171 +479,67 @@ bool CWorldBossManager::IsWorldBoss(CPlayer *pPlayer) const
 
 bool CWorldBossManager::IsWorldBossCharacter(CCharacter *pChar) const
 {
-	if(!pChar || !pChar->GetPlayer())
-		return false;
-	return pChar->GetPlayer()->m_IsWorldBoss;
+	return pChar && pChar->GetPlayer() && pChar->GetPlayer()->m_IsWorldBoss;
 }
 
 int CWorldBossManager::GetNextSpawnInTicks() const
 {
-	if(m_IsAlive)
+	if(!IsEnabled() || m_IsAlive || !Server())
 		return 0;
 	return maximum(0, m_NextSpawnTick - Server()->Tick());
 }
 
-// ─── Internal Methods ──────────────────────────────────────────────────
-
-void CWorldBossManager::FindBossSpawnPos()
+bool CWorldBossManager::GetBossPos(vec2 *pOut) const
 {
-	// Try to find a good spawn position near the world center
-	// or use a default position relative to the map
-	CGameContext *pGS = GS();
-	if(!pGS)
-	{
-		m_BossSpawnPos = vec2(800, 400);
-		return;
-	}
-
-	// Try using a fixed position near map center
-	// The Collision class gives us map dimensions via width/height
-	if(pGS->Collision())
-	{
-		int MapWidth = pGS->Collision()->GetWidth() * 32;
-		int MapHeight = pGS->Collision()->GetHeight() * 32;
-		m_BossSpawnPos = vec2((float)(MapWidth / 2), (float)(MapHeight / 2));
-
-		// Adjust spawn to be on solid ground by checking if position is inside a wall
-		if(pGS->Collision()->CheckPoint(m_BossSpawnPos))
-		{
-			// Search for a free spot nearby
-			for(int dy = -320; dy <= 320; dy += 64)
-			{
-				vec2 TestPos = m_BossSpawnPos + vec2(0, (float)dy);
-				if(!pGS->Collision()->CheckPoint(TestPos))
-				{
-					// Check a few tiles below for ground
-					if(pGS->Collision()->CheckPoint(TestPos + vec2(0, 48)))
-					{
-						m_BossSpawnPos = TestPos;
-						break;
-					}
-				}
-			}
-		}
-	}
-	else
-	{
-		m_BossSpawnPos = vec2(800, 400);
-	}
-
-	dbg_msg("world_boss", "Boss spawn pos: (%.0f, %.0f)", m_BossSpawnPos.x, m_BossSpawnPos.y);
+	if(!pOut || m_BossClientID < 0)
+		return false;
+	CPlayer *pBoss = GS()->m_apPlayers[m_BossClientID];
+	if(!pBoss || !pBoss->GetCharacter())
+		return false;
+	*pOut = pBoss->GetCharacter()->GetPos();
+	return true;
 }
 
 void CWorldBossManager::SpawnBoss()
 {
-	CGameContext *pGS = GS();
-	if(!pGS) return;
+	if(!IsEnabled() || !m_pSpawn)
+		return;
 
-	const int BossCID = BOSS_SLOT;
+	CMMOManager *pMMO = Core() ? Core()->GetMMOManager() : nullptr;
+	if(!pMMO)
+		return;
 
-	// Don't spawn if slot is occupied by a real player
-	if(pGS->m_apPlayers[BossCID] && !pGS->m_apPlayers[BossCID]->IsDummy())
+	const int CID = pMMO->SpawnMob(m_pSpawn->m_MobID, m_pSpawn->m_SpawnPos, m_pSpawn->m_Slot);
+	if(CID < 0)
 	{
-		dbg_msg("world_boss", "Boss slot %d occupied by real player, delaying spawn", BossCID);
-		m_NextSpawnTick = Server()->Tick() + RESPAWN_INTERVAL / 2;
+		dbg_msg("world_boss", "SpawnBoss: SpawnMob failed for mob_id=%d", m_pSpawn->m_MobID);
+		m_NextSpawnTick = Server()->Tick() + RespawnDelayTicks() / 2;
 		return;
 	}
 
-	// Clean up existing state on this slot
-	if(pGS->m_apPlayers[BossCID])
+	CPlayer *pBoss = GS()->m_apPlayers[CID];
+	if(!pBoss || !pBoss->GetCharacter())
 	{
-		delete pGS->m_apPlayers[BossCID]->m_pMMOBotData;
-		pGS->m_apPlayers[BossCID]->m_pMMOBotData = 0;
-		pGS->Server()->DummyRemove(BossCID);
-		delete pGS->m_apPlayers[BossCID];
-		pGS->m_apPlayers[BossCID] = 0;
-	}
-
-	// Create boss player
-	pGS->Server()->DummyJoin(BossCID, "🐉 世界 Boss", m_WorldID);
-	CPlayer *pBoss = pGS->m_apPlayers[BossCID];
-	if(!pBoss)
-	{
-		dbg_msg("world_boss", "Failed to create boss player");
-		m_NextSpawnTick = Server()->Tick() + RESPAWN_INTERVAL / 2;
+		DespawnBoss();
+		m_NextSpawnTick = Server()->Tick() + RespawnDelayTicks() / 2;
 		return;
 	}
 
-	// Mark as world boss
 	pBoss->m_IsWorldBoss = true;
-
-	// Set boss appearance
-	pBoss->SetTeam(TEAM_BLUE);
-	str_copy(pBoss->m_TeeInfos.m_aaSkinPartNames[0], "redstripe", sizeof(pBoss->m_TeeInfos.m_aaSkinPartNames[0]));
-	pBoss->m_TeeInfos.m_aUseCustomColors[0] = 1;
-	pBoss->m_TeeInfos.m_aSkinPartColors[0] = 0xFF0000; // Red body
-	pBoss->m_TeeInfos.m_aUseCustomColors[1] = 1;
-	pBoss->m_TeeInfos.m_aSkinPartColors[1] = 0xFF0000; // Red feet
-
-	pGS->BroadcastClientInfo(BossCID, false);
-
-	// Allocate bot data so other systems recognise this as a bot
-	SMMOBotData *pData = new SMMOBotData();
-	pData->m_Level = 50;
-	pData->m_MaxHP = BOSS_MAX_HP;
-	pData->m_HP = BOSS_MAX_HP;
-	pData->m_Attack = BOSS_BASE_ATTACK;
-	pData->m_Defense = 30;
-	pData->m_SpawnPos = m_BossSpawnPos;
-	pData->m_IsBoss = true;
-	pBoss->m_pMMOBotData = pData;
-
-	// Spawn as CCharacterBotAI (subclass of CCharacter, has AI hooks)
-	CCharacterBotAI *pChr = new(BossCID) CCharacterBotAI(&pGS->m_World);
-	if(!pChr || !pChr->Spawn(pBoss, m_BossSpawnPos))
-	{
-		dbg_msg("world_boss", "Failed to spawn boss character");
-		if(pChr) delete pChr;
-		pBoss->m_IsWorldBoss = false;
-		delete pBoss->m_pMMOBotData;
-		pBoss->m_pMMOBotData = 0;
-		pGS->Server()->DummyRemove(BossCID);
-		delete pGS->m_apPlayers[BossCID];
-		pGS->m_apPlayers[BossCID] = 0;
-		m_NextSpawnTick = Server()->Tick() + RESPAWN_INTERVAL / 2;
-		return;
-	}
-
-	// Give boss weapons
-	pChr->GiveWeapon(WEAPON_HAMMER, -1);  // Melee
-	pChr->GiveWeapon(WEAPON_GUN, -1);      // Ranged
-	pChr->GiveWeapon(WEAPON_GRENADE, -1);  // AoE
-	pChr->SetForcedWeapon(WEAPON_HAMMER);
-
-	// Set boss health using public accessors
-	pChr->SetBossHealth(BOSS_MAX_HP);
-	pChr->SetMaxHealth(BOSS_MAX_HP);
-
-	// Update state
 	m_IsAlive = true;
-	m_BossClientID = BossCID;
-	m_BossHP = BOSS_MAX_HP;
-	m_BossMaxHP = BOSS_MAX_HP;
-	m_SpawnTick = Server()->Tick();
-	m_LastBossAttackTick = 0;
-
-	// Reset damage tracking
+	m_BossClientID = CID;
+	m_BossHP = maximum(1, pBoss->GetCharacter()->GetHealth());
+	m_BossMaxHP = pBoss->GetCharacter()->GetMaxHealth();
 	ResetDamageTracking();
 
-	dbg_msg("world_boss", "World Boss spawned at (%.0f, %.0f) with %d HP",
-		m_BossSpawnPos.x, m_BossSpawnPos.y, BOSS_MAX_HP);
-
-	// Broadcast boss spawn
 	char aBuf[256];
-	str_format(aBuf, sizeof(aBuf),
-		"🐉 世界 Boss 已降临！HP: %d/%d 前往世界坐标击败它获得丰厚奖励！",
-		BOSS_MAX_HP, BOSS_MAX_HP);
+	FormatBroadcast(-1, aBuf, sizeof(aBuf), m_pSpawn->m_SpawnMsg,
+		GetBossDisplayName(-1), m_BossHP, m_BossMaxHP);
 	GS()->BroadcastWorldMsg(m_WorldID, CGameContext::BROADCAST_PRIORITY_CRITICAL, 300, aBuf);
+
+	dbg_msg("world_boss", "World Boss '%s' spawned at (%.0f,%.0f) slot %d HP %d/%d",
+		m_pSpawn->m_aId, m_pSpawn->m_SpawnPos.x, m_pSpawn->m_SpawnPos.y,
+		CID, m_BossHP, m_BossMaxHP);
 }
 
 void CWorldBossManager::DespawnBoss()
@@ -322,13 +548,15 @@ void CWorldBossManager::DespawnBoss()
 		return;
 
 	CGameContext *pGS = GS();
-	if(!pGS) return;
+	if(!pGS)
+		return;
 
-	// Clean up boss
-	if(pGS->m_apPlayers[m_BossClientID])
+	CPlayer *pBoss = pGS->m_apPlayers[m_BossClientID];
+	if(pBoss)
 	{
-		delete pGS->m_apPlayers[m_BossClientID]->m_pMMOBotData;
-		pGS->m_apPlayers[m_BossClientID]->m_pMMOBotData = 0;
+		pBoss->m_IsWorldBoss = false;
+		delete pBoss->m_pMMOBotData;
+		pBoss->m_pMMOBotData = 0;
 		pGS->Server()->DummyRemove(m_BossClientID);
 		delete pGS->m_apPlayers[m_BossClientID];
 		pGS->m_apPlayers[m_BossClientID] = 0;
@@ -337,282 +565,37 @@ void CWorldBossManager::DespawnBoss()
 	m_IsAlive = false;
 	m_BossClientID = -1;
 	m_BossHP = 0;
-}
-
-void CWorldBossManager::TickBossAI(CCharacter *pBoss)
-{
-	if(!pBoss || !pBoss->IsAlive())
-		return;
-
-	CPlayer *pBossPlayer = pBoss->GetPlayer();
-	if(!pBossPlayer)
-		return;
-
-	// Find nearest human player in aggro range
-	int NearestCID = -1;
-	float NearestDist = BOSS_AGGRO_RANGE;
-
-	for(int i = 0; i < MAX_HUMAN_CLIENTS; i++)
-	{
-		CPlayer *pTarget = GS()->m_apPlayers[i];
-		if(!pTarget || pTarget->IsDummy() || pTarget->m_IsWorldBoss)
-			continue;
-
-		CCharacter *pTargetChr = pTarget->GetCharacter();
-		if(!pTargetChr || !pTargetChr->IsAlive())
-			continue;
-
-		float Dist = distance(pBoss->GetPos(), pTargetChr->GetPos());
-		if(Dist < NearestDist)
-		{
-			NearestDist = Dist;
-			NearestCID = i;
-		}
-	}
-
-	// Build bot input
-	CNetObj_PlayerInput Input;
-	mem_zero(&Input, sizeof(Input));
-
-	if(NearestCID >= 0)
-	{
-		CPlayer *pTargetPlayer = GS()->m_apPlayers[NearestCID];
-		CCharacter *pTarget = pTargetPlayer ? pTargetPlayer->GetCharacter() : nullptr;
-		if(!pTarget || !pTarget->IsAlive())
-			return;
-
-		vec2 TargetPos = pTarget->GetPos();
-		vec2 Dir = TargetPos - pBoss->GetPos();
-		float Dist = length(Dir);
-
-		// Move toward target if too far
-		if(Dist > BOSS_ATTACK_RANGE)
-		{
-			// Move horizontally toward target
-			if(Dir.x > BOSS_SPEED)
-				Input.m_Direction = 1;
-			else if(Dir.x < -BOSS_SPEED)
-				Input.m_Direction = -1;
-
-			// Jump if target is above or obstacle ahead
-			if(Dir.y < -64.f)
-				Input.m_Jump = 1;
-		}
-		else
-		{
-			// In attack range — face target and attack
-			Input.m_Direction = Dir.x > 0 ? 1 : -1;
-
-			// Attack cooldown
-			if(Server()->Tick() >= m_LastBossAttackTick + BOSS_ATTACK_COOLDOWN)
-			{
-				// Fire
-				Input.m_Fire = 1;
-				// Aim toward target
-				Input.m_TargetX = (int)Dir.x;
-				Input.m_TargetY = (int)Dir.y;
-
-				// Choose weapon based on distance
-				if(Dist > 120.f)
-				{
-					// Ranged: use grenade
-					pBossPlayer->m_ZombAiLastInp.m_NextWeapon = WEAPON_GRENADE;
-				}
-				else if(Dist > 60.f)
-				{
-					// Medium range: use gun
-					pBossPlayer->m_ZombAiLastInp.m_NextWeapon = WEAPON_GUN;
-				}
-				else
-				{
-					// Close range: use hammer (melee)
-					pBossPlayer->m_ZombAiLastInp.m_NextWeapon = WEAPON_HAMMER;
-				}
-
-				m_LastBossAttackTick = Server()->Tick();
-			}
-		}
-	}
-	else
-	{
-		// No target — idle in place, face random direction
-		Input.m_Direction = ((Server()->Tick() / 100) % 3) - 1; // -1, 0, or 1
-	}
-
-	// Apply input to the boss character using public accessor
-	pBoss->SetInput(Input);
-	// Also update core input for physics simulation
-	pBoss->GetCore()->m_Input = Input;
+	m_BossMaxHP = 0;
 }
 
 void CWorldBossManager::BroadcastBossStatus()
 {
-	if(!m_IsAlive || m_BossClientID < 0)
+	if(!m_IsAlive || m_BossClientID < 0 || !m_pSpawn)
 		return;
 
 	CPlayer *pBoss = GS()->m_apPlayers[m_BossClientID];
-	if(!pBoss) return;
-
+	if(!pBoss)
+		return;
 	CCharacter *pChr = pBoss->GetCharacter();
-	if(!pChr) return;
+	if(!pChr)
+		return;
 
-	// Update boss HP from character state using public accessors
 	m_BossHP = pChr->GetHealth();
 	m_BossMaxHP = pChr->GetMaxHealth();
+	const int HpPct = m_BossMaxHP > 0 ? m_BossHP * 100 / m_BossMaxHP : 0;
 
-	// Update clan tag to show HP
 	char aClan[64];
-	int pct = m_BossMaxHP > 0 ? (m_BossHP * 100 / m_BossMaxHP) : 0;
-	str_format(aClan, sizeof(aClan), "🐉 Boss: %d/%d [%d%%]", m_BossHP, m_BossMaxHP, pct);
+	FormatBroadcast(m_BossClientID, aClan, sizeof(aClan), m_pSpawn->m_ClanMsg,
+		GetBossDisplayName(m_BossClientID), m_BossHP, m_BossMaxHP, HpPct);
 	GS()->Server()->SetClientClan(m_BossClientID, aClan);
 
-	// Broadcast to world every 3 seconds (30 ticks)
 	if((Server()->Tick() % 30) == 1)
 	{
 		char aBuf[128];
-		str_format(aBuf, sizeof(aBuf),
-			"🐉 世界 Boss HP: %d/%d (%d%%)",
-			m_BossHP, m_BossMaxHP, pct);
+		FormatBroadcast(-1, aBuf, sizeof(aBuf), m_pSpawn->m_HpMsg,
+			GetBossDisplayName(-1), m_BossHP, m_BossMaxHP, HpPct);
 		GS()->BroadcastWorldMsg(m_WorldID, CGameContext::BROADCAST_PRIORITY_HIGH, 30, aBuf);
 	}
-}
-
-void CWorldBossManager::DistributeRewards(CPlayer *pKiller)
-{
-	if(!pKiller)
-		return;
-
-	CMMOManager *pMMO = Core() ? Core()->GetMMOManager() : nullptr;
-	if(!pMMO)
-	{
-		dbg_msg("world_boss", "Cannot distribute rewards: no MMO manager");
-		return;
-	}
-
-	// Sort damage leaders
-	std::sort(m_aDamage.begin(), m_aDamage.end(),
-		[](const SPlayerDamage &A, const SPlayerDamage &B) {
-			return A.Damage > B.Damage;
-		});
-
-	int TotalDamage = 0;
-	for(const auto &Entry : m_aDamage)
-		TotalDamage += Entry.Damage;
-
-	// ─── Reward distribution ───────────────────────────────────────
-	// 1st place: damage leader gets special rewards
-	if(m_aDamage.size() >= 1)
-	{
-		CPlayer *pTop = GS()->m_apPlayers[m_aDamage[0].ClientID];
-		if(pTop && pTop->GetAccountId() > 0)
-		{
-			int Pct = TotalDamage > 0 ? (m_aDamage[0].Damage * 100 / TotalDamage) : 0;
-			pMMO->AddGold(pTop, 5000);
-			pMMO->AddExperience(pTop, 2000);
-			pTop->m_MMOReputation += 50;
-
-			// Give a rare chest as top reward
-			pMMO->GiveItem(pTop, 1, 1, 0); // ItemID 1 = 宝箱
-
-			char aMsg[128];
-			str_format(aMsg, sizeof(aMsg),
-				"🏆 你对世界 Boss 造成了 %d 伤害 (%d%%)，获得 5000金币 + 2000经验 + 50声望 + 宝箱！",
-				m_aDamage[0].Damage, Pct);
-			GS()->SendChatTo(m_aDamage[0].ClientID, aMsg);
-		}
-	}
-
-	// 2nd place
-	if(m_aDamage.size() >= 2)
-	{
-		CPlayer *pSecond = GS()->m_apPlayers[m_aDamage[1].ClientID];
-		if(pSecond && pSecond->GetAccountId() > 0)
-		{
-			int Pct = TotalDamage > 0 ? (m_aDamage[1].Damage * 100 / TotalDamage) : 0;
-			pMMO->AddGold(pSecond, 3000);
-			pMMO->AddExperience(pSecond, 1000);
-			pSecond->m_MMOReputation += 30;
-
-			pMMO->GiveItem(pSecond, 1, 1, 0);
-
-			char aMsg[128];
-			str_format(aMsg, sizeof(aMsg),
-				"🥈 你对世界 Boss 造成了 %d 伤害 (%d%%)，获得 3000金币 + 1000经验 + 30声望 + 宝箱！",
-				m_aDamage[1].Damage, Pct);
-			GS()->SendChatTo(m_aDamage[1].ClientID, aMsg);
-		}
-	}
-
-	// 3rd place
-	if(m_aDamage.size() >= 3)
-	{
-		CPlayer *pThird = GS()->m_apPlayers[m_aDamage[2].ClientID];
-		if(pThird && pThird->GetAccountId() > 0)
-		{
-			int Pct = TotalDamage > 0 ? (m_aDamage[2].Damage * 100 / TotalDamage) : 0;
-			pMMO->AddGold(pThird, 2000);
-			pMMO->AddExperience(pThird, 500);
-			pThird->m_MMOReputation += 20;
-
-			pMMO->GiveItem(pThird, 1, 1, 0);
-
-			char aMsg[128];
-			str_format(aMsg, sizeof(aMsg),
-				"🥉 你对世界 Boss 造成了 %d 伤害 (%d%%)，获得 2000金币 + 500经验 + 20声望 + 宝箱！",
-				m_aDamage[2].Damage, Pct);
-			GS()->SendChatTo(m_aDamage[2].ClientID, aMsg);
-		}
-	}
-
-	// All participants get consolation reward
-	for(size_t i = 3; i < m_aDamage.size(); i++)
-	{
-		CPlayer *pPlayer = GS()->m_apPlayers[m_aDamage[i].ClientID];
-		if(!pPlayer || pPlayer->GetAccountId() <= 0)
-			continue;
-
-		int Pct = TotalDamage > 0 ? (m_aDamage[i].Damage * 100 / TotalDamage) : 0;
-		pMMO->AddGold(pPlayer, 500);
-		pMMO->AddExperience(pPlayer, 200);
-		pPlayer->m_MMOReputation += 5;
-
-		char aMsg[128];
-		str_format(aMsg, sizeof(aMsg),
-			"💫 你参与了世界 Boss 战，造成 %d 伤害 (%d%%)，获得 500金币 + 200经验 + 5声望！",
-			m_aDamage[i].Damage, Pct);
-		GS()->SendChatTo(m_aDamage[i].ClientID, aMsg);
-	}
-
-	// Kill reward (finishing blow)
-	if(pKiller && pKiller->GetAccountId() > 0)
-	{
-		pKiller->m_MMOReputation += 100;
-		pMMO->GiveItem(pKiller, 1, 2, 0); // Extra chest for kill
-
-		GS()->SendChatTo(pKiller->GetCID(),
-			"⚔️ 你击杀世界 Boss！额外获得 100声望 + 2个宝箱！");
-	}
-
-	// World announcement with damage leaderboard
-	char aBuf[512];
-	str_format(aBuf, sizeof(aBuf),
-		"=== 🐉 世界 Boss 讨伐结果 ===");
-	GS()->BroadcastWorldMsg(m_WorldID, CGameContext::BROADCAST_PRIORITY_CRITICAL, 300, aBuf);
-
-	for(size_t i = 0; i < minimum((size_t)5, m_aDamage.size()); i++)
-	{
-		int Pct = TotalDamage > 0 ? (m_aDamage[i].Damage * 100 / TotalDamage) : 0;
-		str_format(aBuf, sizeof(aBuf),
-			"#%d. %s — %d 伤害 (%d%%)",
-			(int)(i + 1),
-			Server()->ClientName(m_aDamage[i].ClientID),
-			m_aDamage[i].Damage,
-			Pct);
-		GS()->BroadcastWorldMsg(m_WorldID, CGameContext::BROADCAST_PRIORITY_CRITICAL, 300, aBuf);
-	}
-
-	dbg_msg("world_boss", "Rewards distributed: %d participants, total damage %d",
-		(int)m_aDamage.size(), TotalDamage);
 }
 
 void CWorldBossManager::ResetDamageTracking()
@@ -620,67 +603,280 @@ void CWorldBossManager::ResetDamageTracking()
 	m_aDamage.clear();
 }
 
+const SWorldBossRewardTier *CWorldBossManager::FindRewardTier(int Rank) const
+{
+	if(!m_pSpawn)
+		return nullptr;
+	for(const SWorldBossRewardTier &Tier : m_pSpawn->m_vRewardTiers)
+	{
+		if(Rank >= Tier.m_RankMin && Rank <= Tier.m_RankMax)
+			return &Tier;
+	}
+	return nullptr;
+}
+
+void CWorldBossManager::AppendItemRewardSummary(char *pBuf, int BufSize, const std::vector<SWorldBossItemReward> &vItems) const
+{
+	if(!pBuf || BufSize <= 0)
+		return;
+	pBuf[0] = 0;
+
+	bool First = true;
+	for(const SWorldBossItemReward &Item : vItems)
+	{
+		if(Item.m_ItemID <= 0 || Item.m_Count <= 0)
+			continue;
+		const char *pName = GS() ? GS()->LocItemName(-1, Item.m_ItemID) : "?";
+		if(!First)
+			str_append(pBuf, " + ", BufSize);
+		First = false;
+
+		char aPart[64];
+		str_format(aPart, sizeof(aPart), "%d× %s", Item.m_Count, pName);
+		str_append(pBuf, aPart, BufSize);
+	}
+}
+
+void CWorldBossManager::GrantReward(CMMOManager *pMMO, CPlayer *pPlayer, const SWorldBossRewardTier &Tier,
+	int Rank, int Damage, int DamagePct) const
+{
+	(void)Rank;
+	if(!pMMO || !pPlayer || pPlayer->GetAccountId() <= 0)
+		return;
+
+	if(Tier.m_Gold > 0)
+		pMMO->AddGold(pPlayer, Tier.m_Gold);
+	if(Tier.m_Exp > 0)
+		pMMO->AddExperience(pPlayer, Tier.m_Exp);
+	if(Tier.m_Reputation > 0)
+		pPlayer->m_MMOReputation += Tier.m_Reputation;
+	for(const SWorldBossItemReward &Item : Tier.m_vItems)
+	{
+		if(Item.m_ItemID > 0 && Item.m_Count > 0)
+			pMMO->GiveItem(pPlayer, Item.m_ItemID, Item.m_Count, 0);
+	}
+
+	char aItems[128];
+	AppendItemRewardSummary(aItems, sizeof(aItems), Tier.m_vItems);
+
+	char aBuf[256];
+	if(aItems[0])
+	{
+		GS()->LocFormat(aBuf, sizeof(aBuf), pPlayer->GetCID(), "world_boss.reward.tier_items",
+			"%s 对世界 Boss 造成了 %d 伤害 (%d%%)，获得 %d金币 + %d经验 + %d声望 + %s",
+			Tier.m_aLabel[0] ? Tier.m_aLabel : "", Damage, DamagePct,
+			Tier.m_Gold, Tier.m_Exp, Tier.m_Reputation, aItems);
+	}
+	else
+	{
+		GS()->LocFormat(aBuf, sizeof(aBuf), pPlayer->GetCID(), "world_boss.reward.tier",
+			"%s 对世界 Boss 造成了 %d 伤害 (%d%%)，获得 %d金币 + %d经验 + %d声望",
+			Tier.m_aLabel[0] ? Tier.m_aLabel : "", Damage, DamagePct,
+			Tier.m_Gold, Tier.m_Exp, Tier.m_Reputation);
+	}
+	GS()->SendChatTo(pPlayer->GetCID(), aBuf);
+}
+
+void CWorldBossManager::GrantKillBonus(CMMOManager *pMMO, CPlayer *pKiller) const
+{
+	if(!pMMO || !pKiller || pKiller->GetAccountId() <= 0 || !m_pSpawn)
+		return;
+
+	const SWorldBossKillBonus &Bonus = m_pSpawn->m_KillBonus;
+	if(Bonus.m_Reputation <= 0 && Bonus.m_vItems.empty())
+		return;
+
+	if(Bonus.m_Reputation > 0)
+		pKiller->m_MMOReputation += Bonus.m_Reputation;
+	for(const SWorldBossItemReward &Item : Bonus.m_vItems)
+	{
+		if(Item.m_ItemID > 0 && Item.m_Count > 0)
+			pMMO->GiveItem(pKiller, Item.m_ItemID, Item.m_Count, 0);
+	}
+
+	char aItems[128];
+	AppendItemRewardSummary(aItems, sizeof(aItems), Bonus.m_vItems);
+	char aBuf[256];
+	if(aItems[0])
+	{
+		GS()->LocFormat(aBuf, sizeof(aBuf), pKiller->GetCID(), "world_boss.reward.kill_items",
+			"⚔️ 你击杀世界 Boss！额外获得 %d声望 + %s", Bonus.m_Reputation, aItems);
+	}
+	else
+	{
+		GS()->LocFormat(aBuf, sizeof(aBuf), pKiller->GetCID(), "world_boss.reward.kill",
+			"⚔️ 你击杀世界 Boss！额外获得 %d声望", Bonus.m_Reputation);
+	}
+	GS()->SendChatTo(pKiller->GetCID(), aBuf);
+}
+
+void CWorldBossManager::DistributeRewards(CPlayer *pKiller)
+{
+	CMMOManager *pMMO = Core() ? Core()->GetMMOManager() : nullptr;
+	if(!pMMO || !m_pSpawn)
+	{
+		dbg_msg("world_boss", "Cannot distribute rewards: no MMO manager or spawn config");
+		return;
+	}
+
+	std::sort(m_aDamage.begin(), m_aDamage.end(),
+		[](const SPlayerDamage &A, const SPlayerDamage &B) {
+			return A.Damage > B.Damage;
+		});
+
+	int TotalDamage = 0;
+	for(const SPlayerDamage &Entry : m_aDamage)
+		TotalDamage += Entry.Damage;
+
+	for(size_t i = 0; i < m_aDamage.size(); i++)
+	{
+		const int Rank = (int)(i + 1);
+		const SWorldBossRewardTier *pTier = FindRewardTier(Rank);
+		if(!pTier)
+			continue;
+
+		CPlayer *pPlayer = GS()->m_apPlayers[m_aDamage[i].ClientID];
+		if(!pPlayer)
+			continue;
+
+		const int Pct = TotalDamage > 0 ? m_aDamage[i].Damage * 100 / TotalDamage : 0;
+		GrantReward(pMMO, pPlayer, *pTier, Rank, m_aDamage[i].Damage, Pct);
+	}
+
+	GrantKillBonus(pMMO, pKiller);
+
+	char aBuf[512];
+	GS()->LocFormat(aBuf, sizeof(aBuf), -1, "world_boss.leaderboard.header", "=== 世界 Boss 讨伐结果 ===");
+	GS()->BroadcastWorldMsg(m_WorldID, CGameContext::BROADCAST_PRIORITY_CRITICAL, 300, aBuf);
+
+	const int Lines = maximum(1, m_pSpawn->m_LeaderboardLines);
+	for(int i = 0; i < minimum(Lines, (int)m_aDamage.size()); i++)
+	{
+		const int Pct = TotalDamage > 0 ? m_aDamage[i].Damage * 100 / TotalDamage : 0;
+		GS()->LocFormat(aBuf, sizeof(aBuf), -1, "world_boss.leaderboard.line",
+			"#%d. %s — %d 伤害 (%d%%)",
+			i + 1, Server()->ClientName(m_aDamage[i].ClientID), m_aDamage[i].Damage, Pct);
+		GS()->BroadcastWorldMsg(m_WorldID, CGameContext::BROADCAST_PRIORITY_CRITICAL, 300, aBuf);
+	}
+
+	dbg_msg("world_boss", "Rewards distributed: %d participants, total damage %d",
+		(int)m_aDamage.size(), TotalDamage);
+}
+
+void CWorldBossManager::SendBossStatusChat(int ClientID) const
+{
+	if(!IsEnabled() || !m_pSpawn)
+	{
+		if(GS())
+			GS()->SendChatLoc(ClientID, "world_boss.disabled", "世界 Boss 系统未启用");
+		return;
+	}
+
+	char aBuf[256];
+	auto *pSelf = const_cast<CWorldBossManager *>(this);
+	if(m_IsAlive)
+	{
+		const int HpPct = m_BossMaxHP > 0 ? m_BossHP * 100 / m_BossMaxHP : 0;
+		pSelf->FormatBroadcast(ClientID, aBuf, sizeof(aBuf), m_pSpawn->m_StatusAliveMsg,
+			GetBossDisplayName(ClientID), m_BossHP, m_BossMaxHP, HpPct);
+	}
+	else
+	{
+		const int Sec = Server() ? GetNextSpawnInTicks() / maximum(1, Server()->TickSpeed()) : 0;
+		if(Sec > 0)
+		{
+			pSelf->FormatBroadcast(ClientID, aBuf, sizeof(aBuf), m_pSpawn->m_StatusWaitingMsg,
+				GetBossDisplayName(ClientID), Sec);
+		}
+		else
+		{
+			pSelf->FormatBroadcast(ClientID, aBuf, sizeof(aBuf), m_pSpawn->m_StatusSoonMsg,
+				GetBossDisplayName(ClientID));
+		}
+	}
+	GS()->SendChatTo(ClientID, aBuf);
+}
+
 void CWorldBossManager::RegisterBossCommands()
 {
-	CCommandManager *pManager = GS()->CommandManager();
-	if(!pManager) return;
+	CCommandManager *pManager = GS() ? GS()->CommandManager() : nullptr;
+	if(!pManager)
+		return;
 
 	pManager->AddCommand("boss", "查看世界 Boss 状态", "", [](IConsole::IResult *pR, void *pU) {
 		auto *pCtx = (CCommandManager::SCommandContext *)pU;
 		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetWorldBossManager()) return;
-
-		CWorldBossManager *pWB = pG->Core()->GetWorldBossManager();
-		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP) return;
-
-		if(pWB->IsBossAlive())
-		{
-			char aBuf[256];
-			str_format(aBuf, sizeof(aBuf),
-				"🐉 世界 Boss 状态：存活中 | HP: %d/%d (%d%%)",
-				pWB->GetBossHP(), pWB->GetBossMaxHP(),
-				pWB->GetBossMaxHP() > 0 ? (pWB->GetBossHP() * 100 / pWB->GetBossMaxHP()) : 0);
-			pG->SendChatTo(pCtx->m_ClientID, aBuf);
-		}
-		else
-		{
-			int Remaining = pWB->GetNextSpawnInTicks() / pG->Server()->TickSpeed();
-			char aBuf[128];
-			if(Remaining > 0)
-				str_format(aBuf, sizeof(aBuf), "🐉 世界 Boss 已消失，下次刷新剩余约 %d 秒。", Remaining);
-			else
-				str_format(aBuf, sizeof(aBuf), "🐉 世界 Boss 正在准备降临...");
-			pG->SendChatTo(pCtx->m_ClientID, aBuf);
-		}
+		if(!pG || !pG->Core() || !pG->Core()->GetWorldBossManager())
+			return;
+		pG->Core()->GetWorldBossManager()->SendBossStatusChat(pCtx->m_ClientID);
+		(void)pR;
 	}, GS());
 
-	pManager->AddCommand("boss_tp", "传送到世界 Boss 位置", "",
-		[](IConsole::IResult *pR, void *pU) {
+	pManager->AddCommand("boss_tp", "传送到世界 Boss 位置", "", [](IConsole::IResult *pR, void *pU) {
 		auto *pCtx = (CCommandManager::SCommandContext *)pU;
 		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
-		if(!pG || !pG->Core() || !pG->Core()->GetWorldBossManager()) return;
+		if(!pG || !pG->Core() || !pG->Core()->GetWorldBossManager())
+			return;
 
 		CWorldBossManager *pWB = pG->Core()->GetWorldBossManager();
 		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
-		if(!pP || !pP->GetCharacter()) return;
+		if(!pP || !pP->GetCharacter())
+			return;
 
 		if(!pWB->IsBossAlive())
 		{
-			pG->SendChatTo(pCtx->m_ClientID, "❌ 世界 Boss 当前不存在。");
+			pG->SendChatLoc(pCtx->m_ClientID, "world_boss.cmd.no_boss", "❌ 世界 Boss 当前不存在。");
 			return;
 		}
 
-		// Get boss position from character
-		if(pWB->m_BossClientID >= 0)
+		vec2 BossPos;
+		if(pWB->GetBossPos(&BossPos))
 		{
-			CPlayer *pBoss = pG->m_apPlayers[pWB->m_BossClientID];
-			if(pBoss && pBoss->GetCharacter())
-			{
-				vec2 BossPos = pBoss->GetCharacter()->GetPos();
-				pP->GetCharacter()->SetCharacterPos(BossPos + vec2(64, 0)); // Spawn slightly to the right
-				pG->SendChatTo(pCtx->m_ClientID, "🚀 已传送到世界 Boss 位置！");
-			}
+			pP->GetCharacter()->SetCharacterPos(BossPos + vec2(64.f, 0.f));
+			pG->SendChatLoc(pCtx->m_ClientID, "world_boss.cmd.tp_ok", "🚀 已传送到世界 Boss 位置！");
 		}
+		(void)pR;
 	}, GS());
+}
+
+void CWorldBossManager::RegisterBossVoteCommands(CCommandManager *pManager)
+{
+	if(!pManager)
+		return;
+	CGameContext *pGame = GS();
+
+	VOTE_CMD(pManager, "boss", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetWorldBossManager())
+			return;
+		pG->Core()->GetWorldBossManager()->SendBossStatusChat(pCtx->m_ClientID);
+		(void)pR;
+	}, pGame);
+
+	VOTE_CMD(pManager, "boss_tp", "", [](IConsole::IResult *pR, void *pU) {
+		auto *pCtx = (CCommandManager::SCommandContext *)pU;
+		CGameContext *pG = (CGameContext *)pCtx->m_pContext;
+		if(!pG || !pG->Core() || !pG->Core()->GetWorldBossManager())
+			return;
+
+		CWorldBossManager *pWB = pG->Core()->GetWorldBossManager();
+		CPlayer *pP = pG->m_apPlayers[pCtx->m_ClientID];
+		if(!pP || !pP->GetCharacter())
+			return;
+
+		if(!pWB->IsBossAlive())
+		{
+			pG->SendChatLoc(pCtx->m_ClientID, "world_boss.cmd.no_boss", "❌ 世界 Boss 当前不存在。");
+			return;
+		}
+
+		vec2 BossPos;
+		if(pWB->GetBossPos(&BossPos))
+		{
+			pP->GetCharacter()->SetCharacterPos(BossPos + vec2(64.f, 0.f));
+			pG->SendChatLoc(pCtx->m_ClientID, "world_boss.cmd.tp_ok", "🚀 已传送到世界 Boss 位置！");
+		}
+		(void)pR;
+	}, pGame);
 }

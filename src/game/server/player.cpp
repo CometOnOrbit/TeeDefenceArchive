@@ -15,6 +15,7 @@
 #include "core/components/mmo/mmo_item.h"
 #include "core/components/dialogs/dialog_manager.h"
 #include "core/components/skills/skill_defs.h"
+#include "core/components/skills/skill_data.h"
 #include "core/components/skills/skill_manager.h"
 #include "data_center.h"
 #include "gameworld.h"
@@ -229,11 +230,24 @@ int CPlayer::GetStat(AttributeIdentifier ID) const
 
 void CPlayer::SetStat(AttributeIdentifier ID, int Value)
 {
+	const int OldValue = GetStat(ID);
+	if(OldValue == Value)
+		return;
+
 	m_aStats[ID] = Value;
 	// Sync old fields for backward compatibility
 	switch(ID)
 	{
-	case AttributeIdentifier::Level: m_MMOLevel = Value; break;
+	case AttributeIdentifier::Level:
+		m_MMOLevel = Value;
+		if(m_pCharacter && !IsDummy())
+		{
+			const int NewMax = GetMaxHealth();
+			const int OldMax = m_pCharacter->GetMaxHealth();
+			if(NewMax > OldMax)
+				m_pCharacter->AddMaxHealth(NewMax - OldMax);
+		}
+		break;
 	case AttributeIdentifier::Experience: m_MMOExp = Value; break;
 	case AttributeIdentifier::Gold: m_MMOGold = Value; break;
 	case AttributeIdentifier::SkillPoints: m_MMOSkillPoints = Value; break;
@@ -242,6 +256,9 @@ void CPlayer::SetStat(AttributeIdentifier ID, int Value)
 	case AttributeIdentifier::Defense: m_MMODefense = Value; break;
 	default: break;
 	}
+
+	if(!IsDummy() && (ID == AttributeIdentifier::Level || ID == AttributeIdentifier::Gold))
+		GameServer()->MarkUpdatedBroadcast(m_ClientID);
 }
 
 int CPlayer::GetStoryFlag(const char *pKey) const
@@ -466,14 +483,6 @@ void CPlayer::Tick()
 	if(PendingChangeWorld())
 		return;
 
-	// MMO bot tick (runs before normal tick - character mgmt still needed)
-	if(m_pMMOBotData)
-	{
-		TWorldController *pTW = GameServer()->TW();
-		if(pTW && pTW->GetMMOManager())
-			pTW->GetMMOManager()->TickMMOBot(this);
-	}
-
 	// MotdMenu tick (MRPG-style input tracking)
 	if(m_pMotdMenu)
 		m_pMotdMenu->Tick();
@@ -524,9 +533,9 @@ void CPlayer::Tick()
 	if(!m_DeadSpecMode && m_LastActionTick != Server()->Tick())
 		++m_InactivityTickCounter;
 
-	// MRPG: keep HUD stats/weapons visible via rolling GameBasicStats broadcast
-	if(!IsDummy() && m_pCharacter && m_pCharacter->IsAlive() && Server()->Tick() % Server()->TickSpeed() == 0)
-		GameServer()->AddBroadcast(m_ClientID, "", CGameContext::BROADCAST_PRIORITY_GAME_BASIC_STATS, Server()->TickSpeed() * 2);
+	// Refresh HUD overlay every ~3s (BroadcastTick also refreshes on stat changes via MarkUpdatedBroadcast)
+	if(!IsDummy() && m_pCharacter && m_pCharacter->IsAlive() && Server()->Tick() % (Server()->TickSpeed() * 3) == 0)
+		GameServer()->MarkUpdatedBroadcast(m_ClientID);
 }
 
 void CPlayer::PostTick()
@@ -1369,6 +1378,47 @@ bool CPlayer::UsesMMOFiniteAmmo() const
 int CPlayer::GetMaxMana() const
 {
 	return 50 + GetStat(AttributeIdentifier::INT) * 5 + m_MMOLevel * 3;
+}
+
+void CPlayer::MarkCombat()
+{
+	if(!Server())
+		return;
+	m_LastCombatTick = Server()->Tick();
+}
+
+bool CPlayer::TryConsumeSkillProficiency()
+{
+	if(!Server())
+		return false;
+
+	const int Now = Server()->Tick();
+	const int Window = maximum(1, Server()->TickSpeed() * SKILL_PROFICIENCY_WINDOW_SEC);
+	if(m_SkillProfWindowStart <= 0 || Now - m_SkillProfWindowStart >= Window)
+	{
+		m_SkillProfWindowStart = Now;
+		m_SkillProfWindowCount = 0;
+	}
+
+	if(m_SkillProfWindowCount >= SKILL_PROFICIENCY_MAX_PER_WINDOW)
+		return false;
+
+	m_SkillProfWindowCount++;
+	return true;
+}
+
+bool CPlayer::ShouldDeferSkillProgressSave(bool Force) const
+{
+	if(Force || !Server())
+		return false;
+	const int Debounce = maximum(1, Server()->TickSpeed() * SKILL_SAVE_DEBOUNCE_SEC);
+	return m_SkillProgressSaveTick > 0 && Server()->Tick() - m_SkillProgressSaveTick < Debounce;
+}
+
+void CPlayer::MarkSkillProgressSaved()
+{
+	if(Server())
+		m_SkillProgressSaveTick = Server()->Tick();
 }
 
 void CPlayer::AddMMOExperience(int Amount)

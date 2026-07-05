@@ -5,6 +5,7 @@
 #include "../character.h"
 #include "mmo_weapon_common.h"
 #include "tesla_chain.h"
+#include <game/server/entities/skills/skill_spawn.h>
 
 static constexpr float JITTER_MAGNITUDE = 64.0f;
 static constexpr int SNAP_GROUP_TESLA_BASE = 100;
@@ -85,6 +86,7 @@ void CMMOTeslaChain::CalculateChain()
 		m_aChainSegmentEndPoints.add(TargetPos);
 
 		GameWorld()->CreateExplosion(TargetPos, pOwnerChar, WEAPON_LASER, maximum(1, round_to_int(CurrentDamage)));
+		SpawnSkillHitBurst(GameWorld(), TargetPos, 64.f, SKILL_VFX_ARCANE);
 		GameWorld()->CreateSound(TargetPos, SOUND_GRENADE_EXPLODE);
 		GameWorld()->CreateSound(TargetPos, SOUND_HOOK_LOOP);
 

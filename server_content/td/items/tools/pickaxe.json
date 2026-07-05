@@ -11,7 +11,7 @@
         "capacity": 0,
         "max": 0,
         "formula": {
-          "Log": 20
+          "0": 20
         },
         "name_key": "$td.item.10.name",
         "description_key": "$td.item.10.desc"
@@ -25,8 +25,8 @@
         "capacity": 10,
         "max": 0,
         "formula": {
-          "Log": 70,
-          "Copper": 25
+          "0": 70,
+          "2": 25
         },
         "name_key": "$td.item.13.name",
         "description_key": "$td.item.13.desc"
@@ -40,8 +40,8 @@
         "capacity": 20,
         "max": 0,
         "formula": {
-          "Log": 220,
-          "Iron": 25
+          "0": 220,
+          "3": 25
         },
         "name_key": "$td.item.15.name",
         "description_key": "$td.item.15.desc"
@@ -55,8 +55,8 @@
         "capacity": 30,
         "max": 0,
         "formula": {
-          "Log": 230,
-          "Golden": 25
+          "0": 230,
+          "4": 25
         },
         "name_key": "$td.item.18.name",
         "description_key": "$td.item.18.desc"
@@ -70,8 +70,8 @@
         "capacity": 30,
         "max": 0,
         "formula": {
-          "Log": 230,
-          "Diamond": 25
+          "0": 230,
+          "5": 25
         },
         "name_key": "$td.item.21.name",
         "description_key": "$td.item.21.desc"
@@ -85,9 +85,9 @@
         "capacity": 100,
         "max": 0,
         "formula": {
-          "Log": 666,
-          "Diamond": 35,
-          "Enegry": 10
+          "0": 666,
+          "5": 35,
+          "6": 10
         },
         "name_key": "$td.item.23.name",
         "description_key": "$td.item.23.desc"
@@ -104,9 +104,9 @@
           "mining_luck"
         ],
         "formula": {
-          "Enegry Pickaxe": 1,
-          "Golden": 2000,
-          "Void Shard": 10
+          "23": 1,
+          "4": 2000,
+          "40": 10
         },
         "name_key": "$td.item.49.name",
         "description_key": "$td.item.49.desc"

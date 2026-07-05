@@ -879,8 +879,7 @@ void CQuestManager::RegisterChatCommands(class CCommandManager* pManager)
 
 	CGameContext* pGame = GS();
 	pManager->AddCommand("quest", "cmd.quest.help", "", ConQuestList, pGame);
-	pManager->AddCommand("quest_accept", "cmd.quest_accept.help", "i", ConQuestAccept, pGame);
-	pManager->AddCommand("quest_refuse", "cmd.quest_refuse.help", "i", ConQuestRefuse, pGame);
+	// quest_accept/refuse 仅通过投票菜单 ccv_questaccept / menusetquest
 	pManager->AddCommand("scenario", "启动副本", "i", ConScenarioStart, pGame);
 }
 
@@ -918,8 +917,8 @@ void CQuestManager::RegisterVoteCommands(class CCommandManager* pManager)
 {
 	if(!pManager || !GS())
 		return;
-	pManager->AddCommand("menusetquest", "", "i", ConVoteMenuSetQuest, GS());
-	pManager->AddCommand("questaccept", "", "i", ConVoteQuestAccept, GS());
+	pManager->AddVoteCommand("menusetquest", "", "i", ConVoteMenuSetQuest, GS());
+	pManager->AddVoteCommand("questaccept", "", "i", ConVoteQuestAccept, GS());
 }
 
 bool CQuestManager::OnVoteMenuPage(int ClientID, int Page)

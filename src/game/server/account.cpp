@@ -153,6 +153,50 @@ static bool ColumnExists(MYSQL *pSql, CConfig *pConfig, const char *pTable, cons
 	return Exists;
 }
 
+static bool SqlAddColumnIfMissing(MYSQL *pSql, CConfig *pConfig, const char *pTable, const char *pColumn, const char *pDefinition)
+{
+	if(ColumnExists(pSql, pConfig, pTable, pColumn))
+		return true;
+	char aQuery[512];
+	str_format(aQuery, sizeof(aQuery), "ALTER TABLE `%s` ADD COLUMN `%s` %s", pTable, pColumn, pDefinition);
+	return SqlExec(pSql, pConfig, aQuery);
+}
+
+static bool MigrateMMOPlayersTable(MYSQL *pSql, CConfig *pConfig)
+{
+	const char *pTable = "tw_mmo_players";
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "EquipWeaponSlot", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "SkillSlot1", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "SkillSlot2", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "SkillSlot3", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "ItemSlot0", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "ItemSlot1", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "ItemSlot2", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "ItemSlot3", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "STR", "int NOT NULL DEFAULT 3")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "DEX", "int NOT NULL DEFAULT 3")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "CON", "int NOT NULL DEFAULT 3")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "INT", "int NOT NULL DEFAULT 3")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "WIS", "int NOT NULL DEFAULT 3")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "CHA", "int NOT NULL DEFAULT 3")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "StoryData", "text DEFAULT NULL")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "FashionItemID", "int NOT NULL DEFAULT 0")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "MeleeLoadout0", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "MeleeLoadout1", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "MeleeLoadout2", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "MeleeLoadout3", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "RangedLoadout0", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "RangedLoadout1", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "RangedLoadout2", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "RangedLoadout3", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "WeaponBar0", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "WeaponBar1", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "WeaponBar2", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "WeaponBar3", "int NOT NULL DEFAULT -1")) return false;
+	if(!SqlAddColumnIfMissing(pSql, pConfig, pTable, "LastOnlineAt", "bigint NOT NULL DEFAULT 0")) return false;
+	return true;
+}
+
 static void SerializeHolding(const int *pHolding, char *pOut, int OutLen)
 {
 	str_format(pOut, OutLen,
@@ -302,8 +346,9 @@ static bool EnsureSchema(MYSQL *pSql, CConfig *pConfig)
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
 	if(!SqlExec(pSql, pConfig, pMMOPlayers))
 		return false;
+	if(!MigrateMMOPlayersTable(pSql, pConfig))
+		return false;
 
-	// MRPG-compatible groups table
 	const char *pGroups =
 		"CREATE TABLE IF NOT EXISTS `tw_groups` ("
 		"  `GroupID` int NOT NULL,"
@@ -315,42 +360,6 @@ static bool EnsureSchema(MYSQL *pSql, CConfig *pConfig)
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
 	if(!SqlExec(pSql, pConfig, pGroups))
 		return false;
-
-	// Migration: add EquipWeaponSlot to tw_mmo_players (for servers created before this feature)
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `EquipWeaponSlot` int NOT NULL DEFAULT -1");
-	// Migration: add skill slot columns
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `SkillSlot1` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `SkillSlot2` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `SkillSlot3` int NOT NULL DEFAULT -1");
-	// Migration: add item quick-slot columns (emoticon binding)
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `ItemSlot0` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `ItemSlot1` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `ItemSlot2` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `ItemSlot3` int NOT NULL DEFAULT -1");
-	// Migration: TRPG六维属性 (2026-06-30)
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `STR` int NOT NULL DEFAULT 3");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `DEX` int NOT NULL DEFAULT 3");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `CON` int NOT NULL DEFAULT 3");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `INT` int NOT NULL DEFAULT 3");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WIS` int NOT NULL DEFAULT 3");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `CHA` int NOT NULL DEFAULT 3");
-	// Migration: story flag data (2026-06-30)
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `StoryData` text DEFAULT NULL");
-	// Migration: fashion item ID (2026-07-02)
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `FashionItemID` int NOT NULL DEFAULT 0");
-	// Migration: weapon loadout + hotbar (2026-07-04)
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `MeleeLoadout0` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `MeleeLoadout1` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `MeleeLoadout2` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `MeleeLoadout3` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `RangedLoadout0` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `RangedLoadout1` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `RangedLoadout2` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `RangedLoadout3` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WeaponBar0` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WeaponBar1` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WeaponBar2` int NOT NULL DEFAULT -1");
-	SqlExec(pSql, pConfig, "ALTER TABLE `tw_mmo_players` ADD COLUMN `WeaponBar3` int NOT NULL DEFAULT -1");
 
 	// MRPG-style mailbox table
 	const char *pMailbox =
@@ -381,6 +390,19 @@ static bool EnsureSchema(MYSQL *pSql, CConfig *pConfig)
 	if(!SqlExec(pSql, pConfig, pFriends))
 		return false;
 
+	const char *pFriendRequests =
+		"CREATE TABLE IF NOT EXISTS `tw_friend_requests` ("
+		"  `ToUserID` bigint NOT NULL,"
+		"  `FromUserID` bigint NOT NULL,"
+		"  `CreatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+		"  PRIMARY KEY (`ToUserID`, `FromUserID`),"
+		"  KEY `FromUserID` (`FromUserID`)"
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+	if(!SqlExec(pSql, pConfig, pFriendRequests))
+		return false;
+
+	// Last online timestamp for friend list display (handled in MigrateMMOPlayersTable)
+
 	// Daily checkin table
 	const char *pDailyCheckin =
 		"CREATE TABLE IF NOT EXISTS `tw_daily_checkin` ("
@@ -404,18 +426,25 @@ static bool EnsureSchema(MYSQL *pSql, CConfig *pConfig)
 	if(!SqlExec(pSql, pConfig, pDailySell))
 		return false;
 
-	// Pets table
-	const char *pPets =
-		"CREATE TABLE IF NOT EXISTS `tw_pets` ("
+	// Vehicle ownership table
+	const char *pVehicles =
+		"CREATE TABLE IF NOT EXISTS `tw_vehicles` ("
 		"  `UserID` bigint NOT NULL,"
-		"  `PetID` int NOT NULL DEFAULT 0,"
-		"  `PetName` varchar(32) NOT NULL DEFAULT '宠物',"
-		"  `PetLevel` int NOT NULL DEFAULT 1,"
-		"  `PetExperience` int NOT NULL DEFAULT 0,"
+		"  `VehicleType` int NOT NULL DEFAULT 0,"
+		"  `VehicleName` varchar(32) NOT NULL DEFAULT '载具',"
 		"  PRIMARY KEY (`UserID`)"
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
-	if(!SqlExec(pSql, pConfig, pPets))
+	if(!SqlExec(pSql, pConfig, pVehicles))
 		return false;
+
+	// Migrate legacy tw_pets rows into tw_vehicles (one-time safe upsert)
+	const char *pMigrateVehicles =
+		"INSERT INTO `tw_vehicles` (`UserID`, `VehicleType`, `VehicleName`) "
+		"SELECT `UserID`, `PetID`, `PetName` FROM `tw_pets` WHERE `PetID` > 0 "
+		"ON DUPLICATE KEY UPDATE "
+		"`VehicleType`=GREATEST(`tw_vehicles`.`VehicleType`, VALUES(`VehicleType`)), "
+		"`VehicleName`=IF(LENGTH(VALUES(`VehicleName`))>0, VALUES(`VehicleName`), `tw_vehicles`.`VehicleName`)";
+	SqlExec(pSql, pConfig, pMigrateVehicles);
 
 	// Housing table (player houses)
 	const char *pHousing =

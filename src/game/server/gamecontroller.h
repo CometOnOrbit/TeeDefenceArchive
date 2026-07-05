@@ -13,6 +13,7 @@
 #include <generated/protocol.h>
 
 class CPlayer;
+class CFlag;
 
 /*
 	Class: Game Controller
@@ -87,6 +88,7 @@ public:
 				weapon when switching team or player suicides.
 	*/
 	virtual int OnCharacterDeath(class CCharacter *pVictim, class CPlayer *pKiller, int Weapon);
+	virtual void OnFlagReturn(class CFlag *pFlag);
 	/*
 		Function: on_CCharacter_spawn
 			Called when a CCharacter spawns into the game world.
@@ -109,7 +111,11 @@ public:
 			bool?
 	*/
 	virtual bool OnEntity(int Index, vec2 Pos);
+	virtual void OnEntitySwitch(int EntityIndex, vec2 Pos, int Flags, int Number);
 	bool OnExtraTile(int Index, vec2 Pos);
+
+	// Returns true when damage was fully handled by the mode (skip default TakeDamage).
+	virtual bool OnCharacterTakeDamage(class CCharacter *pChr, vec2 &Force, int &Dmg, int From, int Weapon);
 
 	virtual void OnPlayerConnect(class CPlayer *pPlayer);
 	virtual void OnPlayerDisconnect(class CPlayer *pPlayer);
@@ -131,14 +137,14 @@ public:
 
 	// team
 	bool CanJoinTeam(int Team, int NotThisID) const;
-	bool CanChangeTeam(class CPlayer *pPplayer, int JoinTeam) const;
+	virtual bool CanChangeTeam(class CPlayer *pPplayer, int JoinTeam) const;
 
 	void DoTeamChange(class CPlayer *pPlayer, int Team, bool DoChatMsg = true);
 
 	int GetRealPlayerNum() const { return m_RealPlayerNum; }
 	int GetStartTeam();
 
-	void HandleCharacterTiles(class CCharacter *pChr, vec2 LastPos, vec2 NewPos);
+	virtual void HandleCharacterTiles(class CCharacter *pChr, vec2 LastPos, vec2 NewPos);
 	static void Com_About(IConsole::IResult *pResult, void *pContext);
 	static void Com_Community(IConsole::IResult *pResult, void *pContext);
 	void RegisterChatCommands(CCommandManager *pManager);

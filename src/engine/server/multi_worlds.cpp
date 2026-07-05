@@ -6,6 +6,9 @@
 #include <engine/server.h>
 #include <engine/storage.h>
 #include <engine/shared/jsonparser.h>
+#include <game/server/core/components/tunes/tune_zone_manager.h>
+
+#include <optional>
 
 CMapDetail::CMapDetail(CWorld *pWorld)
 {
@@ -42,6 +45,13 @@ bool CMapDetail::Load(IStorage *pStorage)
 
 	char aBuf[IO_MAX_PATH_LENGTH];
 	MapStoragePath(aBuf, sizeof(aBuf), m_pWorld->GetPath());
+
+	const bool PrepareMap = !m_pWorld->GetDetail()->HasFlag(WORLD_FLAG_NO_PREPARE_MAP);
+	std::optional<std::string> PreparedPath;
+	if(PrepareMap)
+		PreparedPath = CTuneZoneManager::GetInstance().BakePreparedMap(aBuf, pStorage);
+	if(PreparedPath.has_value())
+		str_copy(aBuf, PreparedPath->c_str(), sizeof(aBuf));
 
 	if(!m_pMap)
 		m_pMap = CreateEngineMap();
@@ -165,6 +175,13 @@ bool CMultiWorlds::LoadFromJson(IKernel *pKernel, IStorage *pStorage, const char
 	if(!pKernel || !pStorage || !pJsonPath)
 		return false;
 
+	static bool s_SoundsLoaded = false;
+	if(!s_SoundsLoaded)
+	{
+		CTuneZoneManager::GetInstance().LoadSoundsFromDirectory("server_data/sounds", pStorage);
+		s_SoundsLoaded = true;
+	}
+
 	Clear(false);
 	m_NumInitialized = 0;
 
@@ -208,15 +225,30 @@ bool CMultiWorlds::LoadFromJson(IKernel *pKernel, IStorage *pStorage, const char
 		bool TravelLocked = false;
 		if(El["travel_locked"].type == json_boolean)
 			TravelLocked = El["travel_locked"].u.boolean != 0;
-		else if(WorldTypeFromString(pMode) != WorldType::RPG)
+		else if(WorldTypeFromString(pMode) == WorldType::Story)
 			TravelLocked = true;
 
 		char aRequiredQuest[32] = {0};
 		if(El["required_quest"].type == json_string)
 			str_copy(aRequiredQuest, El["required_quest"].u.string.ptr, sizeof(aRequiredQuest));
 
+		int64_t Flags = 0;
+		if(El["no_prepare_map"].type == json_boolean && El["no_prepare_map"].u.boolean)
+			Flags |= WORLD_FLAG_NO_PREPARE_MAP;
+		if(El["flags"].type == json_array)
+		{
+			for(unsigned f = 0; f < El["flags"].u.array.length; f++)
+			{
+				const json_value &FlagEl = El["flags"][(int)f];
+				if(FlagEl.type != json_string)
+					continue;
+				if(str_comp_nocase(FlagEl.u.string.ptr, "no_prepare_map") == 0)
+					Flags |= WORLD_FLAG_NO_PREPARE_MAP;
+			}
+		}
+
 		const int WorldID = (int)i;
-		const CWorldDetail Detail(WorldTypeFromString(pMode), 0, 0, 0, TravelLocked, aRequiredQuest);
+		const CWorldDetail Detail(WorldTypeFromString(pMode), 0, 0, 0, TravelLocked, aRequiredQuest, Flags);
 		m_apWorlds[WorldID] = new CWorld(WorldID, aTitle, aMap, Detail);
 		if(!Init(m_apWorlds[WorldID], pKernel))
 		{

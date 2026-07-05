@@ -22,9 +22,9 @@
         "max": 0,
         "max_place": 5,
         "formula": {
-          "Log": 70,
-          "Golden": 40,
-          "Zombie's Heart": 50
+          "0": 70,
+          "4": 40,
+          "7": 50
         },
         "name_key": "$td.item.27.name",
         "description_key": "$td.item.27.desc"
@@ -49,9 +49,9 @@
         "max": 0,
         "max_place": 5,
         "formula": {
-          "Log": 70,
-          "Golden": 40,
-          "Zombie's Heart": 50
+          "0": 70,
+          "4": 40,
+          "7": 50
         },
         "name_key": "$td.item.28.name",
         "description_key": "$td.item.28.desc"
@@ -76,9 +76,9 @@
         "max": 0,
         "max_place": 5,
         "formula": {
-          "Log": 70,
-          "Iron": 40,
-          "Zombie's Heart": 100
+          "0": 70,
+          "3": 40,
+          "7": 100
         },
         "name_key": "$td.item.29.name",
         "description_key": "$td.item.29.desc"
@@ -98,10 +98,10 @@
         ],
         "max": 0,
         "formula": {
-          "Log": 70,
-          "Iron": 30,
-          "Coal": 100,
-          "Zombie's Heart": 50
+          "0": 70,
+          "3": 30,
+          "1": 100,
+          "7": 50
         },
         "name_key": "$td.item.30.name",
         "description_key": "$td.item.30.desc"
@@ -122,11 +122,11 @@
         "max": 0,
         "max_place": 2,
         "formula": {
-          "Log": 70,
-          "Copper": 200,
-          "Iron": 30,
-          "Coal": 100,
-          "Zombie's Heart": 50
+          "0": 70,
+          "2": 200,
+          "3": 30,
+          "1": 100,
+          "7": 50
         },
         "name_key": "$td.item.31.name",
         "description_key": "$td.item.31.desc"
@@ -146,12 +146,12 @@
         "max": 0,
         "max_place": 2,
         "formula": {
-          "Log": 7000,
-          "Copper": 2000,
-          "Iron": 2000,
-          "Coal": 5000,
-          "Enegry": 1500,
-          "Zombie's Heart": 3000
+          "0": 7000,
+          "2": 2000,
+          "3": 2000,
+          "1": 5000,
+          "6": 1500,
+          "7": 3000
         },
         "name_key": "$td.item.32.name",
         "description_key": "$td.item.32.desc"
@@ -174,8 +174,8 @@
         "max": 0,
         "max_place": 2,
         "formula": {
-          "Log": 70,
-          "Zombie's Heart": 50
+          "0": 70,
+          "7": 50
         },
         "name_key": "$td.item.33.name",
         "description_key": "$td.item.33.desc"
@@ -194,14 +194,14 @@
         "max": 0,
         "max_place": 1,
         "formula": {
-          "Log": 100,
-          "Coal": 100,
-          "Copper": 100,
-          "Iron": 100,
-          "Golden": 100,
-          "Diamond": 10,
-          "Enegry": 5,
-          "Zombie's Heart": 1000
+          "0": 100,
+          "1": 100,
+          "2": 100,
+          "3": 100,
+          "4": 100,
+          "5": 10,
+          "6": 5,
+          "7": 1000
         },
         "name_key": "$td.item.34.name",
         "description_key": "$td.item.34.desc"
@@ -223,9 +223,9 @@
           "lifesteal"
         ],
         "formula": {
-          "Log": 200,
-          "Zombie's Heart": 500,
-          "Void Shard": 50
+          "0": 200,
+          "7": 500,
+          "40": 50
         },
         "name_key": "$td.item.41.name",
         "description_key": "$td.item.41.desc"
@@ -247,9 +247,9 @@
           "armor_shred"
         ],
         "formula": {
-          "Coal": 2000,
-          "Iron": 500,
-          "Titanium": 200
+          "1": 2000,
+          "3": 500,
+          "39": 200
         },
         "name_key": "$td.item.42.name",
         "description_key": "$td.item.42.desc"
@@ -270,9 +270,9 @@
           "electron_chain"
         ],
         "formula": {
-          "Copper": 2000,
-          "Coal": 3000,
-          "Enegry": 20
+          "2": 2000,
+          "1": 3000,
+          "6": 20
         },
         "name_key": "$td.item.43.name",
         "description_key": "$td.item.43.desc"
@@ -296,8 +296,8 @@
         ],
         "proba": 15,
         "formula": {
-          "Log": 300,
-          "Golden": 500
+          "0": 300,
+          "4": 500
         },
         "name_key": "$td.item.44.name",
         "description_key": "$td.item.44.desc"
@@ -322,9 +322,9 @@
           "haste"
         ],
         "formula": {
-          "Log": 100,
-          "Iron": 400,
-          "Titanium": 20
+          "0": 100,
+          "3": 400,
+          "39": 20
         },
         "name_key": "$td.item.45.name",
         "description_key": "$td.item.45.desc"
@@ -345,10 +345,10 @@
           "max_health_bonus"
         ],
         "formula": {
-          "Log": 200,
-          "Zombie's Heart": 20,
-          "Iron": 100,
-          "Void Shard": 20
+          "0": 200,
+          "7": 20,
+          "3": 100,
+          "40": 20
         },
         "name_key": "$td.item.50.name",
         "description_key": "$td.item.50.desc"
@@ -369,9 +369,9 @@
           "thorns"
         ],
         "formula": {
-          "Log": 150,
-          "Iron": 80,
-          "Zombie's Heart": 50
+          "0": 150,
+          "3": 80,
+          "7": 50
         },
         "name_key": "$td.item.72.name",
         "description_key": "$td.item.72.desc"
@@ -392,9 +392,9 @@
           "regeneration"
         ],
         "formula": {
-          "Log": 120,
-          "Golden": 100,
-          "Zombie's Heart": 40
+          "0": 120,
+          "4": 100,
+          "7": 40
         },
         "name_key": "$td.item.73.name",
         "description_key": "$td.item.73.desc"
@@ -414,9 +414,9 @@
           "fortification"
         ],
         "formula": {
-          "Coal": 150,
-          "Iron": 300,
-          "Titanium": 15
+          "1": 150,
+          "3": 300,
+          "39": 15
         },
         "name_key": "$td.item.74.name",
         "description_key": "$td.item.74.desc"
@@ -437,10 +437,10 @@
           "absorption_shield"
         ],
         "formula": {
-          "Copper": 200,
-          "Iron": 200,
-          "Golden": 100,
-          "Zombie's Heart": 50
+          "2": 200,
+          "3": 200,
+          "4": 100,
+          "7": 50
         },
         "name_key": "$td.item.75.name",
         "description_key": "$td.item.75.desc"
@@ -460,9 +460,9 @@
         ],
         "proba": 10,
         "formula": {
-          "Log": 250,
-          "Golden": 80,
-          "Diamond": 5
+          "0": 250,
+          "4": 80,
+          "5": 5
         },
         "name_key": "$td.item.76.name",
         "description_key": "$td.item.76.desc"
@@ -481,9 +481,9 @@
           "swiftness"
         ],
         "formula": {
-          "Log": 100,
-          "Iron": 50,
-          "Golden": 100
+          "0": 100,
+          "3": 50,
+          "4": 100
         },
         "name_key": "$td.item.77.name",
         "description_key": "$td.item.77.desc"
@@ -503,9 +503,9 @@
           "retribution"
         ],
         "formula": {
-          "Iron": 120,
-          "Zombie's Heart": 60,
-          "Void Shard": 3
+          "3": 120,
+          "7": 60,
+          "40": 3
         },
         "name_key": "$td.item.78.name",
         "description_key": "$td.item.78.desc"
@@ -525,9 +525,9 @@
           "resilience"
         ],
         "formula": {
-          "Iron": 200,
-          "Titanium": 20,
-          "Zombie's Heart": 80
+          "3": 200,
+          "39": 20,
+          "7": 80
         },
         "name_key": "$td.item.79.name",
         "description_key": "$td.item.79.desc"
@@ -548,10 +548,10 @@
           "self_harm_immunity"
         ],
         "formula": {
-          "Log": 300,
-          "Iron": 150,
-          "Diamond": 15,
-          "Void Shard": 10
+          "0": 300,
+          "3": 150,
+          "5": 15,
+          "40": 10
         },
         "name_key": "$td.item.80.name",
         "description_key": "$td.item.80.desc"

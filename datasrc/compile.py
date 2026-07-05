@@ -2,6 +2,7 @@ import sys
 from datatypes import *
 import content
 import network
+from sound_manifest import MANIFEST_FILE, SPECIAL_SOUND_BASE_ID, build_entries_with_intervals
 
 def create_enum_table(names, num, start = "0"):
 	lines = []
@@ -339,4 +340,47 @@ if gen_network_source:
 		print(l)
 
 if gen_server_content_header:
+	entries = build_entries_with_intervals(MANIFEST_FILE)
+	print("// Auto-generated from server_data/sounds/sound.manifest")
+	print("enum ESpecialSound : int")
+	print("{")
+	print("\tSOUND_NOPE = -1,")
+	print(f"\tSOUND_FIRST_CUSTOM = {SPECIAL_SOUND_BASE_ID},")
+	if entries:
+		for i, e in enumerate(entries):
+			print(f"\t{e.enum} = SOUND_FIRST_CUSTOM + {i}, // {e.file}")
+		print(f"\tSOUND_LAST_CUSTOM = SOUND_FIRST_CUSTOM + {len(entries) - 1}")
+	else:
+		print("\tSOUND_LAST_CUSTOM = SOUND_FIRST_CUSTOM - 1")
+	print("};")
+	print("")
+	print("inline constexpr int SOUND_CUSTOM_COUNT = (int)(SOUND_LAST_CUSTOM) - (int)(SOUND_FIRST_CUSTOM) + 1;")
+	print("")
+
+	if entries:
+		print("// File names (order of manifest)")
+		print("inline constexpr const char* g_apSpecialSoundFiles[SOUND_CUSTOM_COUNT] = {")
+		for e in entries:
+			print(f'\t"{e.file}",')
+		print("};")
+		print("")
+
+		for e in entries:
+			print(f"inline constexpr int {e.enum}_INTERVAL = {e.interval_ticks};")
+	else:
+		print("// No custom sounds in manifest")
+		print("inline constexpr const char* const* g_apSpecialSoundFiles = nullptr;")
+	print("")
+
+	print("inline constexpr int SpecialSoundToPreparedIndex(int SoundId)")
+	print("{")
+	print("\tconst int v = SoundId - SOUND_FIRST_CUSTOM;")
+	print("\treturn (v >= 0 && v < SOUND_CUSTOM_COUNT) ? v : -1;")
+	print("}")
+	print("")
+	print("inline constexpr bool IsCustomSound(int SoundId)")
+	print("{")
+	print("\treturn SoundId >= (int)SOUND_FIRST_CUSTOM && SoundId <= (int)SOUND_LAST_CUSTOM;")
+	print("}")
+	print("")
 	print("#endif")

@@ -77,7 +77,8 @@ function ContentCompile(action, output)
 		Python("datasrc/compile.py") .. " " .. action .. " > " .. output
 	)
 	AddDependency(output, "datasrc/compile.py")
-	AddDependency("datasrc/compile.py", "datasrc/content.py", "datasrc/network.py", "datasrc/datatypes.py")
+	AddDependency("datasrc/compile.py", "datasrc/content.py", "datasrc/network.py", "datasrc/datatypes.py", "datasrc/sound_manifest.py")
+	AddDependency(output, "server_data/sounds/sound.manifest")
 	return output
 end
 

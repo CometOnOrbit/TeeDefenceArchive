@@ -17,7 +17,7 @@
             "x": 640,
             "y": 256,
             "radius": 72,
-            "dest_world": 2,
+            "dest_world": 4,
             "dest_x": 0,
             "dest_y": 0,
             "require_quest": "ch1_return"

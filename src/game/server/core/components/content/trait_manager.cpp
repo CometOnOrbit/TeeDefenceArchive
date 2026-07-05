@@ -274,7 +274,7 @@ void CTraitManager::RegisterVoteCommands(CCommandManager *pMgr)
 {
 	if(!pMgr || !GS())
 		return;
-	pMgr->AddCommand("traitselect", "", "i", ComVoteTraitSelect, GS());
+	pMgr->AddVoteCommand("traitselect", "", "i", ComVoteTraitSelect, GS());
 }
 
 void CTraitManager::OnCharacterSpawn(CPlayer *pPlayer)

@@ -18,7 +18,6 @@ class CPortalManager;
 class CNpcManager;
 class CQuestManager;
 class CSkillManager;
-class CDefenceBotManager;
 class CEffectRegistry;
 class CEnemyRegistry;
 class CStatusManager;
@@ -30,6 +29,8 @@ class CDutiesManager;
 class CMiniEventsManager;
 class CDurabilityManager;
 class CGuildManager;
+class CArenaLobbyManager;
+class CDefenceLobbyManager;
 class CMMOManager;
 class CProfessionManager;
 class CDungeonManager;
@@ -57,7 +58,6 @@ class TWorldController
 	CNpcManager *m_pNpcManager;
 	class CDialogManager *m_pDialogManager;
 	CQuestManager *m_pQuestManager;
-	CDefenceBotManager *m_pDefenceBotManager;
 	CEffectRegistry *m_pEffectRegistry;
 	CStatusManager *m_pStatusManager;
 	CSkillManager *m_pSkillManager;
@@ -69,6 +69,8 @@ class TWorldController
 	CMiniEventsManager *m_pMiniEventsManager;
 	CDurabilityManager *m_pDurabilityManager;
 	CGuildManager *m_pGuildManager;
+	CArenaLobbyManager *m_pArenaLobbyManager;
+	CDefenceLobbyManager *m_pDefenceLobbyManager;
 	CMMOManager *m_pMMOManager;
 	CProfessionManager *m_pProfessionManager;
 	CDungeonManager *m_pDungeonManager;
@@ -114,7 +116,6 @@ public:
 	CNpcManager *NpcManager() const { return m_pNpcManager; }
 	class CDialogManager *DialogManager() const { return m_pDialogManager; }
 	CQuestManager *QuestManager() const { return m_pQuestManager; }
-	CDefenceBotManager *DefenceBotManager() const { return m_pDefenceBotManager; }
 	CEffectRegistry *EffectRegistry() const { return m_pEffectRegistry; }
 	CStatusManager *StatusManager() const { return m_pStatusManager; }
 	CSkillManager *SkillManager() const { return m_pSkillManager; }
@@ -126,6 +127,8 @@ public:
 	CMiniEventsManager *MiniEventsManager() const { return m_pMiniEventsManager; }
 	CDurabilityManager *DurabilityManager() const { return m_pDurabilityManager; }
 	CGuildManager *GuildManager() const { return m_pGuildManager; }
+	CArenaLobbyManager *ArenaLobbyManager() const { return m_pArenaLobbyManager; }
+	CDefenceLobbyManager *DefenceLobbyManager() const { return m_pDefenceLobbyManager; }
 	CMMOManager *GetMMOManager() const { return m_pMMOManager; }
 	CProfessionManager *ProfessionManager() const { return m_pProfessionManager; }
 	CDungeonManager *GetDungeonManager() const { return m_pDungeonManager; }
@@ -133,7 +136,6 @@ public:
 
 	CLocalizationManager &Loc() const { return *m_pLocalizationManager; }
 	CWorldManager &Worlds() const { return *m_pWorldManager; }
-	CDefenceBotManager &DefenceBots() const { return *m_pDefenceBotManager; }
 };
 
 #endif

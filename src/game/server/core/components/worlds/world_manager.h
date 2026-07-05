@@ -15,6 +15,7 @@ public:
 	const char *WorldTitle(int Index) const;
 	void FormatWorldTitle(int ClientID, int Index, char *pBuf, int BufSize) const;
 	void AddVotes(int ClientID);
+	void AddDefenceMiniGameVotes(int ClientID);
 	bool Execute(int ClientID, int WorldIndex);
 	bool ExecuteWithSpawn(int ClientID, int WorldIndex, vec2 *pSpawnPos, bool AllowGatedTravel = false);
 

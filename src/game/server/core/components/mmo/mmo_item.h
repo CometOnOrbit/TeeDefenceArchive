@@ -1,7 +1,7 @@
 #ifndef GAME_SERVER_CORE_COMPONENTS_MMO_MMO_ITEM_H
 #define GAME_SERVER_CORE_COMPONENTS_MMO_MMO_ITEM_H
 
-#include "mmo_types.h"
+#include <game/server/core/components/mmo/mmo_types.h>
 
 #include <game/server/data_center.h>
 #include <base/system.h>
@@ -31,6 +31,12 @@ enum class EMMOFireStyle
 	TeslaChain,
 	TrackedPlasma,
 	HammerLamp,
+	LightningBolt,
+	ElectroArc,
+	ElectricGrenade,
+	MegaBlast,
+	ThunderHammer,
+	DoomRay,
 };
 
 inline EMMOFireStyle ParseFireStyle(const char *pStr)
@@ -51,6 +57,18 @@ inline EMMOFireStyle ParseFireStyle(const char *pStr)
 		return EMMOFireStyle::TrackedPlasma;
 	if(str_comp_nocase(pStr, "hammer_lamp") == 0)
 		return EMMOFireStyle::HammerLamp;
+	if(str_comp_nocase(pStr, "lightning_bolt") == 0)
+		return EMMOFireStyle::LightningBolt;
+	if(str_comp_nocase(pStr, "electro_arc") == 0)
+		return EMMOFireStyle::ElectroArc;
+	if(str_comp_nocase(pStr, "electric_grenade") == 0)
+		return EMMOFireStyle::ElectricGrenade;
+	if(str_comp_nocase(pStr, "mega_blast") == 0)
+		return EMMOFireStyle::MegaBlast;
+	if(str_comp_nocase(pStr, "thunder_hammer") == 0)
+		return EMMOFireStyle::ThunderHammer;
+	if(str_comp_nocase(pStr, "doom_ray") == 0)
+		return EMMOFireStyle::DoomRay;
 	return EMMOFireStyle::Default;
 }
 
@@ -65,6 +83,12 @@ inline const char *FireStyleLabelZh(EMMOFireStyle Style)
 	case EMMOFireStyle::TeslaChain: return "特斯拉链";
 	case EMMOFireStyle::TrackedPlasma: return "追踪等离子";
 	case EMMOFireStyle::HammerLamp: return "飞锤灯";
+	case EMMOFireStyle::LightningBolt: return "闪电束";
+	case EMMOFireStyle::ElectroArc: return "电弧";
+	case EMMOFireStyle::ElectricGrenade: return "电爆榴弹";
+	case EMMOFireStyle::MegaBlast: return "巨型爆炸";
+	case EMMOFireStyle::ThunderHammer: return "雷霆之锤";
+	case EMMOFireStyle::DoomRay: return "末日射线";
 	default: return nullptr;
 	}
 }
@@ -166,7 +190,7 @@ public:
 	bool CanTrade() const { return m_CanTrade; }
 	bool IsEquipmentSlot() const
 	{
-		return (m_Group == ItemGroup::Equipment || m_Group == ItemGroup::Potion) && m_Type != ItemType::Default;
+		return MMOIsEquipmentItemType(m_Type);
 	}
 	bool HasWeaponProfile() const { return m_WeaponProfile.m_Active; }
 	const SMMOWeaponProfile &GetWeaponProfile() const { return m_WeaponProfile; }

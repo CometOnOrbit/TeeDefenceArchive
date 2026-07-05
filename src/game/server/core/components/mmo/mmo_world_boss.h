@@ -1,15 +1,76 @@
 #ifndef GAME_SERVER_CORE_COMPONENTS_MMO_MMO_WORLD_BOSS_H
 #define GAME_SERVER_CORE_COMPONENTS_MMO_MMO_WORLD_BOSS_H
 
-#include <game/server/entity.h>
 #include <game/server/core/tworld_component.h>
 #include <game/server/core/tools/event_listener.h>
-#include <engine/shared/protocol.h>
+#include <base/vmath.h>
 #include <vector>
 
 class CGameContext;
 class CPlayer;
 class CCharacter;
+class CMMOManager;
+class CCommandManager;
+struct SMMOMobDef;
+
+struct SWorldBossItemReward
+{
+	int m_ItemID = 0;
+	int m_Count = 0;
+};
+
+struct SWorldBossRewardTier
+{
+	int m_RankMin = 1;
+	int m_RankMax = 1;
+	int m_Gold = 0;
+	int m_Exp = 0;
+	int m_Reputation = 0;
+	char m_aLabel[8] = "";
+	std::vector<SWorldBossItemReward> m_vItems;
+};
+
+struct SWorldBossKillBonus
+{
+	int m_Reputation = 0;
+	std::vector<SWorldBossItemReward> m_vItems;
+};
+
+struct SWorldBossBroadcastLine
+{
+	char m_aKey[64] = {};
+	char m_aFallback[256] = {};
+};
+
+struct SWorldBossSchedule
+{
+	int m_InitialMinSec = 300;
+	int m_InitialMaxSec = 900;
+	int m_RespawnSec = 3600;
+};
+
+struct SWorldBossSpawnDef
+{
+	char m_aId[48] = {};
+	bool m_Enabled = true;
+	int m_World = -1;
+	int m_MobID = -1;
+	vec2 m_SpawnPos = vec2(0, 0);
+	int m_Slot = 63;
+	char m_aDisplayName[64] = {};
+	char m_aDisplayNameKey[64] = {};
+	SWorldBossSchedule m_Schedule;
+	SWorldBossBroadcastLine m_SpawnMsg;
+	SWorldBossBroadcastLine m_KillMsg;
+	SWorldBossBroadcastLine m_HpMsg;
+	SWorldBossBroadcastLine m_StatusAliveMsg;
+	SWorldBossBroadcastLine m_StatusWaitingMsg;
+	SWorldBossBroadcastLine m_StatusSoonMsg;
+	SWorldBossBroadcastLine m_ClanMsg;
+	int m_LeaderboardLines = 5;
+	std::vector<SWorldBossRewardTier> m_vRewardTiers;
+	SWorldBossKillBonus m_KillBonus;
+};
 
 class CWorldBossManager : public TWorldComponent, public IGameEventListener
 {
@@ -24,57 +85,57 @@ public:
 
 	void OnCharacterDeath(CPlayer *pVictim, CPlayer *pKiller, int Weapon) override;
 
-	// Called from CCharacter::TakeDamage to record damage done by players to the boss
 	void RecordDamage(int BossCID, int AttackerCID, int Damage);
 
+	bool IsEnabled() const { return m_pSpawn != nullptr && m_pSpawn->m_Enabled && m_pMobDef != nullptr; }
 	bool IsWorldBoss(CPlayer *pPlayer) const;
 	bool IsWorldBossCharacter(CCharacter *pChar) const;
 	bool IsBossAlive() const { return m_IsAlive; }
 	int GetBossHP() const { return m_BossHP; }
 	int GetBossMaxHP() const { return m_BossMaxHP; }
 	int GetNextSpawnInTicks() const;
+	int GetBossClientID() const { return m_BossClientID; }
+	bool GetBossPos(vec2 *pOut) const;
+	const char *GetBossDisplayName(int ClientID) const;
 
 	void RegisterBossCommands();
+	void RegisterBossVoteCommands(CCommandManager *pManager);
+	void SendBossStatusChat(int ClientID) const;
 
 private:
-	static constexpr int BOSS_SLOT = 63;         // Fixed bot slot for world boss
-	static constexpr int BOSS_MAX_HP = 20000;    // Base HP
-	static constexpr int BOSS_BASE_ATTACK = 80;  // Base attack damage
-	static constexpr int RESPAWN_INTERVAL = 3600; // 6 minutes in ticks (at 10 tick/s)
-	static constexpr float BOSS_SPEED = 2.0f;    // Slower than a normal player (≈4.0)
-	static constexpr int BOSS_ATTACK_RANGE = 80; // Attack range in units
-	static constexpr int BOSS_ATTACK_COOLDOWN = 30; // Ticks between attacks
-	static constexpr int BOSS_AGGRO_RANGE = 800; // Aggro range in units
-
-	// Current boss state
-	int m_WorldID = -1;            // Which world the boss spawns in
-	bool m_IsAlive = false;
-	int m_BossClientID = -1;       // CID of the boss bot
-	int m_BossHP = 0;
-	int m_BossMaxHP = 0;
-	int m_SpawnTick = 0;           // Tick when the boss was spawned
-	int m_NextSpawnTick = 0;       // Tick when boss should respawn
-	int m_LastBossAttackTick = 0;  // Tick of last boss attack
-
-	vec2 m_BossSpawnPos = vec2(0, 0);
-
-	// Damage tracking per player
 	struct SPlayerDamage {
 		int ClientID;
 		int Damage;
-		int64 AccountID; // For persistence
+		int64 AccountID;
 	};
+
+	const SWorldBossSpawnDef *m_pSpawn = nullptr;
+	const SMMOMobDef *m_pMobDef = nullptr;
+
+	int m_WorldID = -1;
+	bool m_IsAlive = false;
+	int m_BossClientID = -1;
+	int m_BossHP = 0;
+	int m_BossMaxHP = 0;
+	int m_NextSpawnTick = 0;
+
 	std::vector<SPlayerDamage> m_aDamage;
 
-	// Internal methods
+	void ResolveSpawnForWorld(int WorldID);
+	void ScheduleNextSpawn(bool bInitial);
+	int RespawnDelayTicks() const;
 	void SpawnBoss();
 	void DespawnBoss();
-	void TickBossAI(CCharacter *pBoss);
 	void BroadcastBossStatus();
 	void DistributeRewards(CPlayer *pKiller);
-	void FindBossSpawnPos();
-	int PickRandomWorld() const;
 	void ResetDamageTracking();
+	void FormatBroadcast(int ClientID, char *pBuf, int BufSize, const SWorldBossBroadcastLine &Line, ...) const;
+
+	const SWorldBossRewardTier *FindRewardTier(int Rank) const;
+	void GrantReward(CMMOManager *pMMO, CPlayer *pPlayer, const SWorldBossRewardTier &Tier,
+		int Rank, int Damage, int DamagePct) const;
+	void GrantKillBonus(CMMOManager *pMMO, CPlayer *pKiller) const;
+	void AppendItemRewardSummary(char *pBuf, int BufSize, const std::vector<SWorldBossItemReward> &vItems) const;
 };
 
 #endif

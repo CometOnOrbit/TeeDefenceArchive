@@ -50,7 +50,6 @@ enum EVoteMenuPage
 	VOTE_PAGE_MMO_AUCTION = 114,
 	VOTE_PAGE_MMO_GUILD = 115,
 	VOTE_PAGE_MMO_MOUNT = 116,
-	VOTE_PAGE_MMO_PET = 117,
 	VOTE_PAGE_MMO_HOUSE = 118,
 	VOTE_PAGE_MMO_MARRIAGE = 119,
 	VOTE_PAGE_MMO_ENCHANT = 120,
@@ -74,6 +73,17 @@ enum EVoteMenuPage
 	VOTE_PAGE_MMO_GUILD_MEMBERS = 138,
 	VOTE_PAGE_MMO_RECYCLE = 139,
 	VOTE_PAGE_MMO_RECYCLE_CONFIRM = 140,
+	VOTE_PAGE_MMO_GUILD_WAR_MODE = 141,
+	VOTE_PAGE_MMO_GUILD_WAR_MAP = 142,
+	VOTE_PAGE_MMO_ARENA = 143,
+	VOTE_PAGE_MMO_ARENA_MODE = 144,
+	VOTE_PAGE_MMO_ARENA_MAP = 145,
+	VOTE_PAGE_MMO_FRIEND_REQUESTS = 146,
+	VOTE_PAGE_MMO_DEFENCE = 147,
+	VOTE_PAGE_MMO_DEFENCE_MAP = 148,
+	VOTE_PAGE_MMO_DEFENCE_DIFF = 149,
+	VOTE_PAGE_MMO_DEFENCE_BROWSE = 150,
+	VOTE_PAGE_MMO_DEFENCE_APPLICANTS = 151,
 };
 
 struct SPlayerVote
@@ -98,6 +108,7 @@ struct SPlayerVote
 	int m_Select[NUM_SELECT];
 	bool m_Confirm;
 	char m_aExtraText[VOTE_DESC_LENGTH];
+	char m_aServiceNpcId[32]; // NPC that opened skills/shop/quests/craft (MRPG proximity)
 	int m_SkillId;
 	int m_QuestIdx;
 
@@ -110,6 +121,7 @@ struct SPlayerVote
 		for(int i = 0; i < NUM_SELECT; i++)
 			m_Select[i] = 0;
 		m_aExtraText[0] = 0;
+		m_aServiceNpcId[0] = 0;
 		m_SkillId = 0;
 		m_QuestIdx = 0;
 	}

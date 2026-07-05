@@ -15,6 +15,7 @@
 #include <mysql.h>
 #include <game/server/entities/character.h>
 #include <game/server/core/components/mmo/mmo_item.h>
+#include <vector>
 
 int CMMOManager::GetMailCount(int64 AccountID)
 {
@@ -107,7 +108,7 @@ void CMMOManager::ShowMailboxVotes(int ClientID, CVoteMenuManager *pVote, CPlaye
 
 	char aQuery[512];
 	str_format(aQuery, sizeof(aQuery),
-		"SELECT `ID`, `Name`, `Description`, `Sender`, `Readed`, `CreatedAt` FROM `tw_accounts_mailbox` WHERE `UserID`=%lld ORDER BY `CreatedAt` DESC",
+		"SELECT `ID`, `Name`, `Description`, `Sender`, `Readed`, `CreatedAt`, `AttachedItems` FROM `tw_accounts_mailbox` WHERE `UserID`=%lld ORDER BY `CreatedAt` DESC",
 		(long long)AccountID);
 	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
 	{
@@ -128,6 +129,7 @@ void CMMOManager::ShowMailboxVotes(int ClientID, CVoteMenuManager *pVote, CPlaye
 
 	bool bUnreadSection = false;
 	bool bReadSection = false;
+	int ClaimableCount = 0;
 	char aLine[128];
 	char aCmd[64];
 
@@ -140,6 +142,9 @@ void CMMOManager::ShowMailboxVotes(int ClientID, CVoteMenuManager *pVote, CPlaye
 		const int MailID = str_toint(Row[0]);
 		const char *pName = Row[1] ? Row[1] : "(无标题)";
 		const char *pSender = Row[3] ? Row[3] : "系统";
+		const char *pAttached = Row[6] ? Row[6] : "";
+		if(pAttached[0] == '[')
+			ClaimableCount++;
 
 		if(Readed == 0)
 		{
@@ -169,6 +174,13 @@ void CMMOManager::ShowMailboxVotes(int ClientID, CVoteMenuManager *pVote, CPlaye
 
 	mysql_free_result(pRes);
 	pPool->Release(pRaw);
+
+	if(ClaimableCount > 0)
+	{
+		V.GroupLine();
+		str_format(aLine, sizeof(aLine), "一键领取全部附件 (%d)", ClaimableCount);
+		V.Option("ccv_mail_claimall", aLine);
+	}
 
 	if(bReadSection)
 	{
@@ -361,7 +373,56 @@ bool CMMOManager::SendMail(const char *pSender, int64 TargetAID, const char *pTi
 	return Result;
 }
 
-bool CMMOManager::ClaimMailAttachments(CPlayer *pPlayer, int MailID)
+int CMMOManager::ClaimAllMailAttachments(CPlayer *pPlayer)
+{
+	if(!pPlayer || pPlayer->GetAccountId() <= 0)
+		return 0;
+
+	CSqlConnectionPool *pPool = GS()->Accounts()->GetSqlPool();
+	if(!pPool || !pPool->IsInitialized())
+		return 0;
+	void *pRaw = pPool->Acquire();
+	if(!pRaw)
+		return 0;
+	MYSQL *pSql = (MYSQL *)pRaw;
+
+	char aQuery[256];
+	str_format(aQuery, sizeof(aQuery),
+		"SELECT `ID` FROM `tw_accounts_mailbox` WHERE `UserID`=%lld AND `AttachedItems` LIKE '[%%'",
+		(long long)pPlayer->GetAccountId());
+	if(!SqlExecQuery(pSql, GS()->Config(), aQuery))
+	{
+		pPool->Release(pRaw);
+		return 0;
+	}
+
+	MYSQL_RES *pRes = mysql_store_result(pSql);
+	if(!pRes)
+	{
+		pPool->Release(pRaw);
+		return 0;
+	}
+
+	std::vector<int> vMailIDs;
+	MYSQL_ROW Row;
+	while((Row = mysql_fetch_row(pRes)))
+	{
+		if(Row[0])
+			vMailIDs.push_back(str_toint(Row[0]));
+	}
+	mysql_free_result(pRes);
+	pPool->Release(pRaw);
+
+	int Claimed = 0;
+	for(int MailID : vMailIDs)
+	{
+		if(ClaimMailAttachments(pPlayer, MailID, true))
+			Claimed++;
+	}
+	return Claimed;
+}
+
+bool CMMOManager::ClaimMailAttachments(CPlayer *pPlayer, int MailID, bool Silent)
 {
 	if(!pPlayer || MailID <= 0) return false;
 	int64 AccountID = pPlayer->GetAccountId();
@@ -423,7 +484,8 @@ bool CMMOManager::ClaimMailAttachments(CPlayer *pPlayer, int MailID)
 	if(bSuccess)
 	{
 		DeleteMail(MailID);
-		GS()->SendChatTo(pPlayer->GetCID(), "✅ 已领取附件物品。");
+		if(!Silent)
+			GS()->SendChatTo(pPlayer->GetCID(), "✅ 已领取附件物品。");
 	}
 	return bSuccess;
 }

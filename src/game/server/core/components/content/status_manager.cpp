@@ -92,6 +92,28 @@ void CStatusManager::ApplyStatus(CCharacter *pChr, const char *pStatusId, int St
 		St.m_Amount += Amount;
 }
 
+void CStatusManager::ClearDebuffs(CCharacter *pChr)
+{
+	SActiveStatus *pSlots = GetSlots(pChr);
+	if(!pSlots)
+		return;
+
+	static const char *s_apDebuffs[] = {"burn", "bleed", "poison", "frost", "electron_slow", "slow"};
+	for(int s = 0; s < MAX_CHARACTER_STATUSES; s++)
+	{
+		if(!pSlots[s].m_Active)
+			continue;
+		for(const char *pDebuff : s_apDebuffs)
+		{
+			if(str_comp(pSlots[s].m_aId, pDebuff) == 0)
+			{
+				pSlots[s].m_Active = false;
+				break;
+			}
+		}
+	}
+}
+
 bool CStatusManager::AbsorbDamage(CCharacter *pChr, int &Dmg)
 {
 	SActiveStatus *pSlots = GetSlots(pChr);
@@ -164,10 +186,12 @@ void CStatusManager::ProcessStatus(CCharacter *pChr, SActiveStatus &St)
 	}
 	else if(str_comp(St.m_aId, "atk_boost") == 0)
 	{
-		// atk_boost is applied in battle_cry/enlighten
-		// Effect is passive: stored in St.m_Amount (bonus damage added in FireWeapon)
-		// No tick action needed, just duration tracking
 		(void)0;
+	}
+	else if(str_comp(St.m_aId, "haste") == 0)
+	{
+		const float Mul = 1.f + 0.06f * (float)maximum(1, St.m_Stacks);
+		pChr->GetCore()->m_Vel *= Mul;
 	}
 
 	St.m_DurationTicks--;

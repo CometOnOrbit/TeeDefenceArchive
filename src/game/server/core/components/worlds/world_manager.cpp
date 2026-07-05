@@ -12,6 +12,10 @@
 #include <engine/shared/world_detail.h>
 #include <game/voting.h>
 
+#include <game/server/gameworld.h>
+#include <game/server/interaction_sound.h>
+#include <generated/server_data.h>
+
 #include "world_manager.h"
 
 // Track arena world IDs for IsArenaWorld check
@@ -99,6 +103,37 @@ void CWorldManager::AddVotes(int ClientID)
 	}
 }
 
+void CWorldManager::AddDefenceMiniGameVotes(int ClientID)
+{
+	if(!GS())
+		return;
+	const int Num = NumWorlds();
+	int Added = 0;
+	for(int i = 0; i < Num; i++)
+	{
+		const CWorldDetail *pDetail = Server()->GetWorldDetail(i);
+		if(!pDetail || pDetail->GetType() != WorldType::Defence)
+			continue;
+
+		char aCmd[96];
+		char aTitle[128];
+		char aLine[VOTE_DESC_LENGTH];
+		FormatWorldTitle(ClientID, i, aTitle, sizeof(aTitle));
+		const int PlayerNum = Server()->GetNumPlayersInWorld(i);
+		char aMode[32];
+		GS()->LocFormat(aMode, sizeof(aMode), ClientID, "worlds.mode.defence", "defence");
+		GS()->LocFormat(aLine, sizeof(aLine), ClientID, "worlds.entry", "%s (%d) [%s]", aTitle, PlayerNum, aMode);
+		str_format(aCmd, sizeof(aCmd), "ccv_menutravel %d", i);
+		GS()->AddVote(aLine, aCmd, ClientID);
+		Added++;
+	}
+	if(Added == 0)
+	{
+		const char *pText = GS()->Loc(ClientID, "worlds.defence.empty", "（暂无塔防世界）");
+		GS()->AddVote_TextLine(pText);
+	}
+}
+
 bool CWorldManager::ExecuteWithSpawn(int ClientID, int WorldIndex, vec2 *pSpawnPos, bool AllowGatedTravel)
 {
 	if(!GS() || WorldIndex < 0 || WorldIndex >= NumWorlds())
@@ -112,10 +147,24 @@ bool CWorldManager::ExecuteWithSpawn(int ClientID, int WorldIndex, vec2 *pSpawnP
 	if(WorldIndex == Server()->GetClientWorldID(ClientID))
 		return true;
 
+	const int CurWorld = Server()->GetClientWorldID(ClientID);
+	const CWorldDetail *pCur = Server()->GetWorldDetail(CurWorld);
+	const CWorldDetail *pDest = Server()->GetWorldDetail(WorldIndex);
+	const bool DefenceFromRpg = pCur && pDest
+		&& pCur->GetType() == WorldType::RPG
+		&& pDest->GetType() == WorldType::Defence;
+	const bool RpgFromDefence = pCur && pDest
+		&& pCur->GetType() == WorldType::Defence
+		&& pDest->GetType() == WorldType::RPG;
+	const bool MiniGameTravel = AllowGatedTravel || DefenceFromRpg || RpgFromDefence;
+
 	if(!AllowGatedTravel && GS()->Config() && !GS()->Config()->m_SvFreeWorldTravel)
 	{
-		GS()->SendChatLoc(ClientID, "travel.locked", "无法自由切换世界，请使用传送门或任务入口。");
-		return false;
+		if(!DefenceFromRpg && !RpgFromDefence)
+		{
+			GS()->SendChatLoc(ClientID, "travel.locked", "无法自由切换世界，请使用传送门或任务入口。");
+			return false;
+		}
 	}
 
 	// Level gate: check if player meets the world's required level
@@ -135,7 +184,8 @@ bool CWorldManager::ExecuteWithSpawn(int ClientID, int WorldIndex, vec2 *pSpawnP
 	}
 
 	char aReason[128];
-	if(Core() && Core()->PortalManager() && !Core()->PortalManager()->CanTravelToWorld(pPlayer, WorldIndex, aReason, sizeof(aReason)))
+	if(Core() && Core()->PortalManager() && !MiniGameTravel
+		&& !Core()->PortalManager()->CanTravelToWorld(pPlayer, WorldIndex, aReason, sizeof(aReason)))
 	{
 		GS()->SendChatLoc(ClientID, "travel.need_quest", aReason[0] ? aReason : "尚未解锁该世界。");
 		return false;
@@ -144,6 +194,7 @@ bool CWorldManager::ExecuteWithSpawn(int ClientID, int WorldIndex, vec2 *pSpawnP
 	char aTitle[128];
 	FormatWorldTitle(ClientID, WorldIndex, aTitle, sizeof(aTitle));
 	pPlayer->ChangeWorld(WorldIndex, pSpawnPos);
+	PlayInteractionSound(GS()->m_World, pPlayer, SOUND_SFX_TELEPORT);
 	GS()->SendChatLocF(ClientID, "travel.to", "Traveling to %s", aTitle);
 	return true;
 }
@@ -221,21 +272,10 @@ int CWorldManager::CreateArenaWorld(const char *pName, const char *pMode, const 
 	if(!pKernel || !pStorage)
 		return -1;
 
-	// Determine WorldType from mode
-	WorldType Type = WorldType::PvP;
-	if(pMode && pMode[0])
-	{
-		if(str_comp_nocase(pMode, "hub") == 0)
-			Type = WorldType::Hub;
-		else if(str_comp_nocase(pMode, "story") == 0)
-			Type = WorldType::Story;
-		else if(str_comp_nocase(pMode, "rpg") == 0 || str_comp_nocase(pMode, "frpg") == 0 ||
-			str_comp_nocase(pMode, "f|rpg") == 0)
-			Type = WorldType::RPG;
-	}
-
 	// Arena worlds are travel_locked to prevent players from entering via normal travel
-	const CWorldDetail Detail(Type, 0, 0, 0, true, "");
+	CWorldDetail Detail(WorldType::PvP, 0, 0, 0, true, "");
+	if(pMode && pMode[0])
+		Detail.SetGameMode(pMode);
 
 	int WorldID = Server()->MultiWorlds()->AddWorld(pKernel, pStorage, pName, pMapPath, Detail);
 	if(WorldID >= 0 && WorldID < ENGINE_MAX_WORLDS)

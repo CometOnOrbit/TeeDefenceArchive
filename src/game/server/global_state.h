@@ -112,9 +112,15 @@ public:
 
 	static void NotifyFriendsOnline(CGameContext *pGS, CPlayer *pPlayer);
 	static void NotifyFriendsOffline(CGameContext *pGS, CPlayer *pPlayer);
-	static bool FriendAdd(CGameContext *pGS, int ClientID, const char *pFriendName);
+	static bool FriendRequestSend(CGameContext *pGS, int ClientID, const char *pFriendName);
+	static bool FriendAccept(CGameContext *pGS, int ClientID, const char *pFromName);
+	static bool FriendDecline(CGameContext *pGS, int ClientID, const char *pFromName);
+	static bool FriendAcceptByAccountId(CGameContext *pGS, int ClientID, int64 FromAccountID);
+	static bool FriendDeclineByAccountId(CGameContext *pGS, int ClientID, int64 FromAccountID);
 	static bool FriendRemove(CGameContext *pGS, int ClientID, const char *pFriendName);
+	static bool FriendRemoveByAccountId(CGameContext *pGS, int ClientID, int64 FriendAID);
 	static void FriendList(CGameContext *pGS, int ClientID);
+	static int CountIncomingFriendRequests(CGameContext *pGS, int64 ToAccountID);
 
 	// ─── Whisper / World Chat ─────────────────────────────────────
 	static void Whisper(CGameContext *pGS, int ClientID, const char *pTarget, const char *pMsg);

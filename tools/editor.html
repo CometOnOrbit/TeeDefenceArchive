@@ -369,6 +369,7 @@ const FILE_META = {
   'mmo/mmo_mobs.json':     { label:'Mobs',   icon:'🐉', key:'mobs' },
   'mmo/world_spawns.json': { label:'Mob Spawns',icon:'🦎', key:'worlds' },
   'mmo/mini_events.json':  { label:'Events', icon:'🎪', key:'events' },
+  'mmo/world_boss.json':   { label:'World Boss', icon:'👹', key:null },
   'td/effects.json':       { label:'TD Effects',icon:'✨', key:'effects' },
   'td/enemies.json':       { label:'TD Enemies',icon:'👾', key:'enemies' },
   'td/index.json':         { label:'TD Config',icon:'⚙️', key:'data' },
@@ -377,9 +378,10 @@ const FILE_ORDER = [
   'npcs.json','spawns.json','worlds.json','portals.json','quests.json',
   'skills.json','craft_recipes.json','scenarios.json','shop_items.json',
   'achievements.json','duties.json','abilities.json','traits.json',
-  'mmo/mmo_items.json','mmo/mmo_mobs.json','mmo/world_spawns.json','mmo/mini_events.json',
+  'mmo/mmo_items.json','mmo/mmo_mobs.json','mmo/world_spawns.json','mmo/mini_events.json','mmo/world_boss.json',
   'td/enemies.json','td/effects.json','td/index.json',
 ];
+const SINGLE_OBJECT_FILES = new Set(['td/index.json', 'mmo/world_boss.json']);
 
 // ====== FIELD DESCRIPTIONS ======
 const FIELD_DESCS = {
@@ -431,8 +433,9 @@ const FIELD_DESCS = {
   'abilities.json.cooldown_ticks':'冷却 (ticks)','abilities.json.cost_mp':'法力消耗',
   // Traits
   // MMO Items
-  'mmo/mmo_items.json.group':'分组: currency/material/weapon/armor/potion/quest/scroll/gem',
-  'mmo/mmo_items.json.type':'类型: default/weapon/armor/potion/quest/material',
+  'mmo/mmo_items.json.group':'分组: quest/currency/usable/material/other/settings/equipment/decoration/potion',
+  'mmo/mmo_items.json.type':'类型: default/equip*/use*/resource* (见服务器 mmo_types.h)',
+  'mmo/mmo_items.json.rarity':'稀有度: common/uncommon/rare/epic/legendary',
   'mmo/mmo_items.json.base_price':'基础价格','mmo/mmo_items.json.stackable':'可堆叠',
   'mmo/mmo_items.json.can_trade':'可交易','mmo/mmo_items.json.can_drop':'可丢弃',
   'mmo/mmo_items.json.name_key':'语言键名','mmo/mmo_items.json.description_key':'语言键描述',
@@ -448,6 +451,18 @@ const FIELD_DESCS = {
   'world_spawns.spawns.respawn_delay':'重生延迟','world_spawns.spawns.min_dist':'最小玩家距离',
   // Mini Events
   'mmo/mini_events.json.trigger':'触发条件','mmo/mini_events.json.condition':'条件',
+  // World Boss
+  'mmo/world_boss.json.boss':'Boss 属性配置','world_boss.boss.slot':'Boss 占用的玩家槽位',
+  'world_boss.boss.max_hp':'最大生命值','world_boss.boss.attack':'攻击力','world_boss.boss.defense':'防御',
+  'world_boss.boss.level':'等级','world_boss.boss.speed':'移动速度','world_boss.boss.aggro_range':'仇恨范围',
+  'world_boss.boss.attack_range':'攻击范围','world_boss.boss.attack_cooldown':'攻击冷却 (ticks)',
+  'world_boss.boss.respawn_ticks':'重生间隔 (ticks)','world_boss.boss.first_spawn_min_sec':'首次生成最小秒数',
+  'world_boss.boss.first_spawn_max_sec':'首次生成最大秒数',
+  'world_boss.rewards.leaderboard_lines':'排行榜显示行数','world_boss.rewards.tiers':'伤害排名奖励档位',
+  'world_boss.tiers.rank_min':'排名下限','world_boss.tiers.rank_max':'排名上限',
+  'world_boss.tiers.gold':'金币奖励','world_boss.tiers.exp':'经验奖励','world_boss.tiers.reputation':'声望奖励',
+  'world_boss.tiers.label':'显示标签 (emoji)','world_boss.tiers.items':'奖励物品列表',
+  'world_boss.kill_bonus.reputation':'击杀额外声望','world_boss.kill_bonus.items':'击杀额外物品',
   // TD Enemies
   'td/enemies.json.health':'生命','td/enemies.json.speed':'速度','td/enemies.json.damage':'伤害','td/enemies.json.armor':'护甲',
   'td/enemies.json.types':'类型列表','td/enemies.loot.item_id':'掉落物品','td/enemies.loot.chance':'几率',
@@ -474,6 +489,8 @@ const FIELD_REFS = {
   'duties.reward_items.id': { file:'mmo/mmo_items.json', idKey:'id', labelKey:'name' },
   'td/enemies.loot.item_id': { file:'mmo/mmo_items.json', idKey:'id', labelKey:'name' },
   'mmo/mini_events.rewards.items.id': { file:'mmo/mmo_items.json', idKey:'id', labelKey:'name' },
+  'world_boss.tiers.items.id': { file:'mmo/mmo_items.json', idKey:'id', labelKey:'name' },
+  'world_boss.kill_bonus.items.id': { file:'mmo/mmo_items.json', idKey:'id', labelKey:'name' },
 };
 
 // ====== KNOWN ENUMS ======
@@ -482,8 +499,15 @@ const KNOWN_ENUMS = {
   'scenarios.objectives.type': ['0:击杀','1:生存','2:收集'],
   'craft_recipes.json.category': ['weapon','armor','potion','material','food'],
   'craft_recipes.json.station': ['forge','anvil','cauldron','furnace','workbench'],
-  'mmo/mmo_items.json.group': ['currency','material','weapon','armor','potion','quest','scroll','gem'],
-  'mmo/mmo_items.json.type': ['default','weapon','armor','potion','quest','material'],
+  'mmo/mmo_items.json.group': ['quest','currency','usable','material','other','settings','equipment','decoration','potion'],
+  'mmo/mmo_items.json.type': [
+    'default','equipgun','equiphammer','equipshotgun','equipgrenade','equiplaser',
+    'equippickaxe','equiprake','equipfishrod','equipgloves','equiphelmettank','equiphelmetdps',
+    'equiphelmethealer','equiparmortank','equiparmordps','equiparmorhealer','equipeidolon',
+    'equipotionheal','equipotionmana','equiptitle','usesingle','usemultiple',
+    'resourceharvestable','resourcemineable','resourcefishes'
+  ],
+  'mmo/mmo_items.json.rarity': ['common','uncommon','rare','epic','legendary'],
   'td/effects.modifiers.operation': ['add','mul','set'],
 };
 
@@ -506,6 +530,7 @@ const ENTRY_TEMPLATES = {
   'mmo/mmo_mobs.json':   { id:0, name:'New Mob', skin:'default', color_body:255, color_feet:131586, level:1, hp:10, attack:3, defense:1, exp_reward:10, respawn_ticks:300, is_boss:false, gold_reward:{min:0,max:0}, drops:[] },
   'mmo/world_spawns.json': { id:0, spawns:[{def_id:0,x:400,y:400,respawn_delay:30,min_dist:200}] },
   'mmo/mini_events.json': { id:'new_event', name:'New Event', trigger:'', condition:'', rewards:{items:[]} },
+  'mmo/world_boss.json': null,
   'td/enemies.json':     { id:0, name:'New Enemy', health:100, speed:1.0, damage:10, armor:0, types:[], loot:[{item_id:0,chance:50,count:1}] },
   'td/effects.json':     { id:'new_effect', name:'New Effect', description:'', duration:100, type:'buff', stackable:false, max_stacks:1, modifiers:[{stat:'',value:0,operation:'add'}] },
   'td/index.json':       null,
@@ -570,7 +595,7 @@ class App {
     if (this.isWeb) {
       this.resetFiles();
       const result = await this.loadFromApi();
-      if (result) toast('📁 已连接服务器 — 数据来自 '+API_BASE);
+      if (result) toast('📁 已连接 — 保存将直接写入 server_content');
       return;
     }
     // Desktop mode: File System Access API
@@ -707,8 +732,13 @@ class App {
   afterLoad() {
     const badge = document.getElementById('modeBadge');
     if (badge) {
-      if (this.isWeb) { badge.style.display = 'inline-flex'; }
-      else { badge.style.display = 'none'; }
+      if (this.isWeb) {
+        badge.style.display = 'inline-flex';
+        badge.textContent = '📡 直连 server_content';
+        badge.title = '保存将直接写入 server_content/';
+      } else {
+        badge.style.display = 'none';
+      }
     }
     this.fileNames.sort((a,b) => {
       const ia = FILE_ORDER.indexOf(a);
@@ -748,7 +778,7 @@ class App {
     if (!file || !file.data) return null;
     const meta = FILE_META[fileName];
     if (!meta) return null;
-    if (fileName === 'td/index.json') return null; // 单对象
+    if (fileName === 'td/index.json' || fileName === 'mmo/world_boss.json') return null; // 单对象
     return file.data[meta.key];
   }
 
@@ -794,7 +824,7 @@ class App {
       tab.className = 'tab-item' + (fn === this.currentFile ? ' active' : '');
       tab.dataset.file = fn;
       const arr = this.getEntryArray(fn);
-      const count = arr ? arr.length : (fn === 'td/index.json' ? 1 : 0);
+      const count = arr ? arr.length : (SINGLE_OBJECT_FILES.has(fn) ? 1 : 0);
       tab.innerHTML = `
         ${meta ? meta.icon : '📄'}
         <span>${meta ? meta.label : fn}</span>
@@ -914,11 +944,13 @@ class App {
     const file = this.files.get(fileName);
     const arr = this.getEntryArray(fileName);
 
-    // td/index.json
-    if (fileName === 'td/index.json') {
+    // 单对象文件 (td/index.json, mmo/world_boss.json)
+    if (SINGLE_OBJECT_FILES.has(fileName)) {
       panel.className = 'editor-panel';
-      panel.innerHTML = `<div class="form-section"><div class="form-section-title">⚙️ TD Config</div></div>`;
-      this.renderGenericObj(file.data, panel, []);
+      const titles = { 'td/index.json':'⚙️ TD Config', 'mmo/world_boss.json':'👹 World Boss' };
+      panel.innerHTML = `<div class="form-section"><div class="form-section-title">${titles[fileName] || fileName}</div></div>`;
+      if (fileName === 'mmo/world_boss.json') this.renderWorldBossEditor(file.data, panel);
+      else this.renderGenericObj(file.data, panel, []);
       return;
     }
 
@@ -1281,7 +1313,7 @@ class App {
     sec.className = 'form-section';
 
     // Spawn Points
-    sec.innerHTML += `<div class="special-section-title">📍 出生点 (Spawn Points)</div>`;
+    this.appendSectionTitle(sec, '📍 出生点 (Spawn Points)');
     const spTable = document.createElement('table');
     spTable.className = 'array-table';
     spTable.innerHTML = `<thead><tr><th>World ID</th><th>X</th><th>Y</th><th style="width:40px;">操作</th></tr></thead><tbody id="spTableBody"></tbody>`;
@@ -1298,7 +1330,7 @@ class App {
     sec.appendChild(spAdd);
 
     // Waves
-    sec.innerHTML += `<div class="special-section-title">🌊 波次 (Waves)</div>`;
+    this.appendSectionTitle(sec, '🌊 波次 (Waves)');
     const wTable = document.createElement('table');
     wTable.className = 'array-table';
     wTable.innerHTML = `<thead><tr><th>波次</th><th>怪物 (mmo_mobs)</th><th>数量</th><th>延迟</th><th>Spawn X</th><th>Spawn Y</th><th style="width:40px;">操作</th></tr></thead><tbody id="wTableBody"></tbody>`;
@@ -1315,7 +1347,7 @@ class App {
     sec.appendChild(wAdd);
 
     // Objectives
-    sec.innerHTML += `<div class="special-section-title">🎯 目标 (Objectives)</div>`;
+    this.appendSectionTitle(sec, '🎯 目标 (Objectives)');
     const oTable = document.createElement('table');
     oTable.className = 'array-table';
     oTable.innerHTML = `<thead><tr><th>类型</th><th>目标 ID</th><th>数量</th><th>描述</th><th style="width:40px;">操作</th></tr></thead><tbody id="oTableBody"></tbody>`;
@@ -1332,7 +1364,7 @@ class App {
     sec.appendChild(oAdd);
 
     // Reward
-    sec.innerHTML += `<div class="special-section-title">💰 奖励 (Reward)</div>`;
+    this.appendSectionTitle(sec, '💰 奖励 (Reward)');
     const rewardDiv = document.createElement('div');
     rewardDiv.id = 'rewardDiv';
     sec.appendChild(rewardDiv);
@@ -1548,6 +1580,93 @@ class App {
     container.appendChild(wrap);
   }
 
+  // ====== 特殊编辑器: World Boss ======
+  renderWorldBossEditor(data, panel) {
+    if (!data.boss) data.boss = {};
+    if (!data.rewards) data.rewards = { leaderboard_lines: 5, tiers: [], kill_bonus: { reputation: 0, items: [] } };
+    if (!data.rewards.tiers) data.rewards.tiers = [];
+    if (!data.rewards.kill_bonus) data.rewards.kill_bonus = { reputation: 0, items: [] };
+
+    const bossSec = document.createElement('div');
+    bossSec.className = 'form-section';
+    bossSec.innerHTML = `<div class="special-section-title">👹 Boss 属性</div>`;
+    this.renderGenericObj(data.boss, bossSec, ['boss']);
+    panel.appendChild(bossSec);
+
+    const rewSec = document.createElement('div');
+    rewSec.className = 'form-section';
+    rewSec.innerHTML = `<div class="special-section-title">🏆 排名奖励 (Reward Tiers)</div>`;
+    const llRow = this.createFieldRow('leaderboard_lines', data.rewards.leaderboard_lines ?? 5, ['rewards', 'leaderboard_lines'], data.rewards);
+    if (llRow) rewSec.appendChild(llRow);
+
+    if (!data.rewards.tiers) data.rewards.tiers = [];
+    for (let ti = 0; ti < data.rewards.tiers.length; ti++) {
+      const tier = data.rewards.tiers[ti];
+      const tierCard = document.createElement('div');
+      tierCard.className = 'nested-object';
+      tierCard.style.marginBottom = '10px';
+      const hdr = document.createElement('div');
+      hdr.className = 'nested-object-header';
+      hdr.textContent = `档位 #${ti + 1}: 排名 ${tier.rank_min ?? '?'}–${tier.rank_max ?? '?'}`;
+      tierCard.appendChild(hdr);
+      const body = document.createElement('div');
+      body.className = 'nested-object-body';
+      for (const k of ['rank_min', 'rank_max', 'gold', 'exp', 'reputation', 'label']) {
+        if (tier[k] !== undefined || ['rank_min', 'rank_max'].includes(k)) {
+          const row = this.createFieldRow(k, tier[k] ?? (typeof tier.gold === 'number' ? 0 : ''), ['tiers', k], tier);
+          if (row) body.appendChild(row);
+        }
+      }
+      const itemsTitle = document.createElement('div');
+      itemsTitle.style.cssText = 'font-size:11px;color:var(--text-muted);margin:8px 0 4px;font-weight:600';
+      itemsTitle.textContent = '奖励物品';
+      body.appendChild(itemsTitle);
+      if (!tier.items) tier.items = [];
+      this.renderMiniRefTable(body, tier.items, [
+        { key: 'id', ref: { file: 'mmo/mmo_items.json', idKey: 'id', labelKey: 'name' } },
+        'count'
+      ]);
+      const delTier = document.createElement('button');
+      delTier.className = 'btn btn-sm btn-danger';
+      delTier.textContent = '删除此档位';
+      delTier.style.marginTop = '6px';
+      delTier.addEventListener('click', () => {
+        data.rewards.tiers.splice(ti, 1);
+        this.markDirty();
+        this.renderEditor();
+      });
+      body.appendChild(delTier);
+      tierCard.appendChild(body);
+      rewSec.appendChild(tierCard);
+    }
+    const addTier = document.createElement('button');
+    addTier.className = 'add-btn';
+    addTier.innerHTML = '➕ 添加奖励档位';
+    addTier.addEventListener('click', () => {
+      const n = data.rewards.tiers.length;
+      data.rewards.tiers.push({
+        rank_min: n + 1, rank_max: n + 1, gold: 0, exp: 0, reputation: 0, label: '💫', items: []
+      });
+      this.markDirty();
+      this.renderEditor();
+    });
+    rewSec.appendChild(addTier);
+    panel.appendChild(rewSec);
+
+    const killSec = document.createElement('div');
+    killSec.className = 'form-section';
+    killSec.innerHTML = `<div class="special-section-title">⚔️ 击杀奖励 (Kill Bonus)</div>`;
+    const kb = data.rewards.kill_bonus;
+    const repRow = this.createFieldRow('reputation', kb.reputation ?? 0, ['kill_bonus', 'reputation'], kb);
+    if (repRow) killSec.appendChild(repRow);
+    if (!kb.items) kb.items = [];
+    this.renderMiniRefTable(killSec, kb.items, [
+      { key: 'id', ref: { file: 'mmo/mmo_items.json', idKey: 'id', labelKey: 'name' } },
+      'count'
+    ]);
+    panel.appendChild(killSec);
+  }
+
   // ====== 特殊编辑器: Shop Items ======
   renderShopSpecial(entry, panel) {
     const sec = document.createElement('div');
@@ -1567,7 +1686,7 @@ class App {
     sec.className = 'form-section';
 
     // Gold Reward
-    sec.innerHTML += `<div class="special-section-title">💰 金币奖励 (Gold Reward)</div>`;
+    this.appendSectionTitle(sec, '💰 金币奖励 (Gold Reward)');
     const grDiv = document.createElement('div');
     grDiv.style.cssText = 'display:flex;gap:16px';
     if (!entry.gold_reward) entry.gold_reward = { min:0, max:0 };
@@ -1588,7 +1707,7 @@ class App {
     sec.appendChild(grDiv);
 
     // Drops
-    sec.innerHTML += `<div class="special-section-title" style="margin-top:12px;">📦 掉落表 (Drops)</div>`;
+    this.appendSectionTitle(sec, '📦 掉落表 (Drops)', '12px');
     if (!entry.drops) entry.drops = [];
     this.renderMiniRefTable(sec, entry.drops, [
       {key:'item_id', ref:{file:'mmo/mmo_items.json',idKey:'id',labelKey:'name'}},
@@ -1612,15 +1731,22 @@ class App {
   }
 
   // ====== 特殊编辑器: Quests ======
+  appendSectionTitle(container, text, marginTop) {
+    const el = document.createElement('div');
+    el.className = 'special-section-title';
+    if (marginTop) el.style.marginTop = marginTop;
+    el.textContent = text;
+    container.appendChild(el);
+  }
+
   renderQuestSpecial(entry, panel) {
     const sec = document.createElement('div');
     sec.className = 'form-section';
-    sec.innerHTML = `<div class="special-section-title">📜 任务步骤 (Steps)</div>`;
+    this.appendSectionTitle(sec, '📜 任务步骤 (Steps)');
     if (!entry.steps) entry.steps = [];
     this.renderQuestSteps(sec, entry.steps);
-    // Rewards
     if (entry.rewards) {
-      sec.innerHTML += `<div class="special-section-title" style="margin-top:12px;">🎁 奖励物品 (Reward Items)</div>`;
+      this.appendSectionTitle(sec, '🎁 奖励物品 (Reward Items)', '12px');
       if (!entry.rewards.items) entry.rewards.items = [];
       this.renderMiniRefTable(sec, entry.rewards.items, [
         {key:'id', ref:{file:'mmo/mmo_items.json',idKey:'id',labelKey:'name'}},
@@ -1633,9 +1759,9 @@ class App {
   renderQuestSteps(container, steps) {
     const table = document.createElement('table');
     table.className = 'array-table';
-    table.innerHTML = `<thead><tr><th>类型</th><th>NPC/目标 ID</th><th>数量</th><th>描述</th><th style="width:40px;">操作</th></tr></thead><tbody id="qStepsBody"></tbody>`;
+    table.innerHTML = `<thead><tr><th>类型</th><th>NPC/目标 ID</th><th>数量</th><th>描述</th><th style="width:40px;">操作</th></tr></thead><tbody></tbody>`;
     container.appendChild(table);
-    const tbody = document.getElementById('qStepsBody');
+    const tbody = table.querySelector('tbody');
     if (!tbody) return;
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
@@ -3254,6 +3380,12 @@ class App {
     for (const fn of this.fileNames) {
       const file = this.files.get(fn);
       if (!file || !file.data) continue;
+
+      if (SINGLE_OBJECT_FILES.has(fn)) {
+        if (fn === 'mmo/world_boss.json') this.validateWorldBoss(file.data);
+        continue;
+      }
+
       const arr = this.getEntryArray(fn);
       if (!arr) continue;
 
@@ -3275,6 +3407,7 @@ class App {
       if (fn === 'scenarios.json') this.validateScenarios(arr);
       if (fn === 'shop_items.json') this.validateShops(arr);
       if (fn === 'mmo/mmo_mobs.json') this.validateMobs(arr);
+      if (fn === 'mmo/mmo_items.json') this.validateItems(arr);
       if (fn === 'craft_recipes.json') this.validateRecipes(arr);
     }
     this.renderValidation();
@@ -3451,6 +3584,74 @@ class App {
     }
   }
 
+  getValidItemIds() {
+    const items = this.getRefData('mmo/mmo_items.json');
+    const ids = new Set();
+    for (const item of items) {
+      const id = item.id ?? item.item_id;
+      if (id !== undefined && id !== null && id !== '') ids.add(String(id));
+    }
+    return ids;
+  }
+
+  validateItems(arr) {
+    const validGroups = KNOWN_ENUMS['mmo/mmo_items.json.group'] || [];
+    const validTypes = KNOWN_ENUMS['mmo/mmo_items.json.type'] || [];
+    const validRarities = KNOWN_ENUMS['mmo/mmo_items.json.rarity'] || [];
+    for (let i = 0; i < arr.length; i++) {
+      const item = arr[i];
+      const label = item.name || item.id || `#${i + 1}`;
+      if (item.id === undefined || item.id === null || item.id === '') {
+        this.validationErrors.push({ type: 'error', file: 'mmo/mmo_items.json', msg: `#${i + 1}: 缺少 id` });
+      }
+      if (!item.name) {
+        this.validationErrors.push({ type: 'warning', file: 'mmo/mmo_items.json', msg: `#${i + 1} "${label}": 缺少 name` });
+      }
+      if (item.group && !validGroups.includes(item.group)) {
+        this.validationErrors.push({ type: 'error', file: 'mmo/mmo_items.json', msg: `"${label}": 未知 group "${item.group}"` });
+      }
+      if (item.type && !validTypes.includes(item.type)) {
+        this.validationErrors.push({ type: 'error', file: 'mmo/mmo_items.json', msg: `"${label}": 未知 type "${item.type}"` });
+      }
+      if (item.rarity && !validRarities.includes(item.rarity)) {
+        this.validationErrors.push({ type: 'warning', file: 'mmo/mmo_items.json', msg: `"${label}": 未知 rarity "${item.rarity}"` });
+      }
+    }
+  }
+
+  validateWorldBoss(data) {
+    if (!data) return;
+    const validIds = this.getValidItemIds();
+    const checkItems = (items, ctx) => {
+      if (!items || !Array.isArray(items)) return;
+      for (let j = 0; j < items.length; j++) {
+        const it = items[j];
+        const idStr = String(it.id ?? '');
+        if (!idStr || idStr === 'undefined') {
+          this.validationErrors.push({ type: 'error', file: 'mmo/world_boss.json', msg: `${ctx}: 物品 #${j + 1} 缺少 id` });
+        } else if (validIds.size > 0 && !validIds.has(idStr)) {
+          this.validationErrors.push({ type: 'error', file: 'mmo/world_boss.json', msg: `${ctx}: 未知物品 id ${idStr}` });
+        }
+      }
+    };
+    if (!data.boss) {
+      this.validationErrors.push({ type: 'error', file: 'mmo/world_boss.json', msg: '缺少 boss 配置' });
+    }
+    if (!data.rewards) {
+      this.validationErrors.push({ type: 'warning', file: 'mmo/world_boss.json', msg: '缺少 rewards 配置' });
+      return;
+    }
+    if (data.rewards.tiers) {
+      for (let i = 0; i < data.rewards.tiers.length; i++) {
+        const tier = data.rewards.tiers[i];
+        checkItems(tier.items, `档位 #${i + 1} (排名 ${tier.rank_min}–${tier.rank_max})`);
+      }
+    }
+    if (data.rewards.kill_bonus) {
+      checkItems(data.rewards.kill_bonus.items, '击杀奖励 kill_bonus');
+    }
+  }
+
   validateRecipes(arr) {
     for (let i = 0; i < arr.length; i++) {
       const r = arr[i];
@@ -3510,6 +3711,15 @@ class App {
       'mmo/mmo_mobs.json':     { mobs:[] },
       'mmo/world_spawns.json': { worlds:[] },
       'mmo/mini_events.json':  { events:[] },
+      'mmo/world_boss.json':   {
+        boss: { slot:63, max_hp:20000, attack:80, defense:30, level:50, speed:2.0, aggro_range:800,
+          attack_range:80, attack_cooldown:30, respawn_ticks:3600, first_spawn_min_sec:300, first_spawn_max_sec:900 },
+        rewards: {
+          leaderboard_lines:5,
+          tiers:[{ rank_min:1, rank_max:1, gold:5000, exp:2000, reputation:50, label:'🏆', items:[{ id:1, count:1 }] }],
+          kill_bonus:{ reputation:100, items:[{ id:1, count:2 }] }
+        }
+      },
       'td/enemies.json':       { enemies:[] },
       'td/effects.json':       { effects:[] },
       'td/index.json':         { data:{} },
@@ -3956,7 +4166,8 @@ class App {
     }
     this.renderTabs();
     this.updateStatus();
-    toast(failed === 0 ? `成功保存 ${saved} 个文件` : `保存 ${saved} 个成功, ${failed} 个失败`, failed > 0 ? 'warning' : 'success');
+    const dest = this.isWeb ? 'server_content' : '磁盘';
+    toast(failed === 0 ? `已写入 ${dest}：${saved} 个文件` : `写入 ${dest}：${saved} 成功, ${failed} 失败`, failed > 0 ? 'warning' : 'success');
   }
 
   async saveCurrentFile() {
@@ -4026,7 +4237,7 @@ class App {
 
   updateStatus() {
     const arr = this.currentFile ? this.getEntryArray(this.currentFile) : null;
-    const itemCount = arr ? arr.length : 0;
+    const itemCount = arr ? arr.length : (this.currentFile && SINGLE_OBJECT_FILES.has(this.currentFile) ? 1 : 0);
     $('statusFileCount').textContent = `📂 ${this.fileNames.length} 文件`;
     $('statusItemCount').textContent = `📋 ${itemCount} 条目`;
     const dirtyCount = Array.from(this.files.values()).filter(f => f.dirty).length;
@@ -4062,7 +4273,7 @@ document.addEventListener('keydown', (e) => {
 
 console.log('🎮 Server Content Editor v2 — TeeDefenceArchive');
 
-// ── Web 自动连接 ──
+// ── Web 自动连接 / file:// 提示 ──
 if (IS_WEB_APP) {
   (async () => {
     try {
@@ -4075,6 +4286,10 @@ if (IS_WEB_APP) {
       console.warn('⚠️ API server not reachable:', e.message);
     }
   })();
+} else if (window.location.protocol === 'file:') {
+  document.addEventListener('DOMContentLoaded', () => {
+    toast('提示：运行 python3 tools/editor_server.py 后可直连写入 server_content', 'info');
+  });
 }
 
 // ── Ctrl+S 保存 ──

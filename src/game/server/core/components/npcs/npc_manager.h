@@ -86,6 +86,7 @@ public:
 
 	bool IsQuestNpc(const CPlayer *pPlayer) const;
 	bool IsQuestNpcCharacter(CCharacter *pChr) const;
+	bool IsPlayerNearNpc(CPlayer *pPlayer, const char *pNpcId, float MaxDist = 180.f) const;
 
 private:
 	void LoadNpcs();

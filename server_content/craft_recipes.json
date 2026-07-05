@@ -509,188 +509,8 @@
       ]
     },
     {
-      "id": 30,
-      "result_item_id": 140,
-      "result_count": 1,
-      "name": "Leather Cap",
-      "description": "Basic leather cap, DEF+1",
-      "name_key": "$craft.30.name",
-      "description_key": "$craft.30.desc",
-      "category": "armor",
-      "level": 1,
-      "success_rate": 0.95,
-      "gold_cost": 30,
-      "craft_time": 45,
-      "ingredients": [
-        {
-          "item_id": 45,
-          "count": 3
-        }
-      ]
-    },
-    {
-      "id": 31,
-      "result_item_id": 141,
-      "result_count": 1,
-      "name": "Iron Helmet",
-      "description": "Iron helmet, DEF+2",
-      "name_key": "$craft.31.name",
-      "description_key": "$craft.31.desc",
-      "category": "armor",
-      "level": 5,
-      "success_rate": 0.85,
-      "gold_cost": 200,
-      "craft_time": 90,
-      "ingredients": [
-        {
-          "item_id": 31,
-          "count": 4
-        },
-        {
-          "item_id": 45,
-          "count": 2
-        }
-      ]
-    },
-    {
-      "id": 32,
-      "result_item_id": 142,
-      "result_count": 1,
-      "name": "Steel Helmet",
-      "description": "Steel helmet, DEF+4",
-      "name_key": "$craft.32.name",
-      "description_key": "$craft.32.desc",
-      "category": "armor",
-      "level": 12,
-      "success_rate": 0.75,
-      "gold_cost": 600,
-      "craft_time": 150,
-      "ingredients": [
-        {
-          "item_id": 32,
-          "count": 4
-        },
-        {
-          "item_id": 31,
-          "count": 3
-        },
-        {
-          "item_id": 42,
-          "count": 2
-        }
-      ]
-    },
-    {
-      "id": 33,
-      "result_item_id": 145,
-      "result_count": 1,
-      "name": "Leather Vest",
-      "description": "Basic leather vest, DEF+2",
-      "name_key": "$craft.33.name",
-      "description_key": "$craft.33.desc",
-      "category": "armor",
-      "level": 1,
-      "success_rate": 0.95,
-      "gold_cost": 50,
-      "craft_time": 60,
-      "ingredients": [
-        {
-          "item_id": 45,
-          "count": 5
-        },
-        {
-          "item_id": 42,
-          "count": 2
-        }
-      ]
-    },
-    {
-      "id": 34,
-      "result_item_id": 146,
-      "result_count": 1,
-      "name": "Iron Chestplate",
-      "description": "Iron chestplate, DEF+4",
-      "name_key": "$craft.34.name",
-      "description_key": "$craft.34.desc",
-      "category": "armor",
-      "level": 5,
-      "success_rate": 0.85,
-      "gold_cost": 400,
-      "craft_time": 120,
-      "ingredients": [
-        {
-          "item_id": 31,
-          "count": 8
-        },
-        {
-          "item_id": 45,
-          "count": 3
-        }
-      ]
-    },
-    {
-      "id": 35,
-      "result_item_id": 147,
-      "result_count": 1,
-      "name": "Steel Plate",
-      "description": "Steel plate armor, DEF+7",
-      "name_key": "$craft.35.name",
-      "description_key": "$craft.35.desc",
-      "category": "armor",
-      "level": 12,
-      "success_rate": 0.7,
-      "gold_cost": 1200,
-      "craft_time": 240,
-      "ingredients": [
-        {
-          "item_id": 32,
-          "count": 6
-        },
-        {
-          "item_id": 31,
-          "count": 5
-        },
-        {
-          "item_id": 67,
-          "count": 3
-        }
-      ]
-    },
-    {
-      "id": 36,
-      "result_item_id": 148,
-      "result_count": 1,
-      "name": "Guardian Plate",
-      "description": "Guardian's plate, DEF+12",
-      "name_key": "$craft.36.name",
-      "description_key": "$craft.36.desc",
-      "category": "armor",
-      "level": 22,
-      "success_rate": 0.6,
-      "gold_cost": 3000,
-      "craft_time": 360,
-      "ingredients": [
-        {
-          "item_id": 36,
-          "count": 5
-        },
-        {
-          "item_id": 33,
-          "count": 4
-        },
-        {
-          "item_id": 76,
-          "count": 2
-        },
-        {
-          "item_id": 95,
-          "count": 3
-        }
-      ]
-    },
-    {
       "id": 37,
-      "result_item_id": 150,
+      "result_item_id": 155,
       "result_count": 1,
       "name": "Cloth Pants",
       "description": "Basic cloth pants, DEF+1",
@@ -710,7 +530,7 @@
     },
     {
       "id": 38,
-      "result_item_id": 151,
+      "result_item_id": 156,
       "result_count": 1,
       "name": "Iron Greaves",
       "description": "Iron greaves, DEF+2",
@@ -734,7 +554,7 @@
     },
     {
       "id": 39,
-      "result_item_id": 152,
+      "result_item_id": 157,
       "result_count": 1,
       "name": "Steel Leggings",
       "description": "Steel leggings, DEF+5",
@@ -762,7 +582,7 @@
     },
     {
       "id": 40,
-      "result_item_id": 155,
+      "result_item_id": 160,
       "result_count": 1,
       "name": "Leather Boots",
       "description": "Basic leather boots, DEF+1",
@@ -786,7 +606,7 @@
     },
     {
       "id": 41,
-      "result_item_id": 156,
+      "result_item_id": 161,
       "result_count": 1,
       "name": "Iron Boots",
       "description": "Iron boots, DEF+2",
@@ -810,7 +630,7 @@
     },
     {
       "id": 42,
-      "result_item_id": 158,
+      "result_item_id": 163,
       "result_count": 1,
       "name": "Swift Boots",
       "description": "Swift boots, DEF+3 SPD+",
@@ -1034,7 +854,7 @@
     },
     {
       "id": 64,
-      "result_item_id": 200,
+      "result_item_id": 210,
       "result_count": 1,
       "name": "Basic Fishing Rod",
       "description": "Simple bamboo fishing rod",
@@ -1114,7 +934,7 @@
     },
     {
       "id": 70,
-      "result_item_id": 901,
+      "result_item_id": 184,
       "result_count": 1,
       "name": "布帽",
       "description": "基础DPS头冠",
@@ -1132,7 +952,7 @@
     },
     {
       "id": 71,
-      "result_item_id": 902,
+      "result_item_id": 185,
       "result_count": 1,
       "name": "皮帽",
       "description": "精良皮制头冠",
@@ -1154,7 +974,7 @@
     },
     {
       "id": 72,
-      "result_item_id": 903,
+      "result_item_id": 186,
       "result_count": 1,
       "name": "银饰头盔",
       "description": "稀有银制头冠",
@@ -1176,7 +996,7 @@
     },
     {
       "id": 73,
-      "result_item_id": 904,
+      "result_item_id": 187,
       "result_count": 1,
       "name": "水晶之冠",
       "description": "史诗级水晶头冠",
@@ -1202,7 +1022,7 @@
     },
     {
       "id": 74,
-      "result_item_id": 905,
+      "result_item_id": 188,
       "result_count": 1,
       "name": "龙鳞头冠",
       "description": "传说级龙鳞头冠",
@@ -1224,7 +1044,7 @@
     },
     {
       "id": 75,
-      "result_item_id": 906,
+      "result_item_id": 189,
       "result_count": 1,
       "name": "铁盔",
       "description": "基础铁制头盔",
@@ -1242,7 +1062,7 @@
     },
     {
       "id": 76,
-      "result_item_id": 907,
+      "result_item_id": 190,
       "result_count": 1,
       "name": "钢盔",
       "description": "精良钢制头盔",
@@ -1264,7 +1084,7 @@
     },
     {
       "id": 77,
-      "result_item_id": 908,
+      "result_item_id": 191,
       "result_count": 1,
       "name": "泰坦面甲",
       "description": "稀有泰坦面甲",
@@ -1286,7 +1106,7 @@
     },
     {
       "id": 78,
-      "result_item_id": 909,
+      "result_item_id": 192,
       "result_count": 1,
       "name": "不朽王冠",
       "description": "史诗级不朽王冠",
@@ -1312,7 +1132,7 @@
     },
     {
       "id": 80,
-      "result_item_id": 911,
+      "result_item_id": 193,
       "result_count": 1,
       "name": "布衣",
       "description": "基础布制胸甲",
@@ -1330,7 +1150,7 @@
     },
     {
       "id": 81,
-      "result_item_id": 912,
+      "result_item_id": 194,
       "result_count": 1,
       "name": "皮甲",
       "description": "精良皮制胸甲",
@@ -1352,7 +1172,7 @@
     },
     {
       "id": 82,
-      "result_item_id": 913,
+      "result_item_id": 195,
       "result_count": 1,
       "name": "锁子甲",
       "description": "稀有锁子甲",
@@ -1374,7 +1194,7 @@
     },
     {
       "id": 83,
-      "result_item_id": 914,
+      "result_item_id": 196,
       "result_count": 1,
       "name": "秘银胸甲",
       "description": "史诗秘银胸甲",
@@ -1400,7 +1220,7 @@
     },
     {
       "id": 84,
-      "result_item_id": 915,
+      "result_item_id": 197,
       "result_count": 1,
       "name": "龙鳞甲",
       "description": "传说龙鳞胸甲",
@@ -1426,7 +1246,7 @@
     },
     {
       "id": 85,
-      "result_item_id": 916,
+      "result_item_id": 198,
       "result_count": 1,
       "name": "板甲",
       "description": "稀有重型板甲",

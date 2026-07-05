@@ -1,5 +1,6 @@
 {
     "worlds": [
+        {"title": "测试 F|RPG", "map": "TDef-City", "mode": "rpg", "travel_locked": false},
         {"title": "[简单]Shwar by Wartoz", "map": "TDef-Shwar", "mode": "defence", "travel_locked": false},
         {"title": "[中等]Mine-Craft", "map": "Mine-Craft", "mode": "defence", "travel_locked": false},
         {"title": "[高难度]Yours Minecraft", "map": "yours_minecraft", "mode": "defence", "travel_locked": false},

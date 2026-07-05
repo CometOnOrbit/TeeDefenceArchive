@@ -219,7 +219,7 @@ void CDurabilityManager::RegisterVoteCommands(CCommandManager *pMgr)
 {
 	if(!pMgr || !GS())
 		return;
-	pMgr->AddCommand("menurepair", "", "i", ComVoteRepair, GS());
+	pMgr->AddVoteCommand("menurepair", "", "i", ComVoteRepair, GS());
 }
 
 bool CDurabilityManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)

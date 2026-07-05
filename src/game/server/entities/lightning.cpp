@@ -10,8 +10,9 @@
 
 #include "character.h"
 #include "lightning.h"
+#include <game/server/entities/mmo/mmo_weapon_common.h>
 
-CLightning::CLightning(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, float StepEnergy, int Owner, int Damage, int Num)
+CLightning::CLightning(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, float StepEnergy, int Owner, int Damage, int MaxDesc, int Num)
 	: CEntity(pGameWorld, CGameWorld::ENTTYPE_LASER, CGameWorld::ENTFLAG_CHILD, Pos, 0)
 {
 	m_Damage = Damage;
@@ -19,6 +20,7 @@ CLightning::CLightning(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float S
 	m_Energy = StartEnergy;
 	m_StartEnergy = StartEnergy;
 	m_StepEnergy = StepEnergy;
+	m_MaxDesc = MaxDesc > 0 ? MaxDesc : 1;
 	m_Num = Num;
 	m_Dir = Direction;
 	m_Bounces = 0;
@@ -41,6 +43,13 @@ bool CLightning::HitCharacter(vec2 From, vec2 To)
 
 	if(pHit->GetPlayer()->IsDummy() || pHit->GetPlayer()->GetZomb() > 0)
 		pHit->TakeDamage(vec2(0.f, 0.f), m_Pos, m_Damage, m_Owner, WEAPON_LASER);
+	else if(MMOWeaponTargetValid(GameServer(), m_Owner, pHit))
+	{
+		vec2 HitDir = normalize(To - From);
+		if(length(HitDir) < 0.001f)
+			HitDir = m_Dir;
+		pHit->TakeHit(vec2(0.f, 0.f), HitDir * -1, m_Damage, pOwnerChar, WEAPON_LASER);
+	}
 	else
 		return false;
 
@@ -80,8 +89,8 @@ void CLightning::DoBounce()
 			m_From = m_Pos;
 			m_Pos = To;
 			m_Energy -= m_StepEnergy;
-			if(m_Num < 1)
-				new CLightning(GameWorld(), m_Pos, m_Dir, m_StartEnergy, m_StepEnergy, m_Owner, m_Damage, m_Num + 1);
+			if(m_Num < m_MaxDesc)
+				new CLightning(GameWorld(), m_Pos, m_Dir, m_StartEnergy, m_StepEnergy, m_Owner, m_Damage, m_MaxDesc, m_Num + 1);
 		}
 	}
 }

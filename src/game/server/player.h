@@ -390,6 +390,17 @@ public:
 	// Defence → RPG reward bridge
 	int m_DefencePendingExp = 0;
 
+	// Anti-idle / combat pacing
+	int m_LastCombatTick = 0;
+	int m_GatherHintTick = 0;
+	int m_SkillProfWindowStart = 0;
+	int m_SkillProfWindowCount = 0;
+	int m_SkillProgressSaveTick = 0;
+	void MarkCombat();
+	bool TryConsumeSkillProficiency();
+	bool ShouldDeferSkillProgressSave(bool Force) const;
+	void MarkSkillProgressSaved();
+
 	// Group invite tracking (MRPG-style)
 	int m_GroupInviteGroupID = 0;
 	time_t m_GroupInviteExpire = 0;
@@ -411,11 +422,10 @@ public:
 	int m_DailySellGold = 0;     // gold earned from NPC recycle today
 	int m_DailySellCount = 0;    // recycle transactions today
 
-		// ── Pet System ────────────────────────────────────────────
-	int m_PetID = 0;              // 0 = 无宠物
-	char m_aPetName[32] = {0};    // 宠物名字
-	int m_PetLevel = 1;           // 宠物等级
-	class CPet *m_pPet = nullptr; // 当前召唤的宠物实体
+	// ── Vehicle System ──────────────────────────────────────────
+	int m_VehicleType = 0; // 0=none, 1=aircraft
+	char m_aVehicleName[32] = {0};
+	class CVehicle *m_pDeployedVehicle = nullptr;
 
 	// ── Auto Pathfinding ───────────────────────────────────────
 	bool m_AutoMoving = false;
@@ -425,11 +435,6 @@ public:
 
 	// ── Fashion / Appearance System ─────────────────────────
 	int m_FashionItemID = 0;        // 0 = 无时装
-
-	// ── Mount System ────────────────────────────────────────
-	bool m_IsMounted = false;      // 是否骑乘
-	int m_MountSpeedBonus = 50;     // 移速加成百分比
-	int m_MountSkin = 0;            // 坐骑外观ID (0=默认)
 
 	// ── Housing System ───────────────────────────────────────
 	bool m_HasHouse = false;

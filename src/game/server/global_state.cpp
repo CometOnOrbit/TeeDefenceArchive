@@ -961,17 +961,16 @@ void CGlobalState::NotifyFriendsOffline(CGameContext *pGS, CPlayer *pPlayer)
 	}
 }
 
-bool CGlobalState::FriendAdd(CGameContext *pGS, int ClientID, const char *pFriendName)
+bool CGlobalState::FriendRequestSend(CGameContext *pGS, int ClientID, const char *pFriendName)
 {
-	if(!pGS) return false;
+	if(!pGS || !pFriendName || !pFriendName[0]) return false;
 	CPlayer *pPlayer = FindPlayerCrossWorld(pGS->Server(), ClientID);
 	if(!pPlayer || pPlayer->GetAccountId() <= 0)
 	{ pGS->SendChatTo(ClientID, "请先登录。"); return false; }
 
-	// Resolve friend's account ID
 	int TargetCID = FindClientByName(pGS, pFriendName);
 	if(TargetCID < 0)
-	{ pGS->SendChatTo(ClientID, "未找到该玩家。"); return false; }
+	{ pGS->SendChatTo(ClientID, "未找到该玩家（对方需在线）。"); return false; }
 
 	CPlayer *pTarget = FindPlayerCrossWorld(pGS->Server(), TargetCID);
 	if(!pTarget || pTarget->GetAccountId() <= 0)
@@ -980,56 +979,211 @@ bool CGlobalState::FriendAdd(CGameContext *pGS, int ClientID, const char *pFrien
 	if(ClientID == TargetCID)
 	{ pGS->SendChatTo(ClientID, "不能添加自己为好友。"); return false; }
 
-	int64 FriendAID = pTarget->GetAccountId();
-	int64 MyAID = pPlayer->GetAccountId();
+	const int64 FriendAID = pTarget->GetAccountId();
+	const int64 MyAID = pPlayer->GetAccountId();
 
-	// Check max friends
 	if((int)pPlayer->m_aFriends.size() >= 100)
 	{ pGS->SendChatTo(ClientID, "好友数量已达上限 (100)。"); return false; }
 
-	// Check if already friends
 	for(size_t i = 0; i < pPlayer->m_aFriends.size(); i++)
 	{
 		if(pPlayer->m_aFriends[i] == FriendAID)
 		{ pGS->SendChatTo(ClientID, "该玩家已经是你的好友。"); return false; }
 	}
 
-	// Add friend
-	pPlayer->m_aFriends.push_back(FriendAID);
-	pPlayer->m_aFriendsDirty = true;
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+	if(!pMMO)
+		return false;
+
+	if(pMMO->HasFriendRequest(MyAID, FriendAID))
+	{ pGS->SendChatTo(ClientID, "你已向对方发送过好友申请，请等待对方处理。"); return false; }
+	if(pMMO->HasFriendRequest(FriendAID, MyAID))
+	{ pGS->SendChatTo(ClientID, "对方已向你发送好友申请，请在好友页面中处理。"); return false; }
+
+	if(!pMMO->InsertFriendRequest(MyAID, FriendAID))
+	{ pGS->SendChatTo(ClientID, "发送好友申请失败。"); return false; }
 
 	char aBuf[256];
-	str_format(aBuf, sizeof(aBuf), "%s 已添加为好友。", pGS->Server()->ClientName(TargetCID));
+	str_format(aBuf, sizeof(aBuf), "📨 已向 %s 发送好友申请，等待对方同意。", pGS->Server()->ClientName(TargetCID));
 	pGS->SendChatTo(ClientID, aBuf);
 
-	// Notify target if online (bidirectional friendship)
-	// Also add ourselves to their friend list for mutual tracking
-	bool TargetAlreadyHasUs = false;
-	for(size_t i = 0; i < pTarget->m_aFriends.size(); i++)
-	{
-		if(pTarget->m_aFriends[i] == MyAID)
-		{ TargetAlreadyHasUs = true; break; }
-	}
-	if(!TargetAlreadyHasUs && (int)pTarget->m_aFriends.size() < 100)
-	{
-		pTarget->m_aFriends.push_back(MyAID);
-		pTarget->m_aFriendsDirty = true;
-	}
-
-	str_format(aBuf, sizeof(aBuf), "%s 添加你为好友。", pGS->Server()->ClientName(ClientID));
+	str_format(aBuf, sizeof(aBuf), "📨 %s 请求添加你为好友。输入 /friend_accept %s 同意，或 /friend_decline %s 拒绝。",
+		pGS->Server()->ClientName(ClientID), pGS->Server()->ClientName(ClientID), pGS->Server()->ClientName(ClientID));
 	SendChatToCross(pGS->Server(), TargetCID, aBuf);
+	return true;
+}
 
-	// Save immediately
+static bool CompleteFriendship(CGameContext *pGS, CPlayer *pA, CPlayer *pB)
+{
+	if(!pGS || !pA || !pB)
+		return false;
+
+	const int64 AID_A = pA->GetAccountId();
+	const int64 AID_B = pB->GetAccountId();
+	if(AID_A <= 0 || AID_B <= 0)
+		return false;
+
+	bool AHasB = false;
+	for(int64 F : pA->m_aFriends)
 	{
-		CGameContext *pTargetGS = (CGameContext *)pGS->Server()->GameServer(pGS->Server()->GetClientWorldID(ClientID));
-		if(pTargetGS && pTargetGS->Core() && pTargetGS->Core()->GetMMOManager())
-		{
-			pTargetGS->Core()->GetMMOManager()->SaveFriends(pPlayer);
-			if(!TargetAlreadyHasUs)
-				pTargetGS->Core()->GetMMOManager()->SaveFriends(pTarget);
-		}
+		if(F == AID_B)
+		{ AHasB = true; break; }
+	}
+	if(!AHasB && (int)pA->m_aFriends.size() < 100)
+	{
+		pA->m_aFriends.push_back(AID_B);
+		pA->m_aFriendsDirty = true;
+	}
+
+	bool BHasA = false;
+	for(int64 F : pB->m_aFriends)
+	{
+		if(F == AID_A)
+		{ BHasA = true; break; }
+	}
+	if(!BHasA && (int)pB->m_aFriends.size() < 100)
+	{
+		pB->m_aFriends.push_back(AID_A);
+		pB->m_aFriendsDirty = true;
+	}
+
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+	if(pMMO)
+	{
+		pMMO->SaveFriends(pA);
+		pMMO->SaveFriends(pB);
 	}
 	return true;
+}
+
+bool CGlobalState::FriendAccept(CGameContext *pGS, int ClientID, const char *pFromName)
+{
+	if(!pGS || !pFromName || !pFromName[0]) return false;
+	CPlayer *pPlayer = FindPlayerCrossWorld(pGS->Server(), ClientID);
+	if(!pPlayer || pPlayer->GetAccountId() <= 0)
+	{ pGS->SendChatTo(ClientID, "请先登录。"); return false; }
+
+	int FromCID = FindClientByName(pGS, pFromName);
+	CPlayer *pFrom = FromCID >= 0 ? FindPlayerCrossWorld(pGS->Server(), FromCID) : nullptr;
+
+	int64 FromAID = pFrom ? pFrom->GetAccountId() : 0;
+	if(FromAID <= 0)
+	{
+		pGS->SendChatTo(ClientID, "未找到该玩家。请从投票菜单「好友申请」中选择。");
+		return false;
+	}
+
+	return FriendAcceptByAccountId(pGS, ClientID, FromAID);
+}
+
+bool CGlobalState::FriendDecline(CGameContext *pGS, int ClientID, const char *pFromName)
+{
+	if(!pGS || !pFromName || !pFromName[0]) return false;
+	CPlayer *pPlayer = FindPlayerCrossWorld(pGS->Server(), ClientID);
+	if(!pPlayer || pPlayer->GetAccountId() <= 0)
+	{ pGS->SendChatTo(ClientID, "请先登录。"); return false; }
+
+	int FromCID = FindClientByName(pGS, pFromName);
+	CPlayer *pFrom = FromCID >= 0 ? FindPlayerCrossWorld(pGS->Server(), FromCID) : nullptr;
+	if(!pFrom || pFrom->GetAccountId() <= 0)
+	{ pGS->SendChatTo(ClientID, "未找到该玩家。"); return false; }
+
+	return FriendDeclineByAccountId(pGS, ClientID, pFrom->GetAccountId());
+}
+
+bool CGlobalState::FriendAcceptByAccountId(CGameContext *pGS, int ClientID, int64 FromAccountID)
+{
+	if(!pGS || FromAccountID <= 0) return false;
+	CPlayer *pPlayer = FindPlayerCrossWorld(pGS->Server(), ClientID);
+	if(!pPlayer || pPlayer->GetAccountId() <= 0)
+	{ pGS->SendChatTo(ClientID, "请先登录。"); return false; }
+
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+	if(!pMMO)
+		return false;
+
+	if(!pMMO->HasFriendRequest(FromAccountID, pPlayer->GetAccountId()))
+	{ pGS->SendChatTo(ClientID, "没有来自该玩家的待处理好友申请。"); return false; }
+
+	if((int)pPlayer->m_aFriends.size() >= 100)
+	{ pGS->SendChatTo(ClientID, "你的好友数量已达上限。"); return false; }
+
+	pMMO->DeleteFriendRequest(FromAccountID, pPlayer->GetAccountId());
+
+	int FromCID = -1;
+	auto it = ms_OnlineFriendsMap.find(FromAccountID);
+	if(it != ms_OnlineFriendsMap.end())
+		FromCID = it->second;
+
+	CPlayer *pFrom = FromCID >= 0 ? FindPlayerCrossWorld(pGS->Server(), FromCID) : nullptr;
+	if(pFrom && pFrom->GetAccountId() == FromAccountID)
+	{
+		CompleteFriendship(pGS, pPlayer, pFrom);
+	}
+	else
+	{
+		bool Has = false;
+		for(int64 F : pPlayer->m_aFriends)
+		{
+			if(F == FromAccountID)
+			{ Has = true; break; }
+		}
+		if(!Has && (int)pPlayer->m_aFriends.size() < 100)
+		{
+			pPlayer->m_aFriends.push_back(FromAccountID);
+			pPlayer->m_aFriendsDirty = true;
+		}
+		pMMO->SaveFriends(pPlayer);
+		pMMO->AddFriendPair(FromAccountID, pPlayer->GetAccountId());
+	}
+
+	char aFromName[64];
+	if(!pMMO->LookupAccountName(FromAccountID, aFromName, sizeof(aFromName)))
+		str_copy(aFromName, "对方", sizeof(aFromName));
+
+	char aBuf[256];
+	str_format(aBuf, sizeof(aBuf), "✅ 你已添加 %s 为好友。", aFromName);
+	pGS->SendChatTo(ClientID, aBuf);
+	if(FromCID >= 0)
+	{
+		str_format(aBuf, sizeof(aBuf), "✅ %s 已接受你的好友申请。", pGS->Server()->ClientName(ClientID));
+		SendChatToCross(pGS->Server(), FromCID, aBuf);
+	}
+	return true;
+}
+
+bool CGlobalState::FriendDeclineByAccountId(CGameContext *pGS, int ClientID, int64 FromAccountID)
+{
+	if(!pGS || FromAccountID <= 0) return false;
+	CPlayer *pPlayer = FindPlayerCrossWorld(pGS->Server(), ClientID);
+	if(!pPlayer || pPlayer->GetAccountId() <= 0)
+	{ pGS->SendChatTo(ClientID, "请先登录。"); return false; }
+
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+	if(!pMMO)
+		return false;
+
+	if(!pMMO->DeleteFriendRequest(FromAccountID, pPlayer->GetAccountId()))
+	{ pGS->SendChatTo(ClientID, "没有来自该玩家的待处理好友申请。"); return false; }
+
+	pGS->SendChatTo(ClientID, "已拒绝好友申请。");
+
+	auto it = ms_OnlineFriendsMap.find(FromAccountID);
+	if(it != ms_OnlineFriendsMap.end())
+	{
+		char aBuf[256];
+		str_format(aBuf, sizeof(aBuf), "%s 拒绝了你的好友申请。", pGS->Server()->ClientName(ClientID));
+		SendChatToCross(pGS->Server(), it->second, aBuf);
+	}
+	return true;
+}
+
+int CGlobalState::CountIncomingFriendRequests(CGameContext *pGS, int64 ToAccountID)
+{
+	if(!pGS || ToAccountID <= 0)
+		return 0;
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+	return pMMO ? pMMO->CountIncomingFriendRequests(ToAccountID) : 0;
 }
 
 bool CGlobalState::FriendRemove(CGameContext *pGS, int ClientID, const char *pFriendName)
@@ -1039,18 +1193,45 @@ bool CGlobalState::FriendRemove(CGameContext *pGS, int ClientID, const char *pFr
 	if(!pPlayer || pPlayer->GetAccountId() <= 0)
 	{ pGS->SendChatTo(ClientID, "请先登录。"); return false; }
 
-	// Resolve friend's account ID
+	int64 FriendAID = 0;
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+
 	int TargetCID = FindClientByName(pGS, pFriendName);
-	if(TargetCID < 0)
-	{ pGS->SendChatTo(ClientID, "未找到该玩家。"); return false; }
+	if(TargetCID >= 0)
+	{
+		CPlayer *pTarget = FindPlayerCrossWorld(pGS->Server(), TargetCID);
+		if(pTarget && pTarget->GetAccountId() > 0)
+			FriendAID = pTarget->GetAccountId();
+	}
+	if(FriendAID <= 0 && pMMO)
+	{
+		char aQueryName[64];
+		str_copy(aQueryName, pFriendName, sizeof(aQueryName));
+		// lookup by username in DB via friend list
+		for(int64 F : pPlayer->m_aFriends)
+		{
+			char aName[64];
+			if(pMMO->LookupAccountName(F, aName, sizeof(aName)) && str_comp_nocase(aName, pFriendName) == 0)
+			{
+				FriendAID = F;
+				break;
+			}
+		}
+	}
 
-	CPlayer *pTarget = FindPlayerCrossWorld(pGS->Server(), TargetCID);
-	if(!pTarget || pTarget->GetAccountId() <= 0)
-	{ pGS->SendChatTo(ClientID, "该玩家未登录。"); return false; }
+	if(FriendAID <= 0)
+	{ pGS->SendChatTo(ClientID, "未找到该好友。"); return false; }
 
-	int64 FriendAID = pTarget->GetAccountId();
+	return FriendRemoveByAccountId(pGS, ClientID, FriendAID);
+}
 
-	// Find and remove from our list
+bool CGlobalState::FriendRemoveByAccountId(CGameContext *pGS, int ClientID, int64 FriendAID)
+{
+	if(!pGS || FriendAID <= 0) return false;
+	CPlayer *pPlayer = FindPlayerCrossWorld(pGS->Server(), ClientID);
+	if(!pPlayer || pPlayer->GetAccountId() <= 0)
+	{ pGS->SendChatTo(ClientID, "请先登录。"); return false; }
+
 	bool Found = false;
 	for(auto it = pPlayer->m_aFriends.begin(); it != pPlayer->m_aFriends.end(); ++it)
 	{
@@ -1066,32 +1247,49 @@ bool CGlobalState::FriendRemove(CGameContext *pGS, int ClientID, const char *pFr
 	if(!Found)
 	{ pGS->SendChatTo(ClientID, "该玩家不是你的好友。"); return false; }
 
-	// Also remove from target's list (bidirectional)
-	for(auto it = pTarget->m_aFriends.begin(); it != pTarget->m_aFriends.end(); ++it)
+	CMMOManager *pMMO = pGS->Core() ? pGS->Core()->GetMMOManager() : nullptr;
+	int TargetCID = -1;
+	auto itOnline = ms_OnlineFriendsMap.find(FriendAID);
+	if(itOnline != ms_OnlineFriendsMap.end())
+		TargetCID = itOnline->second;
+
+	CPlayer *pTarget = TargetCID >= 0 ? FindPlayerCrossWorld(pGS->Server(), TargetCID) : nullptr;
+	if(pTarget && pTarget->GetAccountId() == FriendAID)
 	{
-		if(*it == pPlayer->GetAccountId())
+		for(auto it = pTarget->m_aFriends.begin(); it != pTarget->m_aFriends.end(); ++it)
 		{
-			pTarget->m_aFriends.erase(it);
-			pTarget->m_aFriendsDirty = true;
-			break;
+			if(*it == pPlayer->GetAccountId())
+			{
+				pTarget->m_aFriends.erase(it);
+				pTarget->m_aFriendsDirty = true;
+				break;
+			}
 		}
 	}
 
-	char aBuf[256];
-	str_format(aBuf, sizeof(aBuf), "%s 已从好友列表中移除。", pGS->Server()->ClientName(TargetCID));
-	pGS->SendChatTo(ClientID, aBuf);
-
-	str_format(aBuf, sizeof(aBuf), "%s 已将你从好友列表中移除。", pGS->Server()->ClientName(ClientID));
-	SendChatToCross(pGS->Server(), TargetCID, aBuf);
-
-	// Save immediately
+	char aFriendName[64];
+	if(pMMO && pMMO->LookupAccountName(FriendAID, aFriendName, sizeof(aFriendName)))
 	{
-		CGameContext *pTargetGS = (CGameContext *)pGS->Server()->GameServer(pGS->Server()->GetClientWorldID(ClientID));
-		if(pTargetGS && pTargetGS->Core() && pTargetGS->Core()->GetMMOManager())
-		{
-			pTargetGS->Core()->GetMMOManager()->SaveFriends(pPlayer);
-			pTargetGS->Core()->GetMMOManager()->SaveFriends(pTarget);
-		}
+		char aBuf[256];
+		str_format(aBuf, sizeof(aBuf), "%s 已从好友列表中移除。", aFriendName);
+		pGS->SendChatTo(ClientID, aBuf);
+	}
+	else
+		pGS->SendChatTo(ClientID, "已从好友列表中移除。");
+
+	if(pMMO)
+	{
+		pMMO->SaveFriends(pPlayer);
+		if(pTarget && pTarget->m_aFriendsDirty)
+			pMMO->SaveFriends(pTarget);
+		pMMO->RemoveFriendPair(pPlayer->GetAccountId(), FriendAID);
+	}
+
+	if(TargetCID >= 0)
+	{
+		char aBuf[256];
+		str_format(aBuf, sizeof(aBuf), "%s 已将你从好友列表中移除。", pGS->Server()->ClientName(ClientID));
+		SendChatToCross(pGS->Server(), TargetCID, aBuf);
 	}
 	return true;
 }
@@ -1190,7 +1388,25 @@ static void ConFriendAdd(IConsole::IResult *pResult, void *pUser)
 	auto *pCtx = (CCommandManager::SCommandContext *)pUser;
 	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
 	if(!pGame || !pGame->Core()) return;
-	CGlobalState::FriendAdd(pGame, pCtx->m_ClientID, pResult->GetString(0));
+	CGlobalState::FriendRequestSend(pGame, pCtx->m_ClientID, pResult->GetString(0));
+	(void)pResult;
+}
+
+static void ConFriendAccept(IConsole::IResult *pResult, void *pUser)
+{
+	auto *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	if(!pGame || !pGame->Core()) return;
+	CGlobalState::FriendAccept(pGame, pCtx->m_ClientID, pResult->GetString(0));
+	(void)pResult;
+}
+
+static void ConFriendDecline(IConsole::IResult *pResult, void *pUser)
+{
+	auto *pCtx = (CCommandManager::SCommandContext *)pUser;
+	CGameContext *pGame = (CGameContext *)pCtx->m_pContext;
+	if(!pGame || !pGame->Core()) return;
+	CGlobalState::FriendDecline(pGame, pCtx->m_ClientID, pResult->GetString(0));
 	(void)pResult;
 }
 
@@ -1234,9 +1450,7 @@ void CGlobalState::RegisterGlobalFriendCommands(CGameContext *pGS, CCommandManag
 {
 	if(!pGS || !pManager) return;
 
-	// Friend commands
-	pManager->AddCommand("friend_add", "添加好友 <玩家名>", "s", ConFriendAdd, pGS);
-	pManager->AddCommand("friend_remove", "删除好友 <玩家名>", "s", ConFriendRemove, pGS);
+	// 好友操作仅通过投票菜单 ccv_friend_*（RegisterSocialVoteCommands）
 	pManager->AddCommand("friend_list", "查看好友列表", "", ConFriendList, pGS);
 
 	// Alias: /friend <subcommand> style

@@ -37,6 +37,7 @@ public:
 
 	void ClearCharacter(int ClientID);
 	void ApplyStatus(CCharacter *pChr, const char *pStatusId, int Stacks, int DurationTicks, float SlowMul = 0.86f, int Amount = 0);
+	void ClearDebuffs(CCharacter *pChr);
 	void TickCharacter(CCharacter *pChr);
 	bool AbsorbDamage(CCharacter *pChr, int &Dmg);
 	int GetSlowTicks(CCharacter *pChr) const;

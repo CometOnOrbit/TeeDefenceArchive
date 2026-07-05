@@ -27,6 +27,10 @@
 #include "worldmodes/defence.h"
 #include "worldmodes/hub.h"
 #include "worldmodes/pvp.h"
+#include "worldmodes/fng.h"
+#include "worldmodes/tdm.h"
+#include "worldmodes/itdm.h"
+#include "worldmodes/ctf.h"
 #include "worldmodes/rpg.h"
 #include <engine/shared/world_detail.h>
 #include "core/tworld_controller.h"
@@ -623,6 +627,23 @@ void CGameContext::BroadcastTick(int ClientID)
 		State.m_NextPriority = State.m_TimedPriority;
 	}
 
+	const bool HasPendingMsg = State.m_NextPriority > BROADCAST_PRIORITY_LOWER;
+	if(!State.m_Updated && !HasPendingMsg && Server()->Tick() < State.m_NoChangeUntil)
+	{
+		if(State.m_LifeSpanTick > 0)
+		{
+			State.m_LifeSpanTick--;
+			if(State.m_LifeSpanTick <= 0)
+			{
+				State.m_aTimedMessage[0] = '\0';
+				State.m_TimedPriority = BROADCAST_PRIORITY_LOWER;
+			}
+		}
+		State.m_aNextMessage[0] = '\0';
+		State.m_NextPriority = BROADCAST_PRIORITY_LOWER;
+		return;
+	}
+
 	// Send only if updated/changed, or every 3 seconds to fight auto-fade (MRPG)
 	if(State.m_Updated || str_comp(State.m_aPrevMessage, State.m_aNextMessage) != 0 || Server()->Tick() >= State.m_NoChangeUntil)
 	{
@@ -857,7 +878,9 @@ void CGameContext::SendChatCommands(int ClientID)
 {
 	for(int i = 0; i < CommandManager()->CommandCount(); i++)
 	{
-		SendChatCommand(CommandManager()->GetCommand(i), ClientID);
+		const CCommandManager::CCommand *pCommand = CommandManager()->GetCommand(i);
+		if(pCommand && !pCommand->m_VoteOnly)
+			SendChatCommand(pCommand, ClientID);
 	}
 }
 
@@ -1196,8 +1219,9 @@ bool CGameContext::IsWorldType(WorldType Type) const
 
 void CGameContext::InitWorld()
 {
+	const CWorldDetail *pDetail = Server()->GetWorldDetail(m_WorldID);
 	WorldType Type = WorldType::Defence;
-	if(const CWorldDetail *pDetail = Server()->GetWorldDetail(m_WorldID))
+	if(pDetail)
 		Type = pDetail->GetType();
 
 	switch(Type)
@@ -1211,9 +1235,29 @@ void CGameContext::InitWorld()
 		dbg_msg("world init", "world %d (%s) mode=hub", m_WorldID, Server()->GetWorldName(m_WorldID));
 		break;
 	case WorldType::PvP:
-		m_pController = new CGameControllerPvP(this);
-		dbg_msg("world init", "world %d (%s) mode=pvp", m_WorldID, Server()->GetWorldName(m_WorldID));
+	{
+		const char *pMode = pDetail ? pDetail->GetGameMode() : "";
+		if(pMode && pMode[0])
+		{
+			if(str_comp_nocase(pMode, "fng") == 0)
+				m_pController = new CGameControllerFNG(this);
+			else if(str_comp_nocase(pMode, "tdm") == 0)
+				m_pController = new CGameControllerTDM(this);
+			else if(str_comp_nocase(pMode, "itdm") == 0 || str_comp_nocase(pMode, "idm") == 0)
+				m_pController = new CGameControllerITDM(this);
+			else if(str_comp_nocase(pMode, "ctf") == 0)
+				m_pController = new CGameControllerCTF(this);
+			else
+				m_pController = new CGameControllerPvP(this);
+			dbg_msg("world init", "world %d (%s) mode=%s", m_WorldID, Server()->GetWorldName(m_WorldID), pMode);
+		}
+		else
+		{
+			m_pController = new CGameControllerPvP(this);
+			dbg_msg("world init", "world %d (%s) mode=pvp", m_WorldID, Server()->GetWorldName(m_WorldID));
+		}
 		break;
+	}
 	default:
 		m_pController = new CGameControllerDefence(this);
 		dbg_msg("world init", "world %d (%s) mode=defence", m_WorldID, Server()->GetWorldName(m_WorldID));
@@ -1572,7 +1616,7 @@ void CGameContext::OnMessage(int MsgID, CUnpacker *pUnpacker, int ClientID)
 				char aCommand[16];
 				str_format(aCommand, sizeof(aCommand), "%.*s", str_span(pCommandStr, " "), pCommandStr);
 				const CCommandManager::CCommand *pCommand = m_CommandManager.GetCommand(aCommand);
-				if(!pCommand)
+				if(!pCommand || pCommand->m_VoteOnly)
 					return false;
 				CommandManager()->OnCommand(pCommand->m_aName, str_skip_whitespaces_const(str_skip_to_whitespace_const(pCommandStr)), ClientID);
 				return true;
@@ -2322,6 +2366,12 @@ void CGameContext::OnInit()
 			}
 		}
 	}
+
+	Collision()->InitSwitchEntities([](int EntityIndex, vec2 Pos, int Flags, int Number, void *pUser) {
+		CGameContext *pSelf = static_cast<CGameContext *>(pUser);
+		if(pSelf && pSelf->m_pController)
+			pSelf->m_pController->OnEntitySwitch(EntityIndex, Pos, Flags, Number);
+	}, this);
 
 	m_pBotEngine = new CBotEngine(this);
 	m_pBotEngine->Init(Collision());

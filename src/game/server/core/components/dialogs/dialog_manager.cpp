@@ -1,8 +1,11 @@
 #include <engine/shared/jsonparser.h>
 #include <engine/shared/config.h>
+#include <game/server/interaction_sound.h>
+#include <generated/server_data.h>
 
 #include <game/server/core/components/dialogs/dialog_manager.h>
 #include <game/server/core/components/npcs/npc_manager.h>
+#include <game/server/core/components/npcs/npc_service.h>
 #include <game/server/core/components/vote/vote_menu_manager.h>
 #include <game/server/core/components/quests/quest_manager.h>
 #include <game/server/core/components/localization/localization_manager.h>
@@ -122,6 +125,7 @@ bool CDialogManager::TryTalk(CPlayer *pPlayer, const char *pNpcId, float NpcPosX
 	if(!pDef) { dbg_msg("dialog", "no dialog def for '%s'", pNpcId); return false; }
 
 	const int CID = pPlayer->GetCID();
+	PlayUiMenuOpen(GS()->m_World, CID);
 	SPlayerDialogSession &Session = m_aSessions[CID];
 	if(Session.m_Active) { Session.m_MrpgDialog.End(); Session.Reset(); }
 
@@ -149,7 +153,7 @@ bool CDialogManager::TryTalk(CPlayer *pPlayer, const char *pNpcId, float NpcPosX
 	// Execute actions (heal, message, etc.) on start step
 	ExecuteActions(pPlayer, pDef->m_Steps[StartStep]);
 
-	// Shop/craft auto-nav
+	// Shop/craft/skills/quests — only while near this NPC (MRPG-style)
 	for(const auto &Action : pDef->m_Steps[StartStep].m_Actions)
 	{
 		if(Action.m_Type == EDialogActionType::OPEN_SHOP ||
@@ -157,24 +161,23 @@ bool CDialogManager::TryTalk(CPlayer *pPlayer, const char *pNpcId, float NpcPosX
 		   Action.m_Type == EDialogActionType::OPEN_SKILLS ||
 		   Action.m_Type == EDialogActionType::OPEN_QUESTS)
 		{
-			if(GS()->Core() && GS()->Core()->VoteMenuManager())
-			{
-				SPlayerVote *pV = GS()->Core()->VoteMenuManager()->GetPlayerVote(CID);
-				if(pV)
-				{
-					pV->m_LastPage = PAGE_MENU;
-					if(Action.m_Type == EDialogActionType::OPEN_SHOP)
-					{
-						pV->m_Page = PAGE_SHOP;
-						// Save shop ID in m_aExtraText so PAGE_SHOP knows which shop
-						str_copy(pV->m_aExtraText, Action.m_aKey, sizeof(pV->m_aExtraText));
-					}
-					else if(Action.m_Type == EDialogActionType::OPEN_CRAFT) pV->m_Page = PAGE_CRAFT;
-					else if(Action.m_Type == EDialogActionType::OPEN_QUESTS) pV->m_Page = PAGE_QUESTS;
-					else pV->m_Page = PAGE_SKILLS;
-				}
+			if(!GS()->Core() || !GS()->Core()->VoteMenuManager())
+				continue;
+
+			SPlayerVote *pV = GS()->Core()->VoteMenuManager()->GetPlayerVote(CID);
+			if(!pV)
+				continue;
+
+			int TargetPage = PAGE_SKILLS;
+			if(Action.m_Type == EDialogActionType::OPEN_SHOP)
+				TargetPage = VOTE_PAGE_MMO_SHOP_ITEMS;
+			else if(Action.m_Type == EDialogActionType::OPEN_CRAFT)
+				TargetPage = PAGE_CRAFT;
+			else if(Action.m_Type == EDialogActionType::OPEN_QUESTS)
+				TargetPage = PAGE_QUESTS;
+
+			if(TryBindNpcServiceFromDialog(GS(), pPlayer, pV, TargetPage, pNpcId))
 				GS()->Core()->VoteMenuManager()->ClearVotes(CID);
-			}
 		}
 	}
 
@@ -276,7 +279,7 @@ bool CDialogManager::HandleMotdMenuCommand(CPlayer *pPlayer, const char *pComman
 		int OldStep = Session.m_MrpgDialog.GetCurrentStep();
 		// MRPG: play pickup sound on F4 dialog advance
 		if(pPlayer->GetCharacter())
-			GS()->m_World.CreateSound(pPlayer->GetCharacter()->GetPos(), SOUND_PICKUP_ARMOR, CmaskOne(CID));
+			GS()->m_World.CreateSound(pPlayer->GetCharacter()->GetPos(), SOUND_UI_MENU_ITEM_CLICK, CmaskOne(CID));
 		Session.m_MrpgDialog.Next();
 		dbg_msg("dialog", "HandleMotdMenuCommand(next): CID=%d step %d->%d, active=%d",
 			CID, OldStep, Session.m_MrpgDialog.GetCurrentStep(), Session.m_MrpgDialog.IsActive() ? 1 : 0);
@@ -288,6 +291,7 @@ bool CDialogManager::HandleMotdMenuCommand(CPlayer *pPlayer, const char *pComman
 
 	if(str_comp(pCommand, "dialog_end") == 0 || str_comp(pCommand, "CLOSE") == 0)
 	{
+		PlayUiMenuOpen(GS()->m_World, CID);
 		Session.m_MrpgDialog.End();
 		Session.Reset();
 		return true;

@@ -40,7 +40,7 @@ static inline const SShopEntry g_aShopData[] =
 			{38, "Wood Plank", 4, true},      // crafting mat
 			{42, "Cloth Scrap", 5, true},     // crafting mat
 			{45, "Leather Strip", 8, true},   // crafting mat
-			{208, "Fishing Bait", 5, true},   // fishing
+			{218, "Fishing Bait", 5, true},   // fishing
 			{100, "Town Scroll", 50, true},   // teleport
 		},
 		11
@@ -93,15 +93,15 @@ static inline const SShopEntry g_aShopData[] =
 		{
 			{110, "Wooden Mallet", 200, false},   // lv1, ATK+2
 			{116, "Old Pistol", 250, false},       // lv1
-			{140, "Leather Cap", 150, false},      // lv1, DEF+1
-			{145, "Leather Vest", 300, false},     // lv1, DEF+2
-			{150, "Cloth Pants", 100, false},      // lv1, DEF+1
-			{155, "Leather Boots", 120, false},    // lv1, DEF+1
-			{160, "Cloth Gloves", 80, false},      // lv1, DEF+1
+			{185, "Leather Cap", 150, false},      // lv1, DEF+1
+			{194, "Leather Vest", 300, false},     // lv1, DEF+2
+			{155, "Cloth Pants", 100, false},      // lv1, DEF+1
+			{160, "Leather Boots", 120, false},    // lv1, DEF+1
+			{165, "Cloth Gloves", 80, false},      // lv1, DEF+1
 			{111, "Iron Hammer", 600, false},      // lv5, ATK+6
-			{146, "Iron Chestplate", 800, false},  // lv5, DEF+4
-			{141, "Iron Helmet", 400, false},      // lv5, DEF+2
-			{156, "Iron Boots", 350, false},       // lv5, DEF+2
+			{195, "Iron Chestplate", 800, false},  // lv5, DEF+4
+			{189, "Iron Helmet", 400, false},      // lv5, DEF+2
+			{161, "Iron Boots", 350, false},       // lv5, DEF+2
 		},
 		11
 	},
@@ -115,12 +115,12 @@ static inline const SShopEntry g_aShopData[] =
 			{26, "Fruit Salad", 35, true},        // heal 20HP+15MP
 			{27, "Royal Feast", 500, true},       // full heal + buff
 			{24, "Bread", 8, true},               // staple food
-			{198, "Sunglasses", 200, false},      // cosmetic
-			{192, "Halo Crown", 2000, false},     // cosmetic
-			{196, "Top Hat", 500, false},         // cosmetic
+			{208, "Sunglasses", 200, false},      // cosmetic
+			{202, "Halo Crown", 2000, false},     // cosmetic
+			{206, "Top Hat", 500, false},         // cosmetic
 			{109, "TeeFun Badge", 500, false},    // cosmetic
-			{190, "Angel Wings", 3000, false},    // legendary cosmetic
-			{191, "Demon Horns", 800, false},     // cosmetic
+			{200, "Angel Wings", 3000, false},    // legendary cosmetic
+			{201, "Demon Horns", 800, false},     // cosmetic
 		},
 		10
 	},

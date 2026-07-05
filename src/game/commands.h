@@ -19,6 +19,7 @@ public:
 
 		IConsole::FCommandCallback m_pfnCallback;
 		void *m_pContext;
+		bool m_VoteOnly;
 
 		CCommand()
 		{
@@ -28,15 +29,17 @@ public:
 
 			m_pfnCallback = 0;
 			m_pContext = 0;
+			m_VoteOnly = false;
 		}
 
-		CCommand(const char *pName, const char *pHelpText, const char *pArgsFormat, IConsole::FCommandCallback pfnCallback, void *pContext)
+		CCommand(const char *pName, const char *pHelpText, const char *pArgsFormat, IConsole::FCommandCallback pfnCallback, void *pContext, bool VoteOnly = false)
 		{
 			str_copy(m_aName, pName, sizeof(m_aName));
 			str_copy(m_aHelpText, pHelpText, sizeof(m_aHelpText));
 			str_copy(m_aArgsFormat, pArgsFormat, sizeof(m_aArgsFormat));
 			m_pfnCallback = pfnCallback;
 			m_pContext = pContext;
+			m_VoteOnly = VoteOnly;
 		}
 	};
 
@@ -85,6 +88,38 @@ public:
 
 	int AddCommand(const char *pCommand, const char *pHelpText, const char *pArgsFormat, IConsole::FCommandCallback pfnCallback, void *pContext)
 	{
+		return AddCommandInternal(pCommand, pHelpText, pArgsFormat, pfnCallback, pContext, false);
+	}
+
+	int AddVoteCommand(const char *pCommand, const char *pHelpText, const char *pArgsFormat, IConsole::FCommandCallback pfnCallback, void *pContext)
+	{
+		return AddCommandInternal(pCommand, pHelpText, pArgsFormat, pfnCallback, pContext, true);
+	}
+
+	int OnCommand(const char *pCommand, const char *pArgs, int ClientID, bool AllowVoteOnly = false)
+	{
+		if(str_comp(pCommand, "login") == 0 || str_comp(pCommand, "register") == 0)
+			dbg_msg("chat_command", "calling '%s' from client %d (credentials redacted)", pCommand, ClientID);
+		else
+			dbg_msg("chat_command", "calling '%s' with args '%s'", pCommand, pArgs);
+		const CCommand *pCom = GetCommand(pCommand);
+		if(!pCom)
+			return 1;
+		if(!AllowVoteOnly && pCom->m_VoteOnly)
+			return 1;
+
+		SCommandContext Context = {pCom->m_aName, pArgs, ClientID, pCom->m_pContext};
+		return m_pConsole->ParseCommandArgs(pArgs, pCom->m_aArgsFormat, pCom->m_pfnCallback, &Context);
+	}
+
+	int OnVoteCommand(const char *pCommand, const char *pArgs, int ClientID)
+	{
+		return OnCommand(pCommand, pArgs, ClientID, true);
+	}
+
+private:
+	int AddCommandInternal(const char *pCommand, const char *pHelpText, const char *pArgsFormat, IConsole::FCommandCallback pfnCallback, void *pContext, bool VoteOnly)
+	{
 		const CCommand *pCom = GetCommand(pCommand);
 		if(pCom)
 			return 1;
@@ -92,12 +127,14 @@ public:
 		if(!m_pConsole->ArgStringIsValid(pArgsFormat))
 			return 1;
 
-		int Index = m_aCommands.add(CCommand(pCommand, pHelpText, pArgsFormat, pfnCallback, pContext));
-		if(m_pfnNewCommandHook)
+		int Index = m_aCommands.add(CCommand(pCommand, pHelpText, pArgsFormat, pfnCallback, pContext, VoteOnly));
+		if(!VoteOnly && m_pfnNewCommandHook)
 			m_pfnNewCommandHook(&m_aCommands[Index], m_pHookContext);
 
 		return 0;
 	}
+
+public:
 
 	int RemoveCommand(const char *pCommand)
 	{
@@ -134,20 +171,6 @@ public:
 		void *m_pContext;
 	};
 
-	int OnCommand(const char *pCommand, const char *pArgs, int ClientID)
-	{
-		if(str_comp(pCommand, "login") == 0 || str_comp(pCommand, "register") == 0)
-			dbg_msg("chat_command", "calling '%s' from client %d (credentials redacted)", pCommand, ClientID);
-		else
-			dbg_msg("chat_command", "calling '%s' with args '%s'", pCommand, pArgs);
-		const CCommand *pCom = GetCommand(pCommand);
-		if(!pCom)
-			return 1;
-
-		SCommandContext Context = {pCom->m_aName, pArgs, ClientID, pCom->m_pContext};
-		return m_pConsole->ParseCommandArgs(pArgs, pCom->m_aArgsFormat, pCom->m_pfnCallback, &Context);
-	}
-
 	int Filter(array<bool> &aFilter, const char *pStr, bool Exact)
 	{
 		dbg_assert(aFilter.size() == m_aCommands.size(), "filter size must match command count");
@@ -173,5 +196,7 @@ public:
 		return Filtered;
 	}
 };
+
+#define VOTE_CMD(mgr, name, fmt, fn, ctx) (mgr)->AddVoteCommand(name, "", fmt, fn, ctx)
 
 #endif // GAME_COMMANDS_H

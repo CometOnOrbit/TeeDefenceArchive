@@ -248,7 +248,7 @@ void CAchievementManager::RegisterVoteCommands(CCommandManager *pMgr)
 {
 	if(!pMgr || !GS())
 		return;
-	pMgr->AddCommand("menuachievements", "", "", ComVoteAchPage, GS());
+	pMgr->AddVoteCommand("menuachievements", "", "", ComVoteAchPage, GS());
 }
 
 bool CAchievementManager::OnPlayerVoteCommand(CPlayer *pPlayer, const char *pCmd, const char *pArgs, int ReasonNumber, const char *pReason)
